@@ -3,7 +3,8 @@ import {
   formatToExtension,
   normalizeMediaUrl,
   parseIwaraVideoId,
-  qualityRank
+  qualityRank,
+  withIwaraDownloadName
 } from "../../shared/iwara-utils";
 import { buildMediaHostCandidates, mediaUrlHost } from "../../shared/media-speed-utils";
 import type {
@@ -132,7 +133,7 @@ export class IwaraClient {
       throw new IwaraApiError("这个视频当前没有可播放的文件。", "unplayable");
     }
 
-    const directFormats = await this.extractFormats(id, fileUrl);
+    const directFormats = await this.extractFormats(id, fileUrl, summary.title);
     return {
       ...summary,
       embedUrl,
@@ -196,10 +197,10 @@ export class IwaraClient {
     return this.speedTestHosts(video, speedSettings);
   }
 
-  private async extractFormats(videoId: string, fileUrl: string): Promise<VideoFormat[]> {
+  private async extractFormats(videoId: string, fileUrl: string, title: string): Promise<VideoFormat[]> {
     const xVersion = buildXVersion(fileUrl);
     const mediaHeaders = await this.mediaHeaders();
-    const files = await this.requestJson<unknown>(fileUrl, {
+    const files = await this.requestJson<unknown>(withIwaraDownloadName(fileUrl, title, videoId), {
       headers: {
         ...mediaHeaders,
         "X-Version": xVersion,

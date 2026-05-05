@@ -3,7 +3,7 @@ import type { VideoFormat } from "./types";
 
 const IWARA_VIDEO_ID = /^[a-zA-Z0-9]{6,}$/;
 const IWARA_VIDEO_URL = /iwara\.tv\/videos?\/([a-zA-Z0-9]+)/i;
-const X_VERSION_SALT = "5nFp9kmbNnHdAFhaqMvt";
+const X_VERSION_SALT = "mSvL05GfEmeEmsEYfGCnVpEjYgTJraJN";
 
 export function parseIwaraVideoId(input: string): string {
   const trimmed = input.trim();
@@ -32,6 +32,12 @@ export function buildXVersion(fileUrl: string): string {
   return createHash("sha1")
     .update([fileId, expires, X_VERSION_SALT].join("_"))
     .digest("hex");
+}
+
+export function withIwaraDownloadName(fileUrl: string, title: string, videoId: string): string {
+  const parsed = new URL(fileUrl);
+  parsed.searchParams.set("download", `Iwara - ${title} [${videoId}].mp4`);
+  return parsed.toString();
 }
 
 export function normalizeMediaUrl(url: string): string {
@@ -86,4 +92,3 @@ export function formatToExtension(mimeType?: string): string | undefined {
 
   return undefined;
 }
-

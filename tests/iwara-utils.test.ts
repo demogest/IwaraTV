@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { buildXVersion, chooseVideoFormat, parseIwaraVideoId, qualityRank } from "../src/shared/iwara-utils";
+import { buildXVersion, chooseVideoFormat, parseIwaraVideoId, qualityRank, withIwaraDownloadName } from "../src/shared/iwara-utils";
 import { buildMediaHostCandidates, normalizeMediaHostList, replaceMediaUrlHost } from "../src/shared/media-speed-utils";
 import type { VideoFormat } from "../src/shared/types";
 
@@ -13,7 +13,21 @@ describe("iwara utilities", () => {
   it("builds the known X-Version hash shape", () => {
     const hash = buildXVersion("https://files.iwara.tv/file/video-file-id?expires=1700000000");
     expect(hash).toHaveLength(40);
-    expect(hash).toBe("e477352e5d18dbd0545cf841fc1ded12ec4a73b2");
+    expect(hash).toBe("6fedab7f968b4133d7a3857bbb9567799185b222");
+  });
+
+  it("matches the current web app X-Version salt", () => {
+    const hash = buildXVersion("https://filesq.iwara.tv/file/ac85c86f-a2aa-4b91-95f8-69f268920929?expires=1777962801804");
+    expect(hash).toBe("5f1267ba367e35cabf53755f4310381e9846a133");
+  });
+
+  it("adds the web app download name before requesting file variants", () => {
+    const url = withIwaraDownloadName(
+      "https://filesq.iwara.tv/file/ac85c86f-a2aa-4b91-95f8-69f268920929?expires=1777962801804",
+      "Demo Title",
+      "abc123"
+    );
+    expect(new URL(url).searchParams.get("download")).toBe("Iwara - Demo Title [abc123].mp4");
   });
 
   it("ranks and selects quality", () => {

@@ -211,9 +211,11 @@ pub fn system_write_clipboard(app: AppHandle, text: String) -> AppResult<()> {
 async fn merged_auth_state(state: &State<'_, AppState>) -> AppResult<AuthState> {
     let base = state.iwara_client.auth_state();
     let session = state.session.state().await?;
+    let current_username = state.iwara_client.current_username().await.ok().flatten();
     Ok(AuthState {
         logged_in: base.logged_in,
-        email: base.email,
+        email: base.email.or(session.email),
+        username: current_username.or(base.username).or(session.username),
         has_media_token: base.has_media_token,
         encryption_available: base.encryption_available,
         site_session_ready: session.site_session_ready,

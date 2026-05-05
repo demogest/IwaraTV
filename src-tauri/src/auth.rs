@@ -2,6 +2,7 @@ use std::sync::Mutex;
 
 use base64::Engine;
 use keyring::Entry;
+use serde_json::Value;
 
 use crate::models::AuthState;
 
@@ -12,6 +13,8 @@ const ACCOUNT: &str = "iwara-user-token";
 struct PersistedAuth {
     email: String,
     user_token: String,
+    #[serde(default)]
+    username: Option<String>,
 }
 
 pub struct AuthStore {
@@ -43,8 +46,12 @@ impl AuthStore {
         *self.media_token.lock().expect("media token mutex poisoned") = Some(token);
     }
 
-    pub fn save_user_token(&self, email: String, user_token: String) {
-        let persisted = PersistedAuth { email, user_token };
+    pub fn save_user_token(&self, email: String, user_token: String, username: Option<String>) {
+        let persisted = PersistedAuth {
+            email,
+            user_token,
+            username,
+        };
         if let Ok(entry) = Entry::new(SERVICE, ACCOUNT) {
             if let Ok(payload) = serde_json::to_string(&persisted) {
                 let _ = entry.set_password(&payload);
@@ -63,9 +70,13 @@ impl AuthStore {
 
     pub fn state(&self) -> AuthState {
         let persisted = self.persisted.lock().expect("auth mutex poisoned").clone();
+        let username = persisted
+            .as_ref()
+            .and_then(|auth| auth.username.clone().or_else(|| username_from_jwt(&auth.user_token)));
         AuthState {
             logged_in: persisted.as_ref().is_some_and(|auth| !auth.user_token.is_empty()),
-            email: persisted.map(|auth| auth.email),
+            email: persisted.as_ref().map(|auth| auth.email.clone()),
+            username,
             has_media_token: self.get_media_token().is_some(),
             encryption_available: encryption_available(),
             site_session_ready: None,
@@ -83,21 +94,64 @@ impl AuthStore {
 }
 
 pub fn is_jwt_expired(token: &str, skew_seconds: u64) -> bool {
-    let mut parts = token.split('.');
-    let _header = parts.next();
-    let Some(payload) = parts.next() else {
-        return false;
-    };
-    let Ok(decoded) = base64::engine::general_purpose::URL_SAFE_NO_PAD.decode(payload) else {
-        return false;
-    };
-    let Ok(json) = serde_json::from_slice::<serde_json::Value>(&decoded) else {
+    let Some(json) = jwt_payload(token) else {
         return false;
     };
     let Some(exp) = json.get("exp").and_then(|value| value.as_u64()) else {
         return false;
     };
     exp <= current_unix_seconds() + skew_seconds
+}
+
+pub fn username_from_jwt(token: &str) -> Option<String> {
+    jwt_claim_string(
+        token,
+        &[
+            "username",
+            "name",
+            "preferred_username",
+            "displayName",
+            "display_name",
+            "nickname",
+            "user.username",
+            "user.name",
+            "profile.username",
+            "profile.name",
+        ],
+    )
+}
+
+pub fn jwt_claim_string(token: &str, keys: &[&str]) -> Option<String> {
+    let payload = jwt_payload(token)?;
+    keys.iter()
+        .find_map(|key| value_at_path(&payload, key).and_then(non_empty_string))
+}
+
+fn jwt_payload(token: &str) -> Option<Value> {
+    let mut parts = token.split('.');
+    let _header = parts.next();
+    let payload = parts.next()?;
+    let decoded = base64::engine::general_purpose::URL_SAFE_NO_PAD.decode(payload).ok()?;
+    serde_json::from_slice::<Value>(&decoded).ok()
+}
+
+fn value_at_path<'a>(value: &'a Value, path: &str) -> Option<&'a Value> {
+    path.split('.').try_fold(value, |current, key| current.get(key))
+}
+
+fn non_empty_string(value: &Value) -> Option<String> {
+    match value {
+        Value::String(value) => {
+            let value = value.trim();
+            if value.is_empty() {
+                None
+            } else {
+                Some(value.to_string())
+            }
+        }
+        Value::Number(value) => Some(value.to_string()),
+        _ => None,
+    }
 }
 
 fn load_auth() -> Option<PersistedAuth> {

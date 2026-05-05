@@ -345,6 +345,8 @@ pub struct AuthState {
     pub logged_in: bool,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub email: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub username: Option<String>,
     pub has_media_token: bool,
     pub encryption_available: bool,
     #[serde(skip_serializing_if = "Option::is_none")]

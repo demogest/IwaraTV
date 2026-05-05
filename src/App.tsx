@@ -156,8 +156,11 @@ export function App() {
   const activeFeed = feeds[activeFeedTab];
   const hasApi = Boolean(api);
   const showDetailPanel = activeSection === "browse" && Boolean(selectedVideo);
-  const authDisplayName = auth.email
+  const authDisplayName = auth.username
+    ?? auth.email
     ?? (auth.siteTokenReady ? "网页登录" : auth.siteSessionReady ? "已验证会话" : "匿名");
+  const authStatusLabel = auth.username
+    ?? (auth.siteTokenReady ? "网页登录就绪" : auth.siteSessionReady ? "会话已验证" : auth.loggedIn ? "API 已登录" : "未验证");
   const sortedFormats = useMemo(
     () => [...(selectedVideo?.formats ?? [])].sort((a, b) => b.qualityRank - a.qualityRank),
     [selectedVideo]
@@ -823,7 +826,7 @@ export function App() {
 
           <button className="auth-pill" onClick={() => setActiveSection("settings")} type="button">
             {auth.siteTokenReady || auth.loggedIn ? <Star size={16} /> : <LogIn size={16} />}
-            {auth.siteTokenReady ? "网页登录就绪" : auth.siteSessionReady ? "会话已验证" : auth.loggedIn ? "API 已登录" : "未验证"}
+            {authStatusLabel}
           </button>
         </header>
 
@@ -911,7 +914,6 @@ export function App() {
 
           {showDetailPanel && selectedVideo && (
             <DetailPanel
-              siteSessionReady={Boolean(auth.siteTokenReady)}
               playing={playing}
               selectedQuality={selectedQuality}
               sortedFormats={sortedFormats}
@@ -1151,7 +1153,6 @@ function ListScanSummary({ result }: { result?: VideoListResult }) {
 }
 
 function DetailPanel({
-  siteSessionReady,
   playing,
   selectedQuality,
   sortedFormats,
@@ -1179,7 +1180,6 @@ function DetailPanel({
   submittingComment,
   tagPreferences
 }: {
-  siteSessionReady: boolean;
   playing: boolean;
   selectedQuality?: string;
   sortedFormats: VideoDetail["formats"];
@@ -1303,12 +1303,6 @@ function DetailPanel({
                 ))}
               </select>
             </label>
-            <p className="subtle">
-              Iwara 当前只返回：{sortedFormats.map((format) => format.label).join(" / ")}。
-              {siteSessionReady
-                ? "如果网页版也没有更高清晰度，通常是视频源或站点转码限制。"
-                : "如果网页版有 Source/540，请先在设置里完成应用内验证后重新打开视频。"}
-            </p>
           </div>
         ) : (
           <div className="inline-warning">没有可用直链清晰度。</div>

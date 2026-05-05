@@ -9,7 +9,7 @@ use time::{format_description::well_known::Rfc3339, OffsetDateTime};
 use tokio::time::sleep;
 use url::Url;
 
-use crate::auth::{is_jwt_expired, AuthStore};
+use crate::auth::{is_jwt_expired, username_from_jwt, AuthStore};
 use crate::error::{message, AppResult};
 use crate::iwara_utils::{
     build_x_version, extract_x_version_salt_from_script, format_to_extension, normalize_media_url,
@@ -56,6 +56,26 @@ impl IwaraClient {
         self.auth.state()
     }
 
+    pub async fn current_username(&self) -> AppResult<Option<String>> {
+        let token = self.session.token().await?.or_else(|| self.auth.get_user_token());
+        let Some(token) = token else {
+            return Ok(None);
+        };
+        let response = self
+            .request_json::<Value>(
+                &format!("{API_BASE}/user"),
+                "GET",
+                vec![
+                    ("Authorization".to_string(), format!("Bearer {token}")),
+                    ("Content-Type".to_string(), "application/json".to_string()),
+                ],
+                None,
+                None,
+            )
+            .await?;
+        Ok(extract_auth_username(&response).or_else(|| username_from_jwt(&token)))
+    }
+
     pub async fn login(&self, request: LoginRequest) -> AppResult<AuthState> {
         let response = self
             .request_json::<Value>(
@@ -78,7 +98,8 @@ impl IwaraClient {
             return Err(message(format!("Iwara 登录失败：{login_message}")));
         };
 
-        self.auth.save_user_token(request.email, token.to_string());
+        let username = extract_auth_username(&response).or_else(|| username_from_jwt(token));
+        self.auth.save_user_token(request.email, token.to_string(), username);
         self.refresh_media_token(token).await?;
         Ok(self.auth.state())
     }
@@ -751,6 +772,7 @@ impl IwaraClient {
     ) -> AppResult<(u16, T)> {
         let mut merged_headers = vec![
             ("Accept".to_string(), "application/json".to_string()),
+            ("X-Site".to_string(), "www.iwara.tv".to_string()),
             ("Referer".to_string(), "https://www.iwara.tv/".to_string()),
             ("Origin".to_string(), "https://www.iwara.tv".to_string()),
         ];
@@ -1035,6 +1057,21 @@ fn value_to_string(value: Option<&Value>) -> Option<String> {
     }
 }
 
+fn extract_auth_username(response: &Value) -> Option<String> {
+    response
+        .get("user")
+        .and_then(|user| {
+            value_to_string(user.get("username"))
+                .or_else(|| value_to_string(user.get("name")))
+                .or_else(|| value_to_string(user.get("displayName")))
+                .or_else(|| value_to_string(user.get("display_name")))
+        })
+        .or_else(|| value_to_string(response.get("username")))
+        .or_else(|| value_to_string(response.get("name")))
+        .or_else(|| value_to_string(response.get("displayName")))
+        .or_else(|| value_to_string(response.get("display_name")))
+}
+
 fn thumbnail_url(file: &Value) -> Option<String> {
     value_to_string(file.get("id")).map(|file_id| format!("{FILES_BASE}/image/thumbnail/{file_id}/thumbnail-00.jpg"))
 }
@@ -1213,5 +1250,22 @@ mod tests {
             .collect::<HashSet<_>>();
         assert!(matches_all_tags(&videos[0].tags, &required));
         assert!(!matches_any_tag(&videos[0].tags, &["muted".to_string()].into_iter().collect()));
+    }
+
+    #[test]
+    fn extracts_username_from_current_user_response() {
+        let response = serde_json::json!({
+            "balance": 0,
+            "user": {
+                "id": "user-id",
+                "name": "demo_user",
+                "username": "demo_user"
+            },
+            "profile": {
+                "user": null
+            }
+        });
+
+        assert_eq!(extract_auth_username(&response).as_deref(), Some("demo_user"));
     }
 }

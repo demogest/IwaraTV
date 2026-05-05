@@ -181,6 +181,7 @@ export interface AppSettings {
 export interface AuthState {
   loggedIn: boolean;
   email?: string;
+  username?: string;
   hasMediaToken: boolean;
   encryptionAvailable: boolean;
   siteSessionReady?: boolean;

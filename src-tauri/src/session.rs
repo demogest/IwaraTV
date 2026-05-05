@@ -8,6 +8,7 @@ use tokio::sync::oneshot;
 use tokio::time::{sleep, timeout};
 use url::Url;
 
+use crate::auth::username_from_jwt;
 use crate::error::{message, AppResult};
 use crate::iwara_client::{summarize_json_response, SimpleResponse};
 use crate::models::{AuthState, IwaraNetworkCapture, IwaraNetworkEntry};
@@ -78,9 +79,13 @@ impl IwaraSessionService {
     pub async fn state(&self) -> AppResult<AuthState> {
         let cookies = self.iwara_cookies().await.unwrap_or_default();
         let token = self.capture_token().await?;
+        let username = token
+            .as_ref()
+            .and_then(|token| token.username.clone().or_else(|| username_from_jwt(&token.value)));
         Ok(AuthState {
             logged_in: false,
             email: None,
+            username,
             has_media_token: false,
             encryption_available: true,
             site_session_ready: Some(!cookies.is_empty()),
@@ -423,6 +428,8 @@ async fn eval_json<T: for<'de> Deserialize<'de>>(window: &WebviewWindow, js: Str
 struct CapturedToken {
     key: String,
     value: String,
+    #[serde(default)]
+    username: Option<String>,
 }
 
 #[derive(Clone, Debug, Deserialize)]
@@ -480,6 +487,7 @@ fn find_token(storage: StorageDump) -> Option<CapturedToken> {
     for (key, value) in storage.session_storage {
         entries.push((format!("sessionStorage.{key}"), value));
     }
+    let storage_username = find_storage_username(&entries);
     let preferred = ["token", "accessToken", "access_token", "authToken", "userToken"];
 
     for preferred_key in preferred {
@@ -487,16 +495,117 @@ fn find_token(storage: StorageDump) -> Option<CapturedToken> {
             key.to_lowercase().ends_with(&format!(".{}", preferred_key.to_lowercase()))
                 && find_jwt(value.as_deref()).is_some()
         }) {
+            let token = find_jwt(value.as_deref())?;
             return Some(CapturedToken {
                 key: key.clone(),
-                value: find_jwt(value.as_deref())?,
+                value: token.clone(),
+                username: storage_username.clone().or_else(|| username_from_jwt(&token)),
             });
         }
     }
 
     entries.into_iter().find_map(|(key, value)| {
-        find_jwt(value.as_deref()).map(|token| CapturedToken { key, value: token })
+        find_jwt(value.as_deref()).map(|token| CapturedToken {
+            key,
+            value: token.clone(),
+            username: storage_username.clone().or_else(|| username_from_jwt(&token)),
+        })
     })
+}
+
+fn find_storage_username(entries: &[(String, Option<String>)]) -> Option<String> {
+    let preferred_terms = [
+        "auth",
+        "user",
+        "account",
+        "profile",
+        "session",
+        "pinia",
+        "store",
+        "persist",
+    ];
+
+    entries
+        .iter()
+        .find_map(|(key, value)| {
+            let normalized_key = key.to_lowercase();
+            let value = value.as_deref();
+            if normalized_key.ends_with(".username")
+                || normalized_key.ends_with(".user_name")
+                || normalized_key.ends_with(".displayname")
+                || normalized_key.ends_with(".display_name")
+            {
+                return non_empty_text(value);
+            }
+
+            if preferred_terms.iter().any(|term| normalized_key.contains(term)) {
+                return find_username_in_storage_value(value);
+            }
+
+            None
+        })
+}
+
+fn find_username_in_storage_value(value: Option<&str>) -> Option<String> {
+    let value = value?;
+    serde_json::from_str::<Value>(value)
+        .ok()
+        .and_then(|json| find_username_in_json(&json, 0))
+}
+
+fn find_username_in_json(value: &Value, depth: usize) -> Option<String> {
+    if depth > 24 {
+        return None;
+    }
+
+    match value {
+        Value::Object(map) => {
+            for key in [
+                "currentUser",
+                "current_user",
+                "authUser",
+                "auth_user",
+                "profile",
+                "account",
+                "user",
+                "me",
+            ] {
+                if let Some(username) = map.get(key).and_then(|value| find_username_in_json(value, depth + 1)) {
+                    return Some(username);
+                }
+            }
+
+            value_to_username(value).or_else(|| map.values().find_map(|value| find_username_in_json(value, depth + 1)))
+        }
+        Value::Array(values) => values.iter().find_map(|value| find_username_in_json(value, depth + 1)),
+        Value::String(text) => serde_json::from_str::<Value>(text)
+            .ok()
+            .and_then(|nested| find_username_in_json(&nested, depth + 1)),
+        _ => None,
+    }
+}
+
+fn value_to_username(value: &Value) -> Option<String> {
+    [
+        "username",
+        "userName",
+        "user_name",
+        "displayName",
+        "display_name",
+        "name",
+        "nickname",
+    ]
+    .iter()
+    .find_map(|key| value.get(key).and_then(|value| non_empty_text(value.as_str())))
+}
+
+fn non_empty_text(value: Option<&str>) -> Option<String> {
+    let value = value?.trim();
+    if value.is_empty() {
+        None
+    } else {
+        Some(value.to_string())
+    }
 }
 
 fn find_jwt(value: Option<&str>) -> Option<String> {
@@ -648,5 +757,24 @@ mod tests {
     fn finds_jwt_inside_stringified_json_storage_values() {
         let value = r#"{"persisted":"{\"token\":\"header.payload.signature\"}"}"#;
         assert_eq!(find_jwt(Some(value)).as_deref(), Some("header.payload.signature"));
+    }
+
+    #[test]
+    fn finds_username_inside_profile_storage_values() {
+        let value = r#"{"profile":{"username":"demo_user"}}"#;
+        assert_eq!(find_username_in_storage_value(Some(value)).as_deref(), Some("demo_user"));
+    }
+
+    #[test]
+    fn attaches_storage_username_to_captured_token() {
+        let storage = StorageDump {
+            local_storage: std::collections::HashMap::from([
+                ("auth".to_string(), Some(r#"{"user":{"name":"Demo Name"}}"#.to_string())),
+                ("token".to_string(), Some("header.payload.signature".to_string())),
+            ]),
+            session_storage: std::collections::HashMap::new(),
+        };
+        let token = find_token(storage).expect("token should be captured");
+        assert_eq!(token.username.as_deref(), Some("Demo Name"));
     }
 }

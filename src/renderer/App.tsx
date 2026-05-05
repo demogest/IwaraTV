@@ -1,6 +1,7 @@
 import {
   AlertTriangle,
   ArrowLeft,
+  Ban,
   CheckCircle2,
   ClipboardCopy,
   CornerDownRight,
@@ -20,6 +21,7 @@ import {
   Search,
   Settings,
   Send,
+  Shield,
   Star,
   Tag,
   Trash2,
@@ -94,6 +96,12 @@ const defaultSettings: AppSettings = {
     rankedHosts: [],
     testBytes: 524288,
     timeoutMs: 4500
+  },
+  tagPreferences: {
+    followedTags: [],
+    blockedTags: [],
+    maxScanPages: 5,
+    requestDelayMs: 250
   },
   history: []
 };
@@ -481,6 +489,53 @@ export function App() {
     return next;
   }
 
+  async function updateTagPreferences(partial: Partial<AppSettings["tagPreferences"]>): Promise<AppSettings | undefined> {
+    if (!bridge) {
+      return undefined;
+    }
+
+    const next = await bridge.settings.update({
+      tagPreferences: {
+        ...settings.tagPreferences,
+        ...partial,
+        followedTags: partial.followedTags
+          ? normalizeTagTokens(partial.followedTags)
+          : settings.tagPreferences.followedTags,
+        blockedTags: partial.blockedTags
+          ? normalizeTagTokens(partial.blockedTags)
+          : settings.tagPreferences.blockedTags
+      }
+    });
+    setSettings(next);
+    return next;
+  }
+
+  async function followTag(tag: string) {
+    const normalized = normalizeTagTokens([tag])[0];
+    if (!normalized) {
+      return;
+    }
+
+    await updateTagPreferences({
+      followedTags: [...settings.tagPreferences.followedTags, normalized],
+      blockedTags: settings.tagPreferences.blockedTags.filter((blockedTag) => blockedTag !== normalized)
+    });
+    setStatus(`已关注标签：${normalized}。`);
+  }
+
+  async function blockTag(tag: string) {
+    const normalized = normalizeTagTokens([tag])[0];
+    if (!normalized) {
+      return;
+    }
+
+    await updateTagPreferences({
+      blockedTags: [...settings.tagPreferences.blockedTags, normalized],
+      followedTags: settings.tagPreferences.followedTags.filter((followedTag) => followedTag !== normalized)
+    });
+    setStatus(`已屏蔽标签：${normalized}。`);
+  }
+
   async function sniffXVersionSalt() {
     if (!bridge) {
       return;
@@ -830,6 +885,7 @@ export function App() {
                 onUpdateIwara={updateIwaraSettings}
                 onUpdateMediaSpeed={updateMediaSpeedSettings}
                 onUpdatePlayer={updatePlayerSettings}
+                onUpdateTagPreferences={updateTagPreferences}
                 iwara={settings.iwara}
                 saltReport={saltReport}
                 saltSniffing={saltSniffing}
@@ -840,6 +896,7 @@ export function App() {
                 speedReport={speedReport}
                 speedSettings={settings.mediaSpeed}
                 speedTesting={speedTesting}
+                tagPreferences={settings.tagPreferences}
               />
             )}
           </section>
@@ -854,9 +911,11 @@ export function App() {
               diagnosing={diagnosingVideo}
               video={selectedVideo}
               onDiagnose={diagnoseSelectedVideo}
+              onBlockTag={blockTag}
               onClose={closeDetailPanel}
               onCommentDraftChange={setCommentDraft}
               onFilterTag={applyTagFromDetail}
+              onFollowTag={followTag}
               onOpenAuthor={openAuthorProfile}
               onPlay={playVideo}
               onQualityChange={setSelectedQuality}
@@ -870,6 +929,7 @@ export function App() {
               replyDrafts={replyDrafts}
               replyingTo={replyingTo}
               submittingComment={submittingComment}
+              tagPreferences={settings.tagPreferences}
             />
           )}
         </div>
@@ -1076,9 +1136,11 @@ function DetailPanel({
   diagnosing,
   video,
   onDiagnose,
+  onBlockTag,
   onClose,
   onCommentDraftChange,
   onFilterTag,
+  onFollowTag,
   onOpenAuthor,
   onPlay,
   onQualityChange,
@@ -1091,7 +1153,8 @@ function DetailPanel({
   loadingComments,
   replyDrafts,
   replyingTo,
-  submittingComment
+  submittingComment,
+  tagPreferences
 }: {
   siteSessionReady: boolean;
   playing: boolean;
@@ -1101,9 +1164,11 @@ function DetailPanel({
   diagnosing: boolean;
   video: VideoDetail;
   onDiagnose: () => void;
+  onBlockTag: (tag: string) => void;
   onClose: () => void;
   onCommentDraftChange: (value: string) => void;
   onFilterTag: (tag: string) => void;
+  onFollowTag: (tag: string) => void;
   onOpenAuthor: (video: VideoDetail) => void;
   onPlay: (mode: PlayerMode) => void;
   onQualityChange: (quality: string) => void;
@@ -1117,9 +1182,12 @@ function DetailPanel({
   replyDrafts: Record<string, string>;
   replyingTo?: string;
   submittingComment: boolean;
+  tagPreferences: AppSettings["tagPreferences"];
 }) {
   const authorName = video.uploaderName ?? video.uploaderUsername ?? "Unknown";
   const displayedComments = comments?.comments ?? [];
+  const followedTags = new Set(tagPreferences.followedTags);
+  const blockedTags = new Set(tagPreferences.blockedTags);
 
   return (
     <aside className="detail-panel">
@@ -1171,9 +1239,28 @@ function DetailPanel({
           {video.tags.length ? (
             <div className="tag-list">
               {video.tags.map((tag) => (
-                <button key={tag} onClick={() => onFilterTag(tag)} type="button">
-                  {tag}
-                </button>
+                <span className="tag-action-group" key={tag}>
+                  <button onClick={() => onFilterTag(tag)} type="button">
+                    {tag}
+                  </button>
+                  <button
+                    aria-label={`关注 ${tag}`}
+                    className={followedTags.has(normalizeTagLabel(tag)) ? "tag-mini-button active" : "tag-mini-button"}
+                    disabled={blockedTags.has(normalizeTagLabel(tag))}
+                    onClick={() => onFollowTag(tag)}
+                    type="button"
+                  >
+                    <Star size={12} />
+                  </button>
+                  <button
+                    aria-label={`屏蔽 ${tag}`}
+                    className={blockedTags.has(normalizeTagLabel(tag)) ? "tag-mini-button danger active" : "tag-mini-button danger"}
+                    onClick={() => onBlockTag(tag)}
+                    type="button"
+                  >
+                    <Ban size={12} />
+                  </button>
+                </span>
               ))}
             </div>
           ) : (
@@ -1501,6 +1588,7 @@ function SettingsView({
   onUpdateIwara,
   onUpdateMediaSpeed,
   onUpdatePlayer,
+  onUpdateTagPreferences,
   iwara,
   saltReport,
   saltSniffing,
@@ -1510,7 +1598,8 @@ function SettingsView({
   sessionBusy,
   speedReport,
   speedSettings,
-  speedTesting
+  speedTesting,
+  tagPreferences
 }: {
   auth: AuthState;
   diagnostics?: PlayerDiagnostics;
@@ -1528,6 +1617,7 @@ function SettingsView({
   onUpdateIwara: (partial: Partial<AppSettings["iwara"]>) => void;
   onUpdateMediaSpeed: (partial: Partial<AppSettings["mediaSpeed"]>) => void;
   onUpdatePlayer: (partial: Partial<AppSettings["player"]>) => void;
+  onUpdateTagPreferences: (partial: Partial<AppSettings["tagPreferences"]>) => void;
   iwara: AppSettings["iwara"];
   saltReport?: XVersionSaltReport;
   saltSniffing: boolean;
@@ -1538,6 +1628,7 @@ function SettingsView({
   speedReport?: MediaSpeedTestReport;
   speedSettings: AppSettings["mediaSpeed"];
   speedTesting: boolean;
+  tagPreferences: AppSettings["tagPreferences"];
 }) {
   return (
     <>
@@ -1713,6 +1804,58 @@ function SettingsView({
             当前视频、网页抓包和测速结果里发现的新媒体域名会自动加入这里。替换功能只改最终播放直链的域名；如遇到 403 或播放失败，关闭替换即可回到原始链接。
           </p>
           {speedReport && <SpeedReportPanel report={speedReport} />}
+        </section>
+
+        <section className="settings-block">
+          <h3>标签偏好</h3>
+          <label className="field-label">
+            关注标签
+            <textarea
+              rows={4}
+              value={tagPreferences.followedTags.join("\n")}
+              onChange={(event) => onUpdateTagPreferences({ followedTags: event.target.value.split(/[\s,;，；]+/).filter(Boolean) })}
+              placeholder="每行一个标签，例如 breeding"
+            />
+          </label>
+          <label className="field-label">
+            屏蔽标签
+            <textarea
+              rows={4}
+              value={tagPreferences.blockedTags.join("\n")}
+              onChange={(event) => onUpdateTagPreferences({ blockedTags: event.target.value.split(/[\s,;，；]+/).filter(Boolean) })}
+              placeholder="命中这些标签的视频会被隐藏"
+            />
+          </label>
+          <div className="speed-options">
+            <label className="field-label">
+              扫描页数
+              <select
+                value={tagPreferences.maxScanPages}
+                onChange={(event) => onUpdateTagPreferences({ maxScanPages: Number(event.target.value) })}
+              >
+                <option value={3}>3 页</option>
+                <option value={5}>5 页</option>
+                <option value={8}>8 页</option>
+                <option value={10}>10 页</option>
+              </select>
+            </label>
+            <label className="field-label">
+              请求间隔
+              <select
+                value={tagPreferences.requestDelayMs}
+                onChange={(event) => onUpdateTagPreferences({ requestDelayMs: Number(event.target.value) })}
+              >
+                <option value={0}>不等待</option>
+                <option value={250}>250 ms</option>
+                <option value={500}>500 ms</option>
+                <option value={1000}>1 秒</option>
+              </select>
+            </label>
+          </div>
+          <div className="probe-line ok">
+            <Shield size={17} />
+            <span>屏蔽标签优先于关注标签。保存时若同一标签同时出现，会保留在屏蔽列表并从关注列表移除。</span>
+          </div>
         </section>
 
         <section className="settings-block">
@@ -1903,9 +2046,13 @@ function normalizeTagTokens(tags: string[]): string[] {
   return [...new Set(
     tags
       .flatMap((tag) => tag.split(/[\s,;，；]+/))
-      .map((tag) => tag.trim())
+      .map(normalizeTagLabel)
       .filter(Boolean)
   )];
+}
+
+function normalizeTagLabel(tag: string): string {
+  return tag.trim().toLowerCase();
 }
 
 function bestFormat(formats: VideoDetail["formats"]) {

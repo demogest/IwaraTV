@@ -70,6 +70,13 @@ export interface MediaSpeedSettings {
   timeoutMs: number;
 }
 
+export interface TagPreferences {
+  followedTags: string[];
+  blockedTags: string[];
+  maxScanPages: number;
+  requestDelayMs: number;
+}
+
 export interface MediaSpeedCandidateResult {
   host: string;
   url: string;
@@ -164,6 +171,7 @@ export interface AppSettings {
   player: PlayerSettings;
   iwara: IwaraRuntimeSettings;
   mediaSpeed: MediaSpeedSettings;
+  tagPreferences: TagPreferences;
   history: PlaybackHistoryItem[];
 }
 

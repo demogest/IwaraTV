@@ -2,7 +2,7 @@ import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { normalizeMediaHostList } from "../../shared/media-speed-utils";
 import { DEFAULT_X_VERSION_SALT } from "../../shared/iwara-utils";
-import type { AppSettings, MediaSpeedCandidateResult, PlaybackHistoryItem } from "../../shared/types";
+import type { AppSettings, MediaSpeedCandidateResult, PlaybackHistoryItem, TagPreferences } from "../../shared/types";
 
 export const DEFAULT_MEDIA_SPEED_SETTINGS = {
   autoTest: false,
@@ -18,6 +18,13 @@ export const DEFAULT_MEDIA_SPEED_SETTINGS = {
   timeoutMs: 4500
 } satisfies AppSettings["mediaSpeed"];
 
+const DEFAULT_TAG_PREFERENCES: TagPreferences = {
+  followedTags: [],
+  blockedTags: [],
+  maxScanPages: 5,
+  requestDelayMs: 250
+};
+
 const DEFAULT_SETTINGS: AppSettings = {
   player: {
     preferredMode: "mpv",
@@ -29,6 +36,7 @@ const DEFAULT_SETTINGS: AppSettings = {
     autoSniffXVersionSalt: true
   },
   mediaSpeed: DEFAULT_MEDIA_SPEED_SETTINGS,
+  tagPreferences: DEFAULT_TAG_PREFERENCES,
   history: []
 };
 
@@ -61,6 +69,10 @@ export class SettingsStore {
         ...this.settings.mediaSpeed,
         ...partial.mediaSpeed
       },
+      tagPreferences: normalizeTagPreferences({
+        ...this.settings.tagPreferences,
+        ...partial.tagPreferences
+      }),
       history: partial.history ?? this.settings.history
     };
     this.save();
@@ -122,6 +134,10 @@ export class SettingsStore {
           ...DEFAULT_SETTINGS.mediaSpeed,
           ...raw.mediaSpeed
         },
+        tagPreferences: normalizeTagPreferences({
+          ...DEFAULT_SETTINGS.tagPreferences,
+          ...raw.tagPreferences
+        }),
         history: Array.isArray(raw.history) ? raw.history : []
       };
     } catch {
@@ -133,4 +149,28 @@ export class SettingsStore {
     mkdirSync(path.dirname(this.filePath), { recursive: true });
     writeFileSync(this.filePath, `${JSON.stringify(this.settings, null, 2)}\n`, "utf8");
   }
+}
+
+function normalizeTagPreferences(preferences: TagPreferences): TagPreferences {
+  const blockedTags = normalizeTagList(preferences.blockedTags);
+  const blocked = new Set(blockedTags);
+  return {
+    followedTags: normalizeTagList(preferences.followedTags).filter((tag) => !blocked.has(tag)),
+    blockedTags,
+    maxScanPages: clampInteger(preferences.maxScanPages, 1, 10, DEFAULT_TAG_PREFERENCES.maxScanPages),
+    requestDelayMs: clampInteger(preferences.requestDelayMs, 0, 1500, DEFAULT_TAG_PREFERENCES.requestDelayMs)
+  };
+}
+
+function normalizeTagList(tags: string[]): string[] {
+  return [...new Set(tags.map((tag) => tag.trim().toLowerCase()).filter(Boolean))];
+}
+
+function clampInteger(value: number, min: number, max: number, fallback: number): number {
+  const numeric = Number(value);
+  if (!Number.isFinite(numeric)) {
+    return fallback;
+  }
+
+  return Math.min(max, Math.max(min, Math.round(numeric)));
 }

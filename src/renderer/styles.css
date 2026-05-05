@@ -641,6 +641,15 @@ button:disabled {
   flex-wrap: wrap;
 }
 
+.tag-action-group {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  border-radius: 8px;
+  background: #22272c;
+  padding: 2px;
+}
+
 .tag-list button {
   border: 0;
   border-radius: 8px;
@@ -653,6 +662,22 @@ button:disabled {
 .tag-list button:hover {
   background: #27343a;
   color: #f4dfad;
+}
+
+.tag-mini-button {
+  min-width: 25px;
+  padding: 4px;
+  color: #aaa59a;
+}
+
+.tag-mini-button.active {
+  background: rgba(227, 181, 87, 0.28);
+  color: #f4dfad;
+}
+
+.tag-mini-button.danger.active {
+  background: rgba(235, 92, 92, 0.26);
+  color: #ffb6aa;
 }
 
 .comment-list {

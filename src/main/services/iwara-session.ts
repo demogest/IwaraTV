@@ -61,7 +61,10 @@ export class IwaraSessionService {
 
   async state(): Promise<Pick<AuthState, "siteSessionReady" | "siteCookieCount" | "siteTokenReady" | "siteTokenKey" | "browserUserAgent">> {
     const cookies = await this.iwaraCookies();
-    const token = await this.captureToken();
+    let token = await this.captureToken();
+    if (!token?.value && cookies.length) {
+      token = await this.restoreTokenFromPersistedSession().catch(() => undefined);
+    }
     return {
       siteSessionReady: cookies.length > 0,
       siteCookieCount: cookies.length,
@@ -73,7 +76,7 @@ export class IwaraSessionService {
 
   async headersFor(url: string): Promise<Record<string, string>> {
     const cookieHeader = await this.cookieHeaderFor(url);
-    const token = await this.captureToken();
+    const token = await this.sessionToken();
     return {
       "User-Agent": session.defaultSession.getUserAgent(),
       "Accept-Language": "zh-CN,zh;q=0.9,en;q=0.8",
@@ -115,7 +118,7 @@ export class IwaraSessionService {
   }
 
   async token(): Promise<string | undefined> {
-    return (await this.captureToken())?.value;
+    return (await this.sessionToken())?.value;
   }
 
   async captureVideoNetwork(idOrUrl: string, parent?: BrowserWindow): Promise<IwaraNetworkCapture> {
@@ -277,6 +280,30 @@ export class IwaraSessionService {
     }
 
     const token = await this.captureTokenFromWindow(target);
+    if (token?.value) {
+      this.capturedToken = token;
+    }
+
+    return this.capturedToken;
+  }
+
+  private async sessionToken(): Promise<{ key: string; value: string } | undefined> {
+    const token = await this.captureToken();
+    if (token?.value) {
+      return token;
+    }
+
+    const cookies = await this.iwaraCookies();
+    if (!cookies.length) {
+      return undefined;
+    }
+
+    return this.restoreTokenFromPersistedSession().catch(() => undefined);
+  }
+
+  private async restoreTokenFromPersistedSession(): Promise<{ key: string; value: string } | undefined> {
+    const window = await this.ensurePageFetchWindow();
+    const token = await this.captureTokenFromWindow(window);
     if (token?.value) {
       this.capturedToken = token;
     }

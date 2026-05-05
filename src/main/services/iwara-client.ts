@@ -1,12 +1,13 @@
 import {
   buildXVersion,
+  extractXVersionSaltFromScript,
   formatToExtension,
   normalizeMediaUrl,
   parseIwaraVideoId,
   qualityRank,
   withIwaraDownloadName
 } from "../../shared/iwara-utils";
-import { buildMediaHostCandidates, mediaUrlHost } from "../../shared/media-speed-utils";
+import { buildMediaHostCandidates, mediaUrlHost, replaceMediaUrlHost } from "../../shared/media-speed-utils";
 import type {
   AuthState,
   MediaSpeedCandidateResult,
@@ -22,13 +23,16 @@ import type {
   VideoFormat,
   VideoListResult,
   VideoSort,
+  XVersionSaltReport,
   VideoSummary
 } from "../../shared/types";
 import { AuthStore } from "./auth-store";
 
 const API_BASE = "https://api.iwara.tv";
+const WEB_BASE = "https://www.iwara.tv";
 const FILES_BASE = "https://files.iwara.tv";
 const DEFAULT_LIMIT = 32;
+const SALT_SCRIPT_PATTERN = /<script[^>]+src=["']([^"']+\.js(?:\?[^"']*)?)["']/gi;
 type IwaraFetch = (url: string, init?: RequestInit) => Promise<Response>;
 
 export class IwaraApiError extends Error {
@@ -47,7 +51,8 @@ export class IwaraClient {
     private readonly authStore: AuthStore,
     private readonly browserHeaders: (url: string) => Promise<Record<string, string>> = async () => ({}),
     private readonly browserToken: () => Promise<string | undefined> = async () => undefined,
-    private readonly transportFetch: IwaraFetch = (url, init) => fetch(url, init)
+    private readonly transportFetch: IwaraFetch = (url, init) => fetch(url, init),
+    private readonly xVersionSalt: () => string | undefined = () => undefined
   ) {}
 
   authState(): AuthState {
@@ -156,7 +161,7 @@ export class IwaraClient {
     let appFormatLabels: string[] = [];
 
     if (fileUrl) {
-      const xVersion = buildXVersion(fileUrl);
+      const xVersion = this.buildCurrentXVersion(fileUrl);
       const sessionProbe = await this.probeFileList("网页会话 headers", fileUrl, {
         "X-Version": xVersion,
         Accept: "application/json"
@@ -197,8 +202,46 @@ export class IwaraClient {
     return this.speedTestHosts(video, speedSettings);
   }
 
+  routeVideoFormats(video: VideoDetail, speedSettings: MediaSpeedSettings): VideoDetail {
+    if (!speedSettings.replaceLinks || !speedSettings.rankedHosts.length) {
+      return video;
+    }
+
+    return {
+      ...video,
+      formats: routeFormatsByHostRank(video.formats, speedSettings.rankedHosts)
+    };
+  }
+
+  async sniffXVersionSalt(): Promise<XVersionSaltReport> {
+    const checkedAt = new Date().toISOString();
+    const home = await this.fetchText(`${WEB_BASE}/`, {
+      headers: {
+        Accept: "text/html"
+      }
+    });
+    const scriptUrls = [...home.matchAll(SALT_SCRIPT_PATTERN)]
+      .map((match) => absoluteWebUrl(match[1]))
+      .filter((url): url is string => Boolean(url))
+      .sort((a, b) => scoreScriptUrl(b) - scoreScriptUrl(a));
+
+    for (const sourceUrl of scriptUrls) {
+      const script = await this.fetchText(sourceUrl, {
+        headers: {
+          Accept: "application/javascript,text/javascript,*/*"
+        }
+      });
+      const salt = extractXVersionSaltFromScript(script);
+      if (salt) {
+        return { salt, sourceUrl, checkedAt };
+      }
+    }
+
+    throw new IwaraApiError("没有在 Iwara 前端脚本里找到 X-Version 盐值。", "api");
+  }
+
   private async extractFormats(videoId: string, fileUrl: string, title: string): Promise<VideoFormat[]> {
-    const xVersion = buildXVersion(fileUrl);
+    const xVersion = this.buildCurrentXVersion(fileUrl);
     const mediaHeaders = await this.mediaHeaders();
     const files = await this.requestJson<unknown>(withIwaraDownloadName(fileUrl, title, videoId), {
       headers: {
@@ -353,6 +396,7 @@ export class IwaraClient {
       numViews: numberOrZero(value.numViews),
       numLikes: numberOrZero(value.numLikes),
       numComments: numberOrZero(value.numComments),
+      durationSeconds: firstDurationSeconds(value.duration, file.duration, value.length, file.length),
       createdAt: stringOrUndefined(value.createdAt),
       updatedAt: stringOrUndefined(value.updatedAt)
     };
@@ -497,6 +541,31 @@ export class IwaraClient {
     const { contextId: _contextId, ...requestInit } = init;
     return this.transportFetch(url, requestInit);
   }
+
+  private async fetchText(url: string, init: RequestInit = {}): Promise<string> {
+    const response = await this.fetchUrl(url, {
+      ...init,
+      headers: {
+        Referer: "https://www.iwara.tv/",
+        ...(await this.browserHeaders(url)),
+        ...init.headers
+      }
+    });
+    const text = await response.text();
+    if (!response.ok) {
+      throw new IwaraApiError(`Iwara 前端脚本请求失败：HTTP ${response.status}`, "api");
+    }
+
+    if (text.toLowerCase().includes("<html") && text.toLowerCase().includes("cloudflare")) {
+      throw new IwaraApiError("Iwara 前端脚本请求返回了浏览器验证页面。", "cloudflare");
+    }
+
+    return text;
+  }
+
+  private buildCurrentXVersion(fileUrl: string): string {
+    return buildXVersion(fileUrl, this.xVersionSalt());
+  }
 }
 
 function numberOrZero(value: unknown): number {
@@ -506,6 +575,40 @@ function numberOrZero(value: unknown): number {
 
 function stringOrUndefined(value: unknown): string | undefined {
   return typeof value === "string" && value.length ? value : undefined;
+}
+
+function firstDurationSeconds(...values: unknown[]): number | undefined {
+  for (const value of values) {
+    const duration = durationSeconds(value);
+    if (duration !== undefined) {
+      return duration;
+    }
+  }
+
+  return undefined;
+}
+
+function durationSeconds(value: unknown): number | undefined {
+  if (typeof value === "number" && Number.isFinite(value) && value > 0) {
+    return Math.round(value > 360000 ? value / 1000 : value);
+  }
+
+  if (typeof value !== "string" || !value.trim()) {
+    return undefined;
+  }
+
+  const trimmed = value.trim();
+  if (/^\d+(\.\d+)?$/.test(trimmed)) {
+    return durationSeconds(Number(trimmed));
+  }
+
+  const parts = trimmed.split(":").map((part) => Number.parseInt(part, 10));
+  if (parts.length < 2 || parts.length > 3 || parts.some((part) => !Number.isFinite(part) || part < 0)) {
+    return undefined;
+  }
+
+  const [hours, minutes, seconds] = parts.length === 3 ? parts : [0, parts[0], parts[1]];
+  return hours * 3600 + minutes * 60 + seconds;
 }
 
 function normalizeFileList(value: unknown): unknown[] {
@@ -539,6 +642,31 @@ function bestNetworkFormats(network: IwaraNetworkCapture | undefined): VideoForm
 
 function bestQualityRank(formats: VideoFormat[]): number {
   return formats.reduce((best, format) => Math.max(best, format.qualityRank), 0);
+}
+
+function routeFormatsByHostRank(formats: VideoFormat[], rankedHosts: string[]): VideoFormat[] {
+  return formats.map((format) => {
+    const currentHost = mediaUrlHost(format.url);
+    const targetHost = rankedHosts[0];
+    const routedUrl = targetHost ? replaceMediaUrlHost(format.url, targetHost) : undefined;
+
+    return routedUrl && targetHost !== currentHost ? { ...format, url: routedUrl } : format;
+  });
+}
+
+function absoluteWebUrl(src: string | undefined): string | undefined {
+  if (!src) {
+    return undefined;
+  }
+  try {
+    return new URL(src, `${WEB_BASE}/`).toString();
+  } catch {
+    return undefined;
+  }
+}
+
+function scoreScriptUrl(url: string): number {
+  return /\/main\.[\w-]+\.js/i.test(url) ? 2 : url.endsWith(".js") ? 1 : 0;
 }
 
 function labelsFor(formats: VideoFormat[]): string[] {

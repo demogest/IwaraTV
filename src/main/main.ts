@@ -63,7 +63,8 @@ app.whenReady().then(() => {
     authStore,
     (url) => iwaraSessionService.headersFor(url),
     () => iwaraSessionService.token(),
-    (url, init) => iwaraSessionService.fetch(url, init)
+    (url, init) => iwaraSessionService.fetch(url, init),
+    () => settingsStore.get().iwara.xVersionSalt
   );
   const playerService = new PlayerService(iwaraClient, settingsStore);
 

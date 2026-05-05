@@ -1,5 +1,12 @@
 import { describe, expect, it } from "vitest";
-import { buildXVersion, chooseVideoFormat, parseIwaraVideoId, qualityRank, withIwaraDownloadName } from "../src/shared/iwara-utils";
+import {
+  buildXVersion,
+  chooseVideoFormat,
+  extractXVersionSaltFromScript,
+  parseIwaraVideoId,
+  qualityRank,
+  withIwaraDownloadName
+} from "../src/shared/iwara-utils";
 import { buildMediaHostCandidates, normalizeMediaHostList, replaceMediaUrlHost } from "../src/shared/media-speed-utils";
 import type { VideoFormat } from "../src/shared/types";
 
@@ -19,6 +26,13 @@ describe("iwara utilities", () => {
   it("matches the current web app X-Version salt", () => {
     const hash = buildXVersion("https://filesq.iwara.tv/file/ac85c86f-a2aa-4b91-95f8-69f268920929?expires=1777962801804");
     expect(hash).toBe("5f1267ba367e35cabf53755f4310381e9846a133");
+  });
+
+  it("can use and sniff the X-Version salt", () => {
+    const fileUrl = "https://filesq.iwara.tv/file/ac85c86f-a2aa-4b91-95f8-69f268920929?expires=1777962801804";
+    const salt = "mSvL05GfEmeEmsEYfGCnVpEjYgTJraJN";
+    expect(buildXVersion(fileUrl, salt)).toBe("5f1267ba367e35cabf53755f4310381e9846a133");
+    expect(extractXVersionSaltFromScript(`const h = SHA1(fileUrl + expires + "_${salt}"); headers["X-Version"] = h;`)).toBe(salt);
   });
 
   it("adds the web app download name before requesting file variants", () => {

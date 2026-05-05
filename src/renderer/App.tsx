@@ -1,6 +1,7 @@
 import {
   AlertTriangle,
   CheckCircle2,
+  ClipboardCopy,
   Clock3,
   ExternalLink,
   Flame,
@@ -17,7 +18,8 @@ import {
   Settings,
   Star,
   Trash2,
-  TrendingUp
+  TrendingUp,
+  X
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import { FormEvent, useEffect, useMemo, useState } from "react";
@@ -32,8 +34,10 @@ import type {
   VideoDetail,
   VideoListResult,
   VideoSort,
-  VideoSummary
+  VideoSummary,
+  XVersionSaltReport
 } from "../shared/types";
+import { normalizeMediaHostList } from "../shared/media-speed-utils";
 import logoMarkUrl from "./assets/iwara-tv-mark.svg";
 import { classifyIssue, type UiIssue } from "./issue-utils";
 
@@ -56,6 +60,10 @@ const defaultSettings: AppSettings = {
     preferredMode: "mpv",
     externalPlayerArgs: "{url}",
     preferredQuality: "Source"
+  },
+  iwara: {
+    xVersionSalt: "mSvL05GfEmeEmsEYfGCnVpEjYgTJraJN",
+    autoSniffXVersionSalt: true
   },
   mediaSpeed: {
     autoTest: false,
@@ -90,6 +98,7 @@ export function App() {
   const [mpvTest, setMpvTest] = useState<PlayerProbe | undefined>();
   const [videoDiagnostics, setVideoDiagnostics] = useState<IwaraVideoDiagnostics | undefined>();
   const [speedReport, setSpeedReport] = useState<MediaSpeedTestReport | undefined>();
+  const [saltReport, setSaltReport] = useState<XVersionSaltReport | undefined>();
   const [selectedVideo, setSelectedVideo] = useState<VideoDetail | undefined>();
   const [selectedQuality, setSelectedQuality] = useState<string | undefined>();
   const [urlInput, setUrlInput] = useState("");
@@ -103,10 +112,13 @@ export function App() {
   const [sessionBusy, setSessionBusy] = useState(false);
   const [diagnosingVideo, setDiagnosingVideo] = useState(false);
   const [speedTesting, setSpeedTesting] = useState(false);
+  const [saltSniffing, setSaltSniffing] = useState(false);
 
   const activeFeed = feeds[activeSort];
   const hasBridge = Boolean(bridge);
   const showDetailPanel = activeSection === "browse" && Boolean(selectedVideo);
+  const authDisplayName = auth.email
+    ?? (auth.siteTokenReady ? "网页登录" : auth.siteSessionReady ? "已验证会话" : "匿名");
   const sortedFormats = useMemo(
     () => [...(selectedVideo?.formats ?? [])].sort((a, b) => b.qualityRank - a.qualityRank),
     [selectedVideo]
@@ -117,13 +129,9 @@ export function App() {
       return;
     }
 
-    void Promise.all([bridge.settings.get(), bridge.auth.state(), bridge.player.probe()])
-      .then(([loadedSettings, loadedAuth, loadedDiagnostics]) => {
-        setSettings(loadedSettings);
-        setAuth(loadedAuth);
-        setDiagnostics(loadedDiagnostics);
-      })
-      .catch(handleError);
+    void bridge.settings.get().then(setSettings).catch(handleError);
+    void bridge.player.probe().then(setDiagnostics).catch(handleError);
+    void bridge.auth.state().then(setAuth).catch(handleError);
   }, [bridge]);
 
   useEffect(() => {
@@ -161,12 +169,14 @@ export function App() {
     try {
       const video = await bridge.iwara.getVideo(idOrUrl);
       const loadedSettings = await bridge.settings.get();
+      const currentAuth = await bridge.auth.state().catch(() => auth);
       setSettings(loadedSettings);
+      setAuth(currentAuth);
       setSelectedVideo(video);
       setVideoDiagnostics(undefined);
       setSpeedReport(undefined);
       let formats = video.formats;
-      if (auth.siteTokenReady && bestQualityRank(formats) <= 360) {
+      if (currentAuth.siteTokenReady && bestQualityRank(formats) <= 360) {
         const report = await bridge.iwara.diagnoseVideo(video.id);
         setSettings(await bridge.settings.get());
         const capturedFormats = report.network?.entries.flatMap((entry) => entry.formats ?? []) ?? [];
@@ -244,6 +254,13 @@ export function App() {
     }
   }
 
+  function closeDetailPanel() {
+    setSelectedVideo(undefined);
+    setSelectedQuality(undefined);
+    setVideoDiagnostics(undefined);
+    setSpeedReport(undefined);
+  }
+
   async function handleSubmit(event: FormEvent) {
     event.preventDefault();
     setActiveSection("browse");
@@ -260,14 +277,62 @@ export function App() {
     return next;
   }
 
+  async function updateIwaraSettings(partial: Partial<AppSettings["iwara"]>): Promise<AppSettings | undefined> {
+    if (!bridge) {
+      return undefined;
+    }
+
+    const next = await bridge.settings.update({ iwara: { ...settings.iwara, ...partial } });
+    setSettings(next);
+    return next;
+  }
+
   async function updateMediaSpeedSettings(partial: Partial<AppSettings["mediaSpeed"]>): Promise<AppSettings | undefined> {
     if (!bridge) {
       return undefined;
     }
 
-    const next = await bridge.settings.update({ mediaSpeed: { ...settings.mediaSpeed, ...partial } });
+    const next = await bridge.settings.update({
+      mediaSpeed: {
+        ...settings.mediaSpeed,
+        ...partial,
+        candidateHosts: partial.candidateHosts
+          ? normalizeMediaHostList(partial.candidateHosts)
+          : settings.mediaSpeed.candidateHosts
+      }
+    });
     setSettings(next);
     return next;
+  }
+
+  async function sniffXVersionSalt() {
+    if (!bridge) {
+      return;
+    }
+
+    setSaltSniffing(true);
+    clearMessages();
+    try {
+      const report = await bridge.iwara.sniffXVersionSalt();
+      setSaltReport(report);
+      setSettings(await bridge.settings.get());
+      setStatus(`已嗅探到 X-Version 盐值：${report.salt}。`);
+    } catch (err) {
+      handleError(err);
+    } finally {
+      setSaltSniffing(false);
+    }
+  }
+
+  async function exportMediaHosts() {
+    if (!bridge) {
+      return;
+    }
+
+    clearMessages();
+    const hosts = normalizeMediaHostList(settings.mediaSpeed.candidateHosts);
+    await bridge.system.writeClipboard(hosts.join("\n"));
+    setStatus(`已导出 ${hosts.length} 个 CDN 域名到剪贴板。`);
   }
 
   async function speedTestSelectedVideo() {
@@ -279,10 +344,11 @@ export function App() {
     clearMessages();
     try {
       const report = await bridge.iwara.speedTestVideo(selectedVideo.id);
-      setSettings(await bridge.settings.get());
+      const nextSettings = await bridge.settings.get();
+      setSettings(nextSettings);
       setSpeedReport(report);
       setStatus(report.fastestHost
-        ? `全局测速完成，最快线路：${report.fastestHost}。播放仍使用 Iwara 返回的原始签名直链。`
+        ? `全局测速完成，最快线路：${report.fastestHost}。${nextSettings.mediaSpeed.replaceLinks ? "播放会按设置替换到最快线路。" : "当前未开启链接替换。"}`
         : "全局测速完成，没有可用线路。");
     } catch (err) {
       handleError(err);
@@ -405,13 +471,39 @@ export function App() {
     setSessionBusy(true);
     clearMessages();
     try {
-      setAuth(await bridge.auth.openIwaraSession());
-      setStatus("已打开 Iwara 验证窗口。完成验证或登录后，回到这里刷新会话再重试。");
+      const initialAuth = await bridge.auth.openIwaraSession();
+      setAuth(initialAuth);
+      if (initialAuth.siteTokenReady) {
+        setStatus("网页登录就绪。");
+        return;
+      }
+
+      setStatus("已打开 Iwara 验证窗口，正在等待网页登录状态。");
+      const ready = await waitForSessionReady(45000);
+      setStatus(ready ? "网页登录就绪，验证窗口会自动关闭。" : "验证窗口仍在等待登录或 Cloudflare 验证。完成后应用会在刷新会话时复用它。");
     } catch (err) {
       handleError(err);
     } finally {
       setSessionBusy(false);
     }
+  }
+
+  async function waitForSessionReady(timeoutMs: number): Promise<boolean> {
+    if (!bridge) {
+      return false;
+    }
+
+    const deadline = Date.now() + timeoutMs;
+    while (Date.now() < deadline) {
+      await delay(1200);
+      const nextAuth = await bridge.auth.state();
+      setAuth(nextAuth);
+      if (nextAuth.siteTokenReady) {
+        return true;
+      }
+    }
+
+    return false;
   }
 
   async function handleIssueAction(target: UiIssue) {
@@ -456,7 +548,7 @@ export function App() {
           </div>
           <div>
             <h1>IwaraTV</h1>
-            <span>{auth.loggedIn ? auth.email : "匿名"}</span>
+            <span>{authDisplayName}</span>
           </div>
         </div>
 
@@ -492,7 +584,7 @@ export function App() {
 
           <button className="auth-pill" onClick={() => setActiveSection("settings")} type="button">
             {auth.siteTokenReady || auth.loggedIn ? <Star size={16} /> : <LogIn size={16} />}
-            {auth.siteTokenReady ? "登录就绪" : auth.siteSessionReady ? "已验证" : auth.loggedIn ? "已登录" : "未验证"}
+            {auth.siteTokenReady ? "网页登录就绪" : auth.siteSessionReady ? "会话已验证" : auth.loggedIn ? "API 已登录" : "未验证"}
           </button>
         </header>
 
@@ -545,10 +637,16 @@ export function App() {
                 onOpenIwaraSession={openIwaraSession}
                 onProbe={refreshDiagnostics}
                 onRefreshAuth={refreshAuthState}
+                onExportMediaHosts={exportMediaHosts}
+                onSniffXVersionSalt={sniffXVersionSalt}
                 onSpeedTest={speedTestSelectedVideo}
                 onTestMpv={testMpv}
+                onUpdateIwara={updateIwaraSettings}
                 onUpdateMediaSpeed={updateMediaSpeedSettings}
                 onUpdatePlayer={updatePlayerSettings}
+                iwara={settings.iwara}
+                saltReport={saltReport}
+                saltSniffing={saltSniffing}
                 player={settings.player}
                 probing={probing}
                 selectedVideo={selectedVideo}
@@ -570,6 +668,7 @@ export function App() {
               diagnosing={diagnosingVideo}
               video={selectedVideo}
               onDiagnose={diagnoseSelectedVideo}
+              onClose={closeDetailPanel}
               onPlay={playVideo}
               onQualityChange={setSelectedQuality}
             />
@@ -698,6 +797,7 @@ function DetailPanel({
   diagnosing,
   video,
   onDiagnose,
+  onClose,
   onPlay,
   onQualityChange
 }: {
@@ -709,12 +809,16 @@ function DetailPanel({
   diagnosing: boolean;
   video: VideoDetail;
   onDiagnose: () => void;
+  onClose: () => void;
   onPlay: (mode: PlayerMode) => void;
   onQualityChange: (quality: string) => void;
 }) {
   return (
     <aside className="detail-panel">
       <div className="detail-art">
+        <button aria-label="关闭视频预览" className="detail-close-button" onClick={onClose} type="button">
+          <X size={18} />
+        </button>
         {video.thumbnailUrl ? (
           <img alt={video.title} src={video.thumbnailUrl} />
         ) : (
@@ -727,6 +831,7 @@ function DetailPanel({
         <div className="metric-row">
           <span>{compactNumber(video.numViews)} 观看</span>
           <span>{compactNumber(video.numLikes)} 喜欢</span>
+          {video.durationSeconds ? <span>{formatDuration(video.durationSeconds)}</span> : null}
           <span>{formatDate(video.createdAt)}</span>
         </div>
 
@@ -845,6 +950,7 @@ function VideoCard({
       <button className="thumb-button" onClick={onOpen} type="button">
         <div className="thumb">
           {video.thumbnailUrl ? <img alt={video.title} src={video.thumbnailUrl} /> : <div className="empty-art">NO IMAGE</div>}
+          {video.durationSeconds ? <span className="duration-badge">{formatDuration(video.durationSeconds)}</span> : null}
           {loading && <Loader2 className="card-loader spin" size={24} />}
         </div>
       </button>
@@ -856,6 +962,7 @@ function VideoCard({
         <div className="video-card-footer">
           <span>{compactNumber(video.numViews)} 观看</span>
           <span>{compactNumber(video.numLikes)} 喜欢</span>
+          {video.durationSeconds ? <span>{formatDuration(video.durationSeconds)}</span> : null}
           <button className="quick-play-button" onClick={onQuickPlay} type="button">
             {quickPlaying ? <Loader2 className="spin" size={16} /> : <Play size={16} />}
             播放
@@ -913,10 +1020,16 @@ function SettingsView({
   onOpenIwaraSession,
   onProbe,
   onRefreshAuth,
+  onExportMediaHosts,
+  onSniffXVersionSalt,
   onSpeedTest,
   onTestMpv,
+  onUpdateIwara,
   onUpdateMediaSpeed,
   onUpdatePlayer,
+  iwara,
+  saltReport,
+  saltSniffing,
   player,
   probing,
   selectedVideo,
@@ -934,10 +1047,16 @@ function SettingsView({
   onOpenIwaraSession: () => void;
   onProbe: () => void;
   onRefreshAuth: () => void;
+  onExportMediaHosts: () => void;
+  onSniffXVersionSalt: () => void;
   onSpeedTest: () => void;
   onTestMpv: () => void;
+  onUpdateIwara: (partial: Partial<AppSettings["iwara"]>) => void;
   onUpdateMediaSpeed: (partial: Partial<AppSettings["mediaSpeed"]>) => void;
   onUpdatePlayer: (partial: Partial<AppSettings["player"]>) => void;
+  iwara: AppSettings["iwara"];
+  saltReport?: XVersionSaltReport;
+  saltSniffing: boolean;
   player: AppSettings["player"];
   probing: boolean;
   selectedVideo?: VideoDetail;
@@ -1003,6 +1122,47 @@ function SettingsView({
         </section>
 
         <section className="settings-block">
+          <h3>Iwara 解析</h3>
+          <label className="toggle-row">
+            <input
+              checked={iwara.autoSniffXVersionSalt}
+              onChange={(event) => onUpdateIwara({ autoSniffXVersionSalt: event.target.checked })}
+              type="checkbox"
+            />
+            <span>打开视频前自动嗅探 X-Version 盐值</span>
+          </label>
+          <label className="field-label">
+            X-Version 盐值
+            <input
+              value={iwara.xVersionSalt}
+              onChange={(event) => onUpdateIwara({ xVersionSalt: event.target.value.trim() })}
+              placeholder="从 Iwara 前端脚本自动嗅探"
+            />
+          </label>
+          <div className="settings-actions">
+            <button className="secondary-button" disabled={!hasBridge || saltSniffing} onClick={onSniffXVersionSalt} type="button">
+              {saltSniffing ? <Loader2 className="spin" size={18} /> : <Search size={18} />}
+              嗅探盐值
+            </button>
+          </div>
+          <div className="probe-line ok">
+            <CheckCircle2 size={17} />
+            <span>
+              当前盐值：{iwara.xVersionSalt}
+              {iwara.lastSaltSniffAt ? ` · ${formatFullDate(iwara.lastSaltSniffAt)}` : ""}
+            </span>
+          </div>
+          {saltReport && (
+            <code className="args-preview">
+              {saltReport.sourceUrl}
+            </code>
+          )}
+          <p className="subtle">
+            应用会从 Iwara 网页前端脚本里识别生成 X-Version 的盐值；站点更新后可手动刷新。
+          </p>
+        </section>
+
+        <section className="settings-block">
           <h3>Iwara 视频线路</h3>
           <label className="toggle-row">
             <input
@@ -1015,18 +1175,18 @@ function SettingsView({
           <label className="toggle-row">
             <input
               checked={speedSettings.replaceLinks}
-              disabled
               onChange={(event) => onUpdateMediaSpeed({ replaceLinks: event.target.checked })}
               type="checkbox"
             />
-            <span>替换播放链接（已禁用，Iwara 签名直链不能安全跨 CDN 改写）</span>
+            <span>播放时替换为测速最快 CDN 域名</span>
           </label>
           <label className="field-label">
             域名池
-            <input
-              value={speedSettings.candidateHosts.join(", ")}
-              onChange={(event) => onUpdateMediaSpeed({ candidateHosts: event.target.value.split(",").map((host) => host.trim()).filter(Boolean) })}
-              placeholder="自动发现，也可手动追加：jade.iwara.tv, kafka.iwara.tv"
+            <textarea
+              rows={5}
+              value={speedSettings.candidateHosts.join("\n")}
+              onChange={(event) => onUpdateMediaSpeed({ candidateHosts: event.target.value.split(/[\s,;]+/).filter(Boolean) })}
+              placeholder="自动发现，也可粘贴：jade.iwara.tv&#10;kafka.iwara.tv"
             />
           </label>
           {speedSettings.rankedHosts.length ? (
@@ -1069,10 +1229,14 @@ function SettingsView({
           </div>
           <button className="secondary-button" disabled={!hasBridge || !selectedVideo || speedTesting} onClick={onSpeedTest} type="button">
             {speedTesting ? <Loader2 className="spin" size={18} /> : <Gauge size={18} />}
-            测速当前视频
+            用当前视频全局测速
+          </button>
+          <button className="secondary-button" disabled={!hasBridge || !speedSettings.candidateHosts.length} onClick={onExportMediaHosts} type="button">
+            <ClipboardCopy size={18} />
+            导出域名池
           </button>
           <p className="subtle">
-            当前视频、网页抓包和测速结果里发现的新媒体域名会自动加入这里。全局测速只做线路诊断；播放使用 Iwara 返回的原始签名直链，避免跨 CDN 改写触发验证或失效。
+            当前视频、网页抓包和测速结果里发现的新媒体域名会自动加入这里。替换功能只改最终播放直链的域名；如遇到 403 或播放失败，关闭替换即可回到原始链接。
           </p>
           {speedReport && <SpeedReportPanel report={speedReport} />}
         </section>
@@ -1227,6 +1391,18 @@ function formatFullDate(value: string): string {
   }).format(new Date(value));
 }
 
+function formatDuration(seconds: number): string {
+  const safeSeconds = Math.max(0, Math.round(seconds));
+  const hours = Math.floor(safeSeconds / 3600);
+  const minutes = Math.floor((safeSeconds % 3600) / 60);
+  const rest = safeSeconds % 60;
+  const padded = (value: number) => value.toString().padStart(2, "0");
+
+  return hours > 0
+    ? `${hours}:${padded(minutes)}:${padded(rest)}`
+    : `${minutes}:${padded(rest)}`;
+}
+
 function playStatus(result: { mode: PlayerMode; format: { label: string }; fallbackFrom?: string }): string {
   const player = result.mode === "mpv" ? "MPV" : "外部播放器";
   const fallback = result.fallbackFrom ? `，${result.fallbackFrom} 不可用，已改用 ${result.format.label}` : `：${result.format.label}`;
@@ -1259,4 +1435,10 @@ function bestQualityRank(formats: VideoDetail["formats"]) {
 
 function errorText(err: unknown): string {
   return err instanceof Error ? err.message : String(err);
+}
+
+function delay(ms: number): Promise<void> {
+  return new Promise((resolve) => {
+    window.setTimeout(resolve, ms);
+  });
 }

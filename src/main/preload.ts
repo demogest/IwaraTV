@@ -13,7 +13,8 @@ import type {
   SelectExecutableRequest,
   SelectExecutableResult,
   VideoDetail,
-  VideoListResult
+  VideoListResult,
+  XVersionSaltReport
 } from "../shared/types";
 
 const api = {
@@ -21,6 +22,7 @@ const api = {
     listVideos: (request: ListVideosRequest) => ipcRenderer.invoke("iwara:listVideos", request) as Promise<VideoListResult>,
     getVideo: (idOrUrl: string) => ipcRenderer.invoke("iwara:getVideo", { idOrUrl }) as Promise<VideoDetail>,
     diagnoseVideo: (idOrUrl: string) => ipcRenderer.invoke("iwara:diagnoseVideo", { idOrUrl }) as Promise<IwaraVideoDiagnostics>,
+    sniffXVersionSalt: () => ipcRenderer.invoke("iwara:sniffXVersionSalt") as Promise<XVersionSaltReport>,
     speedTestVideo: (idOrUrl: string) => ipcRenderer.invoke("iwara:speedTestVideo", { idOrUrl }) as Promise<MediaSpeedTestReport>
   },
   player: {
@@ -41,7 +43,8 @@ const api = {
   system: {
     selectExecutable: (request: SelectExecutableRequest) =>
       ipcRenderer.invoke("system:selectExecutable", request) as Promise<SelectExecutableResult>,
-    openExternal: (url: string) => ipcRenderer.invoke("system:openExternal", url) as Promise<void>
+    openExternal: (url: string) => ipcRenderer.invoke("system:openExternal", url) as Promise<void>,
+    writeClipboard: (text: string) => ipcRenderer.invoke("system:writeClipboard", text) as Promise<void>
   }
 };
 

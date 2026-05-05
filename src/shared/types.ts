@@ -14,6 +14,7 @@ export interface VideoSummary {
   numViews: number;
   numLikes: number;
   numComments: number;
+  durationSeconds?: number;
   createdAt?: string;
   updatedAt?: string;
 }
@@ -31,6 +32,13 @@ export interface VideoFormat {
 export interface VideoDetail extends VideoSummary {
   formats: VideoFormat[];
   embedUrl?: string;
+}
+
+export interface IwaraRuntimeSettings {
+  xVersionSalt: string;
+  autoSniffXVersionSalt: boolean;
+  lastSaltSniffAt?: string;
+  lastSaltSource?: string;
 }
 
 export interface MediaSpeedSettings {
@@ -63,6 +71,12 @@ export interface MediaSpeedTestReport {
   replaceLinks: boolean;
   fastestHost?: string;
   results: MediaSpeedCandidateResult[];
+}
+
+export interface XVersionSaltReport {
+  salt: string;
+  sourceUrl: string;
+  checkedAt: string;
 }
 
 export interface IwaraFileProbe {
@@ -127,6 +141,7 @@ export interface PlaybackHistoryItem {
 
 export interface AppSettings {
   player: PlayerSettings;
+  iwara: IwaraRuntimeSettings;
   mediaSpeed: MediaSpeedSettings;
   history: PlaybackHistoryItem[];
 }

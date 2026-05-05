@@ -1,6 +1,7 @@
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { normalizeMediaHostList } from "../../shared/media-speed-utils";
+import { DEFAULT_X_VERSION_SALT } from "../../shared/iwara-utils";
 import type { AppSettings, MediaSpeedCandidateResult, PlaybackHistoryItem } from "../../shared/types";
 
 export const DEFAULT_MEDIA_SPEED_SETTINGS = {
@@ -22,6 +23,10 @@ const DEFAULT_SETTINGS: AppSettings = {
     preferredMode: "mpv",
     externalPlayerArgs: "{url}",
     preferredQuality: "Source"
+  },
+  iwara: {
+    xVersionSalt: DEFAULT_X_VERSION_SALT,
+    autoSniffXVersionSalt: true
   },
   mediaSpeed: DEFAULT_MEDIA_SPEED_SETTINGS,
   history: []
@@ -48,10 +53,13 @@ export class SettingsStore {
         ...this.settings.player,
         ...partial.player
       },
+      iwara: {
+        ...this.settings.iwara,
+        ...partial.iwara
+      },
       mediaSpeed: {
         ...this.settings.mediaSpeed,
-        ...partial.mediaSpeed,
-        replaceLinks: false
+        ...partial.mediaSpeed
       },
       history: partial.history ?? this.settings.history
     };
@@ -106,10 +114,13 @@ export class SettingsStore {
           ...DEFAULT_SETTINGS.player,
           ...raw.player
         },
+        iwara: {
+          ...DEFAULT_SETTINGS.iwara,
+          ...raw.iwara
+        },
         mediaSpeed: {
           ...DEFAULT_SETTINGS.mediaSpeed,
-          ...raw.mediaSpeed,
-          replaceLinks: false
+          ...raw.mediaSpeed
         },
         history: Array.isArray(raw.history) ? raw.history : []
       };

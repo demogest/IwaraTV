@@ -1,4 +1,4 @@
-import { BrowserWindow, dialog, ipcMain, shell } from "electron";
+import { BrowserWindow, clipboard, dialog, ipcMain, shell } from "electron";
 import { mediaUrlHost } from "../shared/media-speed-utils";
 import type {
   AppSettings,
@@ -9,7 +9,8 @@ import type {
   LoginRequest,
   PlayRequest,
   SelectExecutableRequest,
-  SelectExecutableResult
+  SelectExecutableResult,
+  XVersionSaltReport
 } from "../shared/types";
 import { IwaraClient } from "./services/iwara-client";
 import { IwaraSessionService } from "./services/iwara-session";
@@ -33,15 +34,45 @@ export function registerIpc(
     settingsStore.updateMediaHostRanking(report.results, report.testedAt);
     return report;
   };
+  const updateXVersionSalt = (report: XVersionSaltReport) => {
+    const current = settingsStore.get().iwara;
+    settingsStore.update({
+      iwara: {
+        ...current,
+        xVersionSalt: report.salt,
+        lastSaltSniffAt: report.checkedAt,
+        lastSaltSource: report.sourceUrl
+      }
+    });
+    return report;
+  };
+  const maybeSniffXVersionSalt = async () => {
+    const current = settingsStore.get().iwara;
+    if (!current.autoSniffXVersionSalt || isFreshIsoDate(current.lastSaltSniffAt, 24 * 60 * 60 * 1000)) {
+      return;
+    }
+
+    try {
+      updateXVersionSalt(await iwaraClient.sniffXVersionSalt());
+    } catch {
+      // Salt sniffing is opportunistic; playback should still try the stored salt.
+    }
+  };
 
   ipcMain.handle("iwara:listVideos", (_event, request: ListVideosRequest) => iwaraClient.listVideos(request));
-  ipcMain.handle("iwara:getVideo", async (_event, payload: { idOrUrl: string }) => withRememberedHosts(await iwaraClient.getVideo(payload.idOrUrl)));
+  ipcMain.handle("iwara:getVideo", async (_event, payload: { idOrUrl: string }) => {
+    await maybeSniffXVersionSalt();
+    const video = withRememberedHosts(await iwaraClient.getVideo(payload.idOrUrl));
+    return iwaraClient.routeVideoFormats(video, settingsStore.get().mediaSpeed);
+  });
   ipcMain.handle("iwara:diagnoseVideo", async (event, payload: { idOrUrl: string }) => {
+    await maybeSniffXVersionSalt();
     const owner = BrowserWindow.fromWebContents(event.sender) ?? undefined;
     const report = await iwaraClient.diagnoseVideo(payload.idOrUrl, () => iwaraSessionService.captureVideoNetwork(payload.idOrUrl, owner));
     rememberMediaHosts(report.network?.entries.flatMap((entry) => entry.formats ?? []) ?? []);
     return report;
   });
+  ipcMain.handle("iwara:sniffXVersionSalt", async () => updateXVersionSalt(await iwaraClient.sniffXVersionSalt()));
   ipcMain.handle("iwara:speedTestVideo", async (_event, payload: { idOrUrl: string }) => {
     const settings = settingsStore.get();
     return rememberSpeedReportHosts(await iwaraClient.speedTestVideo(payload.idOrUrl, settings.mediaSpeed));
@@ -77,4 +108,14 @@ export function registerIpc(
     };
   });
   ipcMain.handle("system:openExternal", (_event, url: string) => shell.openExternal(url));
+  ipcMain.handle("system:writeClipboard", (_event, text: string) => clipboard.writeText(text));
+}
+
+function isFreshIsoDate(value: string | undefined, maxAgeMs: number): boolean {
+  if (!value) {
+    return false;
+  }
+
+  const timestamp = new Date(value).getTime();
+  return Number.isFinite(timestamp) && Date.now() - timestamp < maxAgeMs;
 }

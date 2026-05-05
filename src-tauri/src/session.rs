@@ -58,7 +58,10 @@ impl IwaraSessionService {
         .background_color(tauri::webview::Color(0x11, 0x13, 0x17, 0xff))
         .user_agent(BROWSER_USER_AGENT)
         .build()?;
-        *self.verification_label.lock().expect("verification mutex poisoned") = Some(label);
+        *self
+            .verification_label
+            .lock()
+            .expect("verification mutex poisoned") = Some(label);
 
         let service = Arc::clone(self);
         tokio::spawn(async move {
@@ -79,13 +82,17 @@ impl IwaraSessionService {
     pub async fn state(&self) -> AppResult<AuthState> {
         let cookies = self.iwara_cookies().await.unwrap_or_default();
         let token = self.capture_token().await?;
-        let username = token
-            .as_ref()
-            .and_then(|token| token.username.clone().or_else(|| username_from_jwt(&token.value)));
+        let username = token.as_ref().and_then(|token| {
+            token
+                .username
+                .clone()
+                .or_else(|| username_from_jwt(&token.value))
+        });
         Ok(AuthState {
             logged_in: false,
             email: None,
             username,
+            avatar_url: None,
             has_media_token: false,
             encryption_available: true,
             site_session_ready: Some(!cookies.is_empty()),
@@ -102,10 +109,16 @@ impl IwaraSessionService {
         let token = self.session_token().await?;
         let mut headers = vec![
             ("User-Agent".to_string(), BROWSER_USER_AGENT.to_string()),
-            ("Accept-Language".to_string(), "zh-CN,zh;q=0.9,en;q=0.8".to_string()),
+            (
+                "Accept-Language".to_string(),
+                "zh-CN,zh;q=0.9,en;q=0.8".to_string(),
+            ),
         ];
         if let Some(token) = token {
-            headers.push(("Authorization".to_string(), format!("Bearer {}", token.value)));
+            headers.push((
+                "Authorization".to_string(),
+                format!("Bearer {}", token.value),
+            ));
         }
         if let Some(cookie_header) = cookie_header {
             headers.push(("Cookie".to_string(), cookie_header));
@@ -271,20 +284,31 @@ impl IwaraSessionService {
         for url in IWARA_ORIGINS {
             let parsed = Url::parse(url)?;
             if let Ok(values) = window.cookies_for_url(parsed) {
-                cookies.extend(values.into_iter().map(|cookie| (cookie.name().to_string(), cookie.value().to_string())));
+                cookies.extend(
+                    values
+                        .into_iter()
+                        .map(|cookie| (cookie.name().to_string(), cookie.value().to_string())),
+                );
             }
         }
         Ok(cookies)
     }
 
     async fn capture_token(&self) -> AppResult<Option<CapturedToken>> {
-        if let Some(window) = self.current_verification_window().or_else(|| self.current_page_fetch_window()) {
+        if let Some(window) = self
+            .current_verification_window()
+            .or_else(|| self.current_page_fetch_window())
+        {
             if let Some(token) = self.capture_token_from_window(&window).await? {
                 *self.captured_token.lock().expect("token mutex poisoned") = Some(token.clone());
                 return Ok(Some(token));
             }
         }
-        Ok(self.captured_token.lock().expect("token mutex poisoned").clone())
+        Ok(self
+            .captured_token
+            .lock()
+            .expect("token mutex poisoned")
+            .clone())
     }
 
     async fn session_token(&self) -> AppResult<Option<CapturedToken>> {
@@ -302,7 +326,10 @@ impl IwaraSessionService {
     }
 
     async fn ensure_page_fetch_window(&self) -> AppResult<WebviewWindow> {
-        if let Some(window) = self.current_verification_window().or_else(|| self.current_page_fetch_window()) {
+        if let Some(window) = self
+            .current_verification_window()
+            .or_else(|| self.current_page_fetch_window())
+        {
             return Ok(window);
         }
 
@@ -317,7 +344,10 @@ impl IwaraSessionService {
         .visible(false)
         .user_agent(BROWSER_USER_AGENT)
         .build()?;
-        *self.page_fetch_label.lock().expect("page fetch mutex poisoned") = Some(label);
+        *self
+            .page_fetch_label
+            .lock()
+            .expect("page fetch mutex poisoned") = Some(label);
         sleep(Duration::from_millis(800)).await;
         if let Some(token) = self.capture_token_from_window(&window).await? {
             *self.captured_token.lock().expect("token mutex poisoned") = Some(token);
@@ -325,7 +355,10 @@ impl IwaraSessionService {
         Ok(window)
     }
 
-    async fn capture_token_from_window(&self, target: &WebviewWindow) -> AppResult<Option<CapturedToken>> {
+    async fn capture_token_from_window(
+        &self,
+        target: &WebviewWindow,
+    ) -> AppResult<Option<CapturedToken>> {
         let js = r#"(() => {
           const dump = (storage) => {
             const entries = {};
@@ -344,7 +377,10 @@ impl IwaraSessionService {
         Ok(find_token(storage))
     }
 
-    async fn read_network_entries(&self, window: &WebviewWindow) -> AppResult<Vec<IwaraNetworkEntry>> {
+    async fn read_network_entries(
+        &self,
+        window: &WebviewWindow,
+    ) -> AppResult<Vec<IwaraNetworkEntry>> {
         let raw: Vec<CapturedNetworkEntry> = eval_json(
             window,
             r#"(() => Array.isArray(window.__iwaraTVNetworkEntries) ? window.__iwaraTVNetworkEntries : [])()"#.to_string(),
@@ -375,7 +411,11 @@ impl IwaraSessionService {
             .collect())
     }
 
-    async fn poll_fetch_result(&self, window: &WebviewWindow, request_id: &str) -> AppResult<BrowserFetchResult> {
+    async fn poll_fetch_result(
+        &self,
+        window: &WebviewWindow,
+        request_id: &str,
+    ) -> AppResult<BrowserFetchResult> {
         let request_id_json = serde_json::to_string(request_id)?;
         for _ in 0..75 {
             let js = format!(
@@ -388,9 +428,14 @@ impl IwaraSessionService {
             let slot: Option<AsyncBrowserFetchResult> = eval_json(window, js).await?;
             if let Some(slot) = slot {
                 if slot.ok {
-                    return slot.result.ok_or_else(|| message("WebView 页面请求没有返回结果。"));
+                    return slot
+                        .result
+                        .ok_or_else(|| message("WebView 页面请求没有返回结果。"));
                 }
-                return Err(message(slot.error.unwrap_or_else(|| "WebView 页面请求失败。".to_string())));
+                return Err(message(
+                    slot.error
+                        .unwrap_or_else(|| "WebView 页面请求失败。".to_string()),
+                ));
             }
             sleep(Duration::from_millis(200)).await;
         }
@@ -398,17 +443,28 @@ impl IwaraSessionService {
     }
 
     fn current_verification_window(&self) -> Option<WebviewWindow> {
-        let label = self.verification_label.lock().expect("verification mutex poisoned").clone()?;
+        let label = self
+            .verification_label
+            .lock()
+            .expect("verification mutex poisoned")
+            .clone()?;
         self.app.get_webview_window(&label)
     }
 
     fn current_page_fetch_window(&self) -> Option<WebviewWindow> {
-        let label = self.page_fetch_label.lock().expect("page fetch mutex poisoned").clone()?;
+        let label = self
+            .page_fetch_label
+            .lock()
+            .expect("page fetch mutex poisoned")
+            .clone()?;
         self.app.get_webview_window(&label)
     }
 }
 
-async fn eval_json<T: for<'de> Deserialize<'de>>(window: &WebviewWindow, js: String) -> AppResult<T> {
+async fn eval_json<T: for<'de> Deserialize<'de>>(
+    window: &WebviewWindow,
+    js: String,
+) -> AppResult<T> {
     let (tx, rx) = oneshot::channel();
     let tx = Arc::new(Mutex::new(Some(tx)));
     window.eval_with_callback(js, move |result| {
@@ -488,18 +544,27 @@ fn find_token(storage: StorageDump) -> Option<CapturedToken> {
         entries.push((format!("sessionStorage.{key}"), value));
     }
     let storage_username = find_storage_username(&entries);
-    let preferred = ["token", "accessToken", "access_token", "authToken", "userToken"];
+    let preferred = [
+        "token",
+        "accessToken",
+        "access_token",
+        "authToken",
+        "userToken",
+    ];
 
     for preferred_key in preferred {
         if let Some((key, value)) = entries.iter().find(|(key, value)| {
-            key.to_lowercase().ends_with(&format!(".{}", preferred_key.to_lowercase()))
+            key.to_lowercase()
+                .ends_with(&format!(".{}", preferred_key.to_lowercase()))
                 && find_jwt(value.as_deref()).is_some()
         }) {
             let token = find_jwt(value.as_deref())?;
             return Some(CapturedToken {
                 key: key.clone(),
                 value: token.clone(),
-                username: storage_username.clone().or_else(|| username_from_jwt(&token)),
+                username: storage_username
+                    .clone()
+                    .or_else(|| username_from_jwt(&token)),
             });
         }
     }
@@ -508,42 +573,38 @@ fn find_token(storage: StorageDump) -> Option<CapturedToken> {
         find_jwt(value.as_deref()).map(|token| CapturedToken {
             key,
             value: token.clone(),
-            username: storage_username.clone().or_else(|| username_from_jwt(&token)),
+            username: storage_username
+                .clone()
+                .or_else(|| username_from_jwt(&token)),
         })
     })
 }
 
 fn find_storage_username(entries: &[(String, Option<String>)]) -> Option<String> {
     let preferred_terms = [
-        "auth",
-        "user",
-        "account",
-        "profile",
-        "session",
-        "pinia",
-        "store",
-        "persist",
+        "auth", "user", "account", "profile", "session", "pinia", "store", "persist",
     ];
 
-    entries
-        .iter()
-        .find_map(|(key, value)| {
-            let normalized_key = key.to_lowercase();
-            let value = value.as_deref();
-            if normalized_key.ends_with(".username")
-                || normalized_key.ends_with(".user_name")
-                || normalized_key.ends_with(".displayname")
-                || normalized_key.ends_with(".display_name")
-            {
-                return non_empty_text(value);
-            }
+    entries.iter().find_map(|(key, value)| {
+        let normalized_key = key.to_lowercase();
+        let value = value.as_deref();
+        if normalized_key.ends_with(".username")
+            || normalized_key.ends_with(".user_name")
+            || normalized_key.ends_with(".displayname")
+            || normalized_key.ends_with(".display_name")
+        {
+            return non_empty_text(value);
+        }
 
-            if preferred_terms.iter().any(|term| normalized_key.contains(term)) {
-                return find_username_in_storage_value(value);
-            }
+        if preferred_terms
+            .iter()
+            .any(|term| normalized_key.contains(term))
+        {
+            return find_username_in_storage_value(value);
+        }
 
-            None
-        })
+        None
+    })
 }
 
 fn find_username_in_storage_value(value: Option<&str>) -> Option<String> {
@@ -570,14 +631,22 @@ fn find_username_in_json(value: &Value, depth: usize) -> Option<String> {
                 "user",
                 "me",
             ] {
-                if let Some(username) = map.get(key).and_then(|value| find_username_in_json(value, depth + 1)) {
+                if let Some(username) = map
+                    .get(key)
+                    .and_then(|value| find_username_in_json(value, depth + 1))
+                {
                     return Some(username);
                 }
             }
 
-            value_to_username(value).or_else(|| map.values().find_map(|value| find_username_in_json(value, depth + 1)))
+            value_to_username(value).or_else(|| {
+                map.values()
+                    .find_map(|value| find_username_in_json(value, depth + 1))
+            })
         }
-        Value::Array(values) => values.iter().find_map(|value| find_username_in_json(value, depth + 1)),
+        Value::Array(values) => values
+            .iter()
+            .find_map(|value| find_username_in_json(value, depth + 1)),
         Value::String(text) => serde_json::from_str::<Value>(text)
             .ok()
             .and_then(|nested| find_username_in_json(&nested, depth + 1)),
@@ -596,7 +665,11 @@ fn value_to_username(value: &Value) -> Option<String> {
         "nickname",
     ]
     .iter()
-    .find_map(|key| value.get(key).and_then(|value| non_empty_text(value.as_str())))
+    .find_map(|key| {
+        value
+            .get(key)
+            .and_then(|value| non_empty_text(value.as_str()))
+    })
 }
 
 fn non_empty_text(value: Option<&str>) -> Option<String> {
@@ -634,8 +707,12 @@ fn find_jwt_in_json(value: &Value, depth: usize) -> Option<String> {
                 .ok()
                 .and_then(|nested| find_jwt_in_json(&nested, depth + 1))
         }),
-        Value::Array(values) => values.iter().find_map(|value| find_jwt_in_json(value, depth + 1)),
-        Value::Object(map) => map.values().find_map(|value| find_jwt_in_json(value, depth + 1)),
+        Value::Array(values) => values
+            .iter()
+            .find_map(|value| find_jwt_in_json(value, depth + 1)),
+        Value::Object(map) => map
+            .values()
+            .find_map(|value| find_jwt_in_json(value, depth + 1)),
         _ => None,
     }
 }
@@ -713,9 +790,11 @@ fn diagnostics_script() -> String {
 fn is_relevant_iwara_api_url(url: &str) -> bool {
     Url::parse(url)
         .ok()
-        .and_then(|parsed| parsed.host_str().map(|host| {
-            host == "api.iwara.tv" || host == "files.iwara.tv" || host == "filesq.iwara.tv"
-        }))
+        .and_then(|parsed| {
+            parsed.host_str().map(|host| {
+                host == "api.iwara.tv" || host == "files.iwara.tv" || host == "filesq.iwara.tv"
+            })
+        })
         .unwrap_or(false)
 }
 
@@ -750,27 +829,42 @@ mod tests {
     #[test]
     fn finds_jwt_inside_nested_json_storage_values() {
         let value = r#"{"auth":{"accessToken":"header.payload.signature"}}"#;
-        assert_eq!(find_jwt(Some(value)).as_deref(), Some("header.payload.signature"));
+        assert_eq!(
+            find_jwt(Some(value)).as_deref(),
+            Some("header.payload.signature")
+        );
     }
 
     #[test]
     fn finds_jwt_inside_stringified_json_storage_values() {
         let value = r#"{"persisted":"{\"token\":\"header.payload.signature\"}"}"#;
-        assert_eq!(find_jwt(Some(value)).as_deref(), Some("header.payload.signature"));
+        assert_eq!(
+            find_jwt(Some(value)).as_deref(),
+            Some("header.payload.signature")
+        );
     }
 
     #[test]
     fn finds_username_inside_profile_storage_values() {
         let value = r#"{"profile":{"username":"demo_user"}}"#;
-        assert_eq!(find_username_in_storage_value(Some(value)).as_deref(), Some("demo_user"));
+        assert_eq!(
+            find_username_in_storage_value(Some(value)).as_deref(),
+            Some("demo_user")
+        );
     }
 
     #[test]
     fn attaches_storage_username_to_captured_token() {
         let storage = StorageDump {
             local_storage: std::collections::HashMap::from([
-                ("auth".to_string(), Some(r#"{"user":{"name":"Demo Name"}}"#.to_string())),
-                ("token".to_string(), Some("header.payload.signature".to_string())),
+                (
+                    "auth".to_string(),
+                    Some(r#"{"user":{"name":"Demo Name"}}"#.to_string()),
+                ),
+                (
+                    "token".to_string(),
+                    Some("header.payload.signature".to_string()),
+                ),
             ]),
             session_storage: std::collections::HashMap::new(),
         };

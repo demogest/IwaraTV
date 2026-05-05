@@ -10,7 +10,9 @@ use crate::iwara_client::IwaraClient;
 use crate::iwara_utils::choose_video_format;
 use crate::media_speed::media_url_host;
 use crate::models::{PlayRequest, PlayResult, PlayerDiagnostics, PlayerMode, PlayerProbe};
-use crate::player_template::{build_external_player_args, template_includes_url, PlayerTemplateValues};
+use crate::player_template::{
+    build_external_player_args, template_includes_url, PlayerTemplateValues,
+};
 use crate::settings::{to_summary, SettingsStore};
 
 const HTTP_HEADERS_TEMPLATE: &str = "Referer: https://www.iwara.tv/";
@@ -74,7 +76,10 @@ impl PlayerService {
                 message: template_error.unwrap_or_else(|| {
                     if external_exists {
                         if external_template_has_url {
-                            format!("已找到外部播放器：{}", settings.player.external_player_path.unwrap_or_default())
+                            format!(
+                                "已找到外部播放器：{}",
+                                settings.player.external_player_path.unwrap_or_default()
+                            )
                         } else {
                             "外部播放器参数需要包含 {url}。".to_string()
                         }
@@ -137,33 +142,50 @@ impl PlayerService {
     ) -> AppResult<PlayResult> {
         let mut video = iwara_client.get_video(&request.video_id).await?;
         let mut settings = settings_store.add_media_hosts(
-            video.formats
+            video
+                .formats
                 .iter()
                 .filter_map(|format| media_url_host(&format.url))
                 .collect(),
         )?;
         if settings.media_speed.auto_test && settings.media_speed.ranked_hosts.is_empty() {
-            let report = iwara_client.speed_test_video(&video.summary.id, &settings.media_speed).await?;
-            settings = settings_store.update_media_host_ranking(&report.results, &report.tested_at)?;
+            let report = iwara_client
+                .speed_test_video(&video.summary.id, &settings.media_speed)
+                .await?;
+            settings =
+                settings_store.update_media_host_ranking(&report.results, &report.tested_at)?;
         }
         if settings.media_speed.replace_links {
             video = iwara_client.route_video_formats(video, &settings.media_speed);
             settings_store.add_media_hosts(
-                video.formats
+                video
+                    .formats
                     .iter()
                     .filter_map(|format| media_url_host(&format.url))
                     .collect(),
             )?;
         }
-        let format = choose_video_format(&video.formats, request.quality.as_deref().or(settings.player.preferred_quality.as_deref()))
-            .ok_or_else(|| message("没有找到可播放的清晰度。"))?;
+        let format = choose_video_format(
+            &video.formats,
+            request
+                .quality
+                .as_deref()
+                .or(settings.player.preferred_quality.as_deref()),
+        )
+        .ok_or_else(|| message("没有找到可播放的清晰度。"))?;
         let mode = request.mode.unwrap_or(settings.player.preferred_mode);
         let player_path = match mode {
-            PlayerMode::External => self.require_external_player_path(settings.player.external_player_path.as_deref())?,
+            PlayerMode::External => {
+                self.require_external_player_path(settings.player.external_player_path.as_deref())?
+            }
             PlayerMode::Mpv => self.require_mpv_path(settings.player.mpv_path.as_deref())?,
         };
-        if mode == PlayerMode::External && !template_includes_url(&settings.player.external_player_args)? {
-            return Err(message("外部播放器参数需要包含 {url}，否则播放器收不到视频地址。"));
+        if mode == PlayerMode::External
+            && !template_includes_url(&settings.player.external_player_args)?
+        {
+            return Err(message(
+                "外部播放器参数需要包含 {url}，否则播放器收不到视频地址。",
+            ));
         }
         let args = match mode {
             PlayerMode::External => build_external_player_args(
@@ -195,9 +217,7 @@ impl PlayerService {
             player_path: path_to_string(&player_path),
             format: format.clone(),
             video,
-            fallback_from: request
-                .quality
-                .filter(|quality| quality != &format.id),
+            fallback_from: request.quality.filter(|quality| quality != &format.id),
         })
     }
 
@@ -214,8 +234,9 @@ impl PlayerService {
     }
 
     fn require_mpv_path(&self, configured_path: Option<&str>) -> AppResult<PathBuf> {
-        self.resolve_mpv_path(configured_path)
-            .ok_or_else(|| message("未找到 MPV。请放置 vendor/mpv/mpv.exe，安装到 PATH，或在设置中指定 mpv.exe。"))
+        self.resolve_mpv_path(configured_path).ok_or_else(|| {
+            message("未找到 MPV。请放置 vendor/mpv/mpv.exe，安装到 PATH，或在设置中指定 mpv.exe。")
+        })
     }
 
     fn resolve_mpv_path(&self, configured_path: Option<&str>) -> Option<PathBuf> {

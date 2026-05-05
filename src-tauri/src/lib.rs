@@ -39,8 +39,10 @@ pub fn run() {
             commands::iwara_diagnose_video,
             commands::iwara_list_comments,
             commands::iwara_send_comment,
+            commands::iwara_set_author_following,
             commands::iwara_sniff_x_version_salt,
             commands::iwara_speed_test_video,
+            commands::iwara_download_video,
             commands::player_play,
             commands::player_probe,
             commands::player_test_mpv,
@@ -51,6 +53,7 @@ pub fn run() {
             commands::auth_logout,
             commands::auth_open_iwara_session,
             commands::system_select_executable,
+            commands::system_select_directory,
             commands::system_open_external,
             commands::system_write_clipboard
         ])

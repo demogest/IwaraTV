@@ -1,3 +1,5 @@
+use std::sync::OnceLock;
+
 use regex::Regex;
 use sha1::{Digest, Sha1};
 use url::Url;
@@ -9,13 +11,11 @@ pub const DEFAULT_X_VERSION_SALT: &str = "mSvL05GfEmeEmsEYfGCnVpEjYgTJraJN";
 
 pub fn parse_iwara_video_id(input: &str) -> AppResult<String> {
     let trimmed = input.trim();
-    let id = Regex::new(r"^[a-zA-Z0-9]{6,}$").unwrap();
-    if id.is_match(trimmed) {
+    if video_id_pattern().is_match(trimmed) {
         return Ok(trimmed.to_string());
     }
 
-    let url = Regex::new(r"(?i)iwara\.tv/videos?/([a-zA-Z0-9]+)").unwrap();
-    if let Some(captures) = url.captures(trimmed) {
+    if let Some(captures) = video_url_pattern().captures(trimmed) {
         if let Some(value) = captures.get(1) {
             return Ok(value.as_str().to_string());
         }
@@ -36,15 +36,19 @@ pub fn build_x_version(file_url: &str, salt: Option<&str>) -> AppResult<String> 
         .and_then(|mut parts| parts.next_back())
         .filter(|value| !value.is_empty())
         .ok_or_else(|| message("Iwara fileUrl 缺少生成 X-Version 所需的参数。"))?;
-    let payload = format!("{}_{}_{}", file_id, expires, salt.unwrap_or(DEFAULT_X_VERSION_SALT));
+    let payload = format!(
+        "{}_{}_{}",
+        file_id,
+        expires,
+        salt.unwrap_or(DEFAULT_X_VERSION_SALT)
+    );
     let digest = Sha1::digest(payload.as_bytes());
     Ok(format!("{digest:x}"))
 }
 
 pub fn extract_x_version_salt_from_script(script: &str) -> Option<String> {
-    let pattern = Regex::new(r#"["_]([A-Za-z0-9]{20,80})["']"#).ok()?;
     let mut candidates = Vec::new();
-    for captures in pattern.captures_iter(script) {
+    for captures in salt_pattern().captures_iter(script) {
         let Some(matched) = captures.get(1) else {
             continue;
         };
@@ -63,10 +67,16 @@ pub fn extract_x_version_salt_from_script(script: &str) -> Option<String> {
             let start = index.saturating_sub(1200);
             let end = (index + 1600).min(script.len());
             let context = &script[start..end];
-            let score = ["X-Version", "fileUrl", "expires", "SHA-1", "crypto.subtle.digest"]
-                .iter()
-                .filter(|needle| context.contains(**needle))
-                .count();
+            let score = [
+                "X-Version",
+                "fileUrl",
+                "expires",
+                "SHA-1",
+                "crypto.subtle.digest",
+            ]
+            .iter()
+            .filter(|needle| context.contains(**needle))
+            .count();
             (salt, score)
         })
         .max_by(|(left_salt, left_score), (right_salt, right_score)| {
@@ -105,7 +115,10 @@ pub fn quality_rank(label: &str) -> u64 {
     normalized.parse::<u64>().unwrap_or(0)
 }
 
-pub fn choose_video_format(formats: &[VideoFormat], preferred_quality: Option<&str>) -> Option<VideoFormat> {
+pub fn choose_video_format(
+    formats: &[VideoFormat],
+    preferred_quality: Option<&str>,
+) -> Option<VideoFormat> {
     if let Some(preferred_quality) = preferred_quality {
         if let Some(found) = formats
             .iter()
@@ -115,7 +128,10 @@ pub fn choose_video_format(formats: &[VideoFormat], preferred_quality: Option<&s
         }
     }
 
-    formats.iter().max_by_key(|format| format.quality_rank).cloned()
+    formats
+        .iter()
+        .max_by_key(|format| format.quality_rank)
+        .cloned()
 }
 
 pub fn format_to_extension(mime_type: Option<&str>) -> Option<String> {
@@ -127,6 +143,25 @@ pub fn format_to_extension(mime_type: Option<&str>) -> Option<String> {
     } else {
         None
     }
+}
+
+fn video_id_pattern() -> &'static Regex {
+    static PATTERN: OnceLock<Regex> = OnceLock::new();
+    PATTERN.get_or_init(|| Regex::new(r"^[a-zA-Z0-9]{6,}$").expect("valid Iwara video id regex"))
+}
+
+fn video_url_pattern() -> &'static Regex {
+    static PATTERN: OnceLock<Regex> = OnceLock::new();
+    PATTERN.get_or_init(|| {
+        Regex::new(r"(?i)iwara\.tv/videos?/([a-zA-Z0-9]+)").expect("valid Iwara video URL regex")
+    })
+}
+
+fn salt_pattern() -> &'static Regex {
+    static PATTERN: OnceLock<Regex> = OnceLock::new();
+    PATTERN.get_or_init(|| {
+        Regex::new(r#"["_]([A-Za-z0-9]{20,80})["']"#).expect("valid X-Version salt regex")
+    })
 }
 
 #[cfg(test)]
@@ -144,14 +179,22 @@ mod tests {
 
     #[test]
     fn builds_x_version_hash() {
-        let hash = build_x_version("https://files.iwara.tv/file/video-file-id?expires=1700000000", None).unwrap();
+        let hash = build_x_version(
+            "https://files.iwara.tv/file/video-file-id?expires=1700000000",
+            None,
+        )
+        .unwrap();
         assert_eq!(hash, "6fedab7f968b4133d7a3857bbb9567799185b222");
     }
 
     #[test]
     fn sniffs_salt() {
         let salt = "mSvL05GfEmeEmsEYfGCnVpEjYgTJraJN";
-        let script = format!(r#"const h = SHA1(fileUrl + expires + "_{salt}"); headers["X-Version"] = h;"#);
-        assert_eq!(extract_x_version_salt_from_script(&script).as_deref(), Some(salt));
+        let script =
+            format!(r#"const h = SHA1(fileUrl + expires + "_{salt}"); headers["X-Version"] = h;"#);
+        assert_eq!(
+            extract_x_version_salt_from_script(&script).as_deref(),
+            Some(salt)
+        );
     }
 }

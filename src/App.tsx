@@ -2,10 +2,14 @@ import {
   AlertTriangle,
   ArrowLeft,
   Ban,
+  Bell,
+  ChevronDown,
+  ChevronUp,
   CheckCircle2,
   ClipboardCopy,
   CornerDownRight,
   Clock3,
+  Download,
   ExternalLink,
   Flame,
   FolderOpen,
@@ -35,6 +39,7 @@ import { FormEvent, useEffect, useMemo, useRef, useState } from "react";
 import type {
   AppSettings,
   AuthState,
+  DownloadResult,
   IwaraVideoDiagnostics,
   MediaSpeedTestReport,
   PlayerDiagnostics,
@@ -43,6 +48,7 @@ import type {
   VideoComment,
   VideoCommentsResult,
   VideoDetail,
+  VideoListNetworkAttempt,
   VideoListResult,
   VideoSort,
   VideoSummary,
@@ -52,12 +58,15 @@ import { normalizeMediaHostList } from "./lib/media-speed-utils";
 import logoMarkUrl from "./assets/iwara-tv-mark.svg";
 import { classifyIssue, type UiIssue } from "./lib/issue-utils";
 
-type AppSection = "browse" | "history" | "settings";
-type FeedTabKey = VideoSort | "followed";
+type AppSection = "browse" | "search" | "subscriptions" | "history" | "settings";
+type FeedTabKey = Extract<VideoSort, "date" | "trending" | "popularity"> | "followed";
+type SearchSort = Extract<VideoSort, "relevance" | "date" | "views" | "likes">;
 interface ActiveAuthor {
   id: string;
   name?: string;
   username?: string;
+  avatarUrl?: string;
+  following?: boolean;
 }
 interface VideoFilters {
   query: string;
@@ -66,6 +75,8 @@ interface VideoFilters {
 
 const sectionTabs: Array<{ section: AppSection; label: string; Icon: LucideIcon }> = [
   { section: "browse", label: "浏览", Icon: MonitorPlay },
+  { section: "search", label: "搜索", Icon: Search },
+  { section: "subscriptions", label: "订阅", Icon: Bell },
   { section: "history", label: "历史", Icon: History },
   { section: "settings", label: "设置", Icon: Settings }
 ];
@@ -76,6 +87,15 @@ const feedTabs: Array<{ key: FeedTabKey; label: string; Icon: LucideIcon }> = [
   { key: "popularity", label: "流行视频", Icon: TrendingUp },
   { key: "followed", label: "关注标签", Icon: Heart }
 ];
+
+const searchSortTabs: Array<{ key: SearchSort; label: string; Icon: LucideIcon }> = [
+  { key: "relevance", label: "相关", Icon: Search },
+  { key: "date", label: "最新", Icon: Clock3 },
+  { key: "views", label: "播放", Icon: TrendingUp },
+  { key: "likes", label: "喜欢", Icon: Heart }
+];
+
+const qualityOptions = ["Source", "2160", "1440", "1080", "720", "540", "360", "Preview"];
 
 const defaultSettings: AppSettings = {
   player: {
@@ -100,6 +120,9 @@ const defaultSettings: AppSettings = {
     testBytes: 524288,
     timeoutMs: 4500
   },
+  download: {
+    defaultQuality: "Source"
+  },
   tagPreferences: {
     followedTags: [],
     blockedTags: [],
@@ -120,10 +143,15 @@ export function App() {
   const [activeSection, setActiveSection] = useState<AppSection>("browse");
   const [activeFeedTab, setActiveFeedTab] = useState<FeedTabKey>("date");
   const [feeds, setFeeds] = useState<Partial<Record<FeedTabKey, VideoListResult>>>({});
+  const [searchFeed, setSearchFeed] = useState<VideoListResult | undefined>();
+  const [subscriptionFeed, setSubscriptionFeed] = useState<VideoListResult | undefined>();
   const [authorFeed, setAuthorFeed] = useState<VideoListResult | undefined>();
   const [activeAuthor, setActiveAuthor] = useState<ActiveAuthor | undefined>();
   const [filters, setFilters] = useState<VideoFilters>({ query: "", tags: [] });
+  const [searchFilters, setSearchFilters] = useState<VideoFilters>({ query: "", tags: [] });
+  const [searchSort, setSearchSort] = useState<SearchSort>("relevance");
   const [tagInput, setTagInput] = useState("");
+  const [searchTagInput, setSearchTagInput] = useState("");
   const [settings, setSettings] = useState<AppSettings>(defaultSettings);
   const [auth, setAuth] = useState<AuthState>(defaultAuth);
   const [diagnostics, setDiagnostics] = useState<PlayerDiagnostics | undefined>();
@@ -139,10 +167,16 @@ export function App() {
   const [issue, setIssue] = useState<UiIssue | undefined>();
   const [loadingFeed, setLoadingFeed] = useState(false);
   const loadingFeedRef = useRef(false);
+  const [loadingSearch, setLoadingSearch] = useState(false);
+  const loadingSearchRef = useRef(false);
+  const [loadingSubscriptions, setLoadingSubscriptions] = useState(false);
+  const loadingSubscriptionsRef = useRef(false);
   const [loadingComments, setLoadingComments] = useState(false);
   const [loadingVideoId, setLoadingVideoId] = useState<string | undefined>();
   const [quickPlayingId, setQuickPlayingId] = useState<string | undefined>();
+  const [downloadingVideoId, setDownloadingVideoId] = useState<string | undefined>();
   const [playing, setPlaying] = useState(false);
+  const [authorFollowBusyId, setAuthorFollowBusyId] = useState<string | undefined>();
   const [probing, setProbing] = useState(false);
   const [sessionBusy, setSessionBusy] = useState(false);
   const [diagnosingVideo, setDiagnosingVideo] = useState(false);
@@ -152,15 +186,21 @@ export function App() {
   const [replyDrafts, setReplyDrafts] = useState<Record<string, string>>({});
   const [replyingTo, setReplyingTo] = useState<string | undefined>();
   const [submittingComment, setSubmittingComment] = useState(false);
+  const [avatarImageReady, setAvatarImageReady] = useState(Boolean(auth.avatarUrl));
 
   const activeFeed = feeds[activeFeedTab];
   const hasApi = Boolean(api);
-  const showDetailPanel = activeSection === "browse" && Boolean(selectedVideo);
+  const canLoadSubscriptions = Boolean(auth.loggedIn || auth.siteTokenReady);
+  const canFollowAuthors = canLoadSubscriptions;
+  const showDetailPanel = (activeSection === "browse" || activeSection === "search" || activeSection === "subscriptions") && Boolean(selectedVideo);
   const authDisplayName = auth.username
     ?? auth.email
     ?? (auth.siteTokenReady ? "网页登录" : auth.siteSessionReady ? "已验证会话" : "匿名");
   const authStatusLabel = auth.username
     ?? (auth.siteTokenReady ? "网页登录就绪" : auth.siteSessionReady ? "会话已验证" : auth.loggedIn ? "API 已登录" : "未验证");
+  const showAvatarLogo = Boolean(auth.avatarUrl && avatarImageReady);
+  const brandLogoSource = showAvatarLogo ? auth.avatarUrl! : logoMarkUrl;
+  const brandLogoClassName = showAvatarLogo ? "brand-logo brand-avatar" : "brand-logo";
   const sortedFormats = useMemo(
     () => [...(selectedVideo?.formats ?? [])].sort((a, b) => b.qualityRank - a.qualityRank),
     [selectedVideo]
@@ -177,12 +217,24 @@ export function App() {
   }, [api]);
 
   useEffect(() => {
+    setAvatarImageReady(Boolean(auth.avatarUrl));
+  }, [auth.avatarUrl]);
+
+  useEffect(() => {
     if (!api || activeSection !== "browse" || loadingFeed || feeds[activeFeedTab]) {
       return;
     }
 
     void loadFeed(activeFeedTab);
   }, [activeSection, activeFeedTab, feeds, api, loadingFeed]);
+
+  useEffect(() => {
+    if (!api || activeSection !== "subscriptions" || !canLoadSubscriptions || loadingSubscriptions || subscriptionFeed) {
+      return;
+    }
+
+    void loadSubscriptionFeed();
+  }, [activeSection, api, canLoadSubscriptions, loadingSubscriptions, subscriptionFeed]);
 
   useEffect(() => {
     if (!api || !selectedVideo) {
@@ -216,6 +268,74 @@ export function App() {
     } finally {
       loadingFeedRef.current = false;
       setLoadingFeed(false);
+    }
+  }
+
+  async function loadSearch(page = searchFeed?.page ?? 0, nextFilters = searchFilters, nextSort = searchSort) {
+    if (!api || loadingSearchRef.current) {
+      return;
+    }
+
+    const normalized = {
+      query: nextFilters.query.trim(),
+      tags: normalizeTagTokens(nextFilters.tags)
+    };
+    if (!normalized.query) {
+      setSearchFeed(undefined);
+      setSearchFilters(normalized);
+      return;
+    }
+
+    loadingSearchRef.current = true;
+    setLoadingSearch(true);
+    clearMessages();
+    try {
+      const result = await api.iwara.listVideos({
+        sort: nextSort,
+        page,
+        rating: "all",
+        query: normalized.query,
+        tags: normalized.tags,
+        searchOnly: true
+      });
+      setSearchFeed(result);
+      setSearchFilters(normalized);
+      setSearchSort(nextSort);
+    } catch (err) {
+      handleError(err);
+    } finally {
+      loadingSearchRef.current = false;
+      setLoadingSearch(false);
+    }
+  }
+
+  async function loadSubscriptionFeed(page = subscriptionFeed?.page ?? 0) {
+    if (!api || loadingSubscriptionsRef.current) {
+      return;
+    }
+
+    if (!canLoadSubscriptions) {
+      setSubscriptionFeed(undefined);
+      setIssue(classifyIssue("查看订阅视频需要先登录 Iwara。"));
+      return;
+    }
+
+    loadingSubscriptionsRef.current = true;
+    setLoadingSubscriptions(true);
+    clearMessages();
+    try {
+      const result = await api.iwara.listVideos({
+        sort: "date",
+        page,
+        rating: "all",
+        subscribedOnly: true
+      });
+      setSubscriptionFeed(result);
+    } catch (err) {
+      handleError(err);
+    } finally {
+      loadingSubscriptionsRef.current = false;
+      setLoadingSubscriptions(false);
     }
   }
 
@@ -342,6 +462,27 @@ export function App() {
     }
   }
 
+  async function downloadVideo(video: VideoSummary, quality?: string) {
+    if (!api || downloadingVideoId) {
+      return;
+    }
+
+    setDownloadingVideoId(video.id);
+    clearMessages();
+    try {
+      const result = await api.iwara.downloadVideo({ videoId: video.id, quality });
+      setSettings(await api.settings.get());
+      if (selectedVideo?.id === result.video.id) {
+        setSelectedVideo(result.video);
+      }
+      setStatus(downloadStatus(result));
+    } catch (err) {
+      handleError(err);
+    } finally {
+      setDownloadingVideoId(undefined);
+    }
+  }
+
   function closeDetailPanel() {
     setSelectedVideo(undefined);
     setSelectedQuality(undefined);
@@ -353,6 +494,57 @@ export function App() {
     setSpeedReport(undefined);
   }
 
+  async function setAuthorFollowing(author: ActiveAuthor, following: boolean) {
+    if (!api || authorFollowBusyId) {
+      return;
+    }
+
+    if (!canFollowAuthors) {
+      setIssue(classifyIssue("关注作者需要先登录 Iwara。"));
+      return;
+    }
+
+    setAuthorFollowBusyId(author.id);
+    clearMessages();
+    try {
+      const result = await api.iwara.setAuthorFollowing({ authorId: author.id, following });
+      updateAuthorFollowing(result.authorId, result.following);
+      const label = author.name ?? author.username ?? "作者";
+      setStatus(result.following ? `已关注作者：${label}。` : `已取消关注作者：${label}。`);
+    } catch (err) {
+      handleError(err);
+    } finally {
+      setAuthorFollowBusyId(undefined);
+    }
+  }
+
+  async function toggleAuthorFollowFromVideo(video: VideoDetail) {
+    if (!video.uploaderId) {
+      return;
+    }
+
+    await setAuthorFollowing({
+      id: video.uploaderId,
+      name: video.uploaderName,
+      username: video.uploaderUsername,
+      avatarUrl: video.uploaderAvatarUrl,
+      following: video.uploaderFollowing
+    }, video.uploaderFollowing !== true);
+  }
+
+  async function toggleAuthorFollowFromProfile(author: ActiveAuthor, currentFollowing?: boolean) {
+    await setAuthorFollowing(author, currentFollowing !== true);
+  }
+
+  function updateAuthorFollowing(authorId: string, following: boolean) {
+    setSelectedVideo((current) => updateVideoAuthorFollowing(current, authorId, following));
+    setActiveAuthor((current) => current?.id === authorId ? { ...current, following } : current);
+    setFeeds((current) => updateFeedCollectionAuthorFollowing(current, authorId, following));
+    setSearchFeed((current) => updateFeedAuthorFollowing(current, authorId, following));
+    setSubscriptionFeed((current) => updateFeedAuthorFollowing(current, authorId, following));
+    setAuthorFeed((current) => updateFeedAuthorFollowing(current, authorId, following));
+  }
+
   async function openAuthorProfile(video: VideoDetail) {
     if (!video.uploaderId) {
       return;
@@ -362,7 +554,9 @@ export function App() {
     await loadAuthorFeed({
       id: video.uploaderId,
       name: video.uploaderName,
-      username: video.uploaderUsername
+      username: video.uploaderUsername,
+      avatarUrl: video.uploaderAvatarUrl,
+      following: video.uploaderFollowing
     });
   }
 
@@ -404,6 +598,42 @@ export function App() {
   async function clearFilters() {
     setTagInput("");
     await applyFilters({ query: "", tags: [] });
+  }
+
+  async function applySearchFilters(nextFilters: VideoFilters) {
+    const normalized = {
+      query: nextFilters.query.trim(),
+      tags: normalizeTagTokens(nextFilters.tags)
+    };
+    setSearchFeed(undefined);
+    if (normalized.query) {
+      await loadSearch(0, normalized, searchSort);
+    } else {
+      setSearchFilters(normalized);
+    }
+  }
+
+  async function changeSearchSort(sort: SearchSort) {
+    setSearchSort(sort);
+    setSearchFeed(undefined);
+    if (searchFilters.query.trim()) {
+      await loadSearch(0, searchFilters, sort);
+    }
+  }
+
+  async function addSearchTagFilter(tag: string) {
+    const tags = normalizeTagTokens([...searchFilters.tags, tag]);
+    setSearchTagInput("");
+    await applySearchFilters({ ...searchFilters, tags });
+  }
+
+  async function removeSearchTagFilter(tag: string) {
+    await applySearchFilters({ ...searchFilters, tags: searchFilters.tags.filter((current) => current !== tag) });
+  }
+
+  async function clearSearchFilters() {
+    setSearchTagInput("");
+    await applySearchFilters({ query: "", tags: [] });
   }
 
   async function loadComments(videoId: string) {
@@ -496,6 +726,16 @@ export function App() {
           : settings.mediaSpeed.candidateHosts
       }
     });
+    setSettings(next);
+    return next;
+  }
+
+  async function updateDownloadSettings(partial: Partial<AppSettings["download"]>): Promise<AppSettings | undefined> {
+    if (!api) {
+      return undefined;
+    }
+
+    const next = await api.settings.update({ download: { ...settings.download, ...partial } });
     setSettings(next);
     return next;
   }
@@ -615,6 +855,24 @@ export function App() {
 
     await updatePlayerSettings(kind === "mpv" ? { mpvPath: selected.path } : { externalPlayerPath: selected.path });
     await refreshDiagnostics();
+  }
+
+  async function chooseDownloadDirectory() {
+    if (!api) {
+      return;
+    }
+
+    const selected = await api.system.selectDirectory({
+      title: "选择下载保存文件夹",
+      currentPath: settings.download.directory
+    });
+
+    if (selected.canceled || !selected.path) {
+      return;
+    }
+
+    await updateDownloadSettings({ directory: selected.path });
+    setStatus(`下载保存路径已设置为：${selected.path}`);
   }
 
   async function refreshDiagnostics() {
@@ -766,6 +1024,10 @@ export function App() {
 
     if (selectedVideo) {
       await openVideo(selectedVideo.id);
+    } else if (activeSection === "search") {
+      await loadSearch(searchFeed?.page ?? 0, searchFilters, searchSort);
+    } else if (activeSection === "subscriptions") {
+      await loadSubscriptionFeed(subscriptionFeed?.page ?? 0);
     } else {
       await loadFeed(activeFeedTab, activeFeed?.page ?? 0);
     }
@@ -786,7 +1048,13 @@ export function App() {
       <aside className="sidebar">
         <div className="brand">
           <div className="brand-mark">
-            <img alt="" className="brand-logo" src={logoMarkUrl} />
+            <img
+              alt=""
+              className={brandLogoClassName}
+              onError={() => setAvatarImageReady(false)}
+              referrerPolicy="no-referrer"
+              src={brandLogoSource}
+            />
           </div>
           <div>
             <h1>IwaraTV</h1>
@@ -799,7 +1067,13 @@ export function App() {
             <button
               className={activeSection === section ? "nav-button active" : "nav-button"}
               key={section}
-              onClick={() => setActiveSection(section)}
+              onClick={() => {
+                const detailRouteChanging = section === "search" || section === "subscriptions" || activeSection === "search" || activeSection === "subscriptions";
+                if (section !== activeSection && detailRouteChanging) {
+                  closeDetailPanel();
+                }
+                setActiveSection(section);
+              }}
               type="button"
             >
               <Icon size={18} />
@@ -809,7 +1083,7 @@ export function App() {
         </nav>
       </aside>
 
-      <section className="workspace">
+      <section className={showDetailPanel ? "workspace detail-open" : "workspace"}>
         <header className="topbar">
           <form className="url-form" onSubmit={handleSubmit}>
             <Search size={18} />
@@ -846,6 +1120,9 @@ export function App() {
                 activeAuthor={activeAuthor}
                 activeFeed={activeAuthor ? authorFeed : activeFeed}
                 activeFeedTab={activeFeedTab}
+                authorFollowBusyId={authorFollowBusyId}
+                canFollowAuthor={canFollowAuthors}
+                downloadingVideoId={downloadingVideoId}
                 hasApi={hasApi}
                 filters={filters}
                 loadingFeed={loadingFeed}
@@ -854,6 +1131,7 @@ export function App() {
                 onAddTag={addTagFilter}
                 onBackToFeeds={() => showMainFeed()}
                 onClearFilters={clearFilters}
+                onDownload={(video) => downloadVideo(video)}
                 onFilterChange={(partial) => setFilters((current) => ({ ...current, ...partial }))}
                 onFilterSubmit={() => applyFilters(filters)}
                 onPage={(page) => activeAuthor ? loadAuthorFeed(activeAuthor, page) : loadFeed(activeFeedTab, page)}
@@ -861,9 +1139,54 @@ export function App() {
                 onRefresh={() => activeAuthor ? loadAuthorFeed(activeAuthor, authorFeed?.page ?? 0) : loadFeed(activeFeedTab, activeFeed?.page ?? 0)}
                 onRemoveTag={removeTagFilter}
                 onFeedTabChange={showMainFeed}
+                onToggleAuthorFollow={toggleAuthorFollowFromProfile}
                 quickPlayingId={quickPlayingId}
                 tagInput={tagInput}
                 onTagInputChange={setTagInput}
+              />
+            )}
+
+            {activeSection === "search" && (
+              <SearchView
+                downloadingVideoId={downloadingVideoId}
+                filters={searchFilters}
+                hasApi={hasApi}
+                loading={loadingSearch}
+                loadingVideoId={loadingVideoId}
+                onAddTag={addSearchTagFilter}
+                onClearFilters={clearSearchFilters}
+                onDownload={(video) => downloadVideo(video)}
+                onFilterChange={(partial) => setSearchFilters((current) => ({ ...current, ...partial }))}
+                onFilterSubmit={() => applySearchFilters(searchFilters)}
+                onOpen={openVideo}
+                onPage={(page) => loadSearch(page, searchFilters, searchSort)}
+                onQuickPlay={quickPlay}
+                onRefresh={() => loadSearch(searchFeed?.page ?? 0, searchFilters, searchSort)}
+                onRemoveTag={removeSearchTagFilter}
+                onSortChange={changeSearchSort}
+                quickPlayingId={quickPlayingId}
+                result={searchFeed}
+                sort={searchSort}
+                tagInput={searchTagInput}
+                onTagInputChange={setSearchTagInput}
+              />
+            )}
+
+            {activeSection === "subscriptions" && (
+              <SubscriptionView
+                downloadingVideoId={downloadingVideoId}
+                feed={subscriptionFeed}
+                hasApi={hasApi}
+                isLoggedIn={canLoadSubscriptions}
+                loading={loadingSubscriptions}
+                loadingVideoId={loadingVideoId}
+                onDownload={(video) => downloadVideo(video)}
+                onLogin={openIwaraSession}
+                onOpen={openVideo}
+                onPage={loadSubscriptionFeed}
+                onQuickPlay={quickPlay}
+                onRefresh={() => loadSubscriptionFeed(subscriptionFeed?.page ?? 0)}
+                quickPlayingId={quickPlayingId}
               />
             )}
 
@@ -882,8 +1205,10 @@ export function App() {
               <SettingsView
                 auth={auth}
                 diagnostics={diagnostics}
+                download={settings.download}
                 hasApi={hasApi}
                 mpvTest={mpvTest}
+                onChooseDownloadDirectory={chooseDownloadDirectory}
                 onChooseExternal={() => chooseExecutable("external")}
                 onChooseMpv={() => chooseExecutable("mpv")}
                 onOpenIwaraSession={openIwaraSession}
@@ -893,6 +1218,7 @@ export function App() {
                 onSniffXVersionSalt={sniffXVersionSalt}
                 onSpeedTest={speedTestSelectedVideo}
                 onTestMpv={testMpv}
+                onUpdateDownload={updateDownloadSettings}
                 onUpdateIwara={updateIwaraSettings}
                 onUpdateMediaSpeed={updateMediaSpeedSettings}
                 onUpdatePlayer={updatePlayerSettings}
@@ -919,6 +1245,9 @@ export function App() {
               sortedFormats={sortedFormats}
               diagnostics={videoDiagnostics}
               diagnosing={diagnosingVideo}
+              downloading={downloadingVideoId === selectedVideo.id}
+              authorFollowBusy={authorFollowBusyId === selectedVideo.uploaderId}
+              canFollowAuthor={canFollowAuthors}
               video={selectedVideo}
               onDiagnose={diagnoseSelectedVideo}
               onBlockTag={blockTag}
@@ -927,7 +1256,9 @@ export function App() {
               onFilterTag={applyTagFromDetail}
               onFollowTag={followTag}
               onOpenAuthor={openAuthorProfile}
+              onToggleAuthorFollow={toggleAuthorFollowFromVideo}
               onPlay={playVideo}
+              onDownload={() => downloadVideo(selectedVideo, selectedQuality)}
               onQualityChange={setSelectedQuality}
               onRefreshComments={() => loadComments(selectedVideo.id)}
               onReplyDraftChange={(commentId, value) => setReplyDrafts((current) => ({ ...current, [commentId]: value }))}
@@ -948,10 +1279,204 @@ export function App() {
   );
 }
 
+function SearchView({
+  downloadingVideoId,
+  filters,
+  hasApi,
+  loading,
+  loadingVideoId,
+  onAddTag,
+  onClearFilters,
+  onDownload,
+  onFilterChange,
+  onFilterSubmit,
+  onOpen,
+  onPage,
+  onQuickPlay,
+  onRefresh,
+  onRemoveTag,
+  onSortChange,
+  onTagInputChange,
+  quickPlayingId,
+  result,
+  sort,
+  tagInput
+}: {
+  downloadingVideoId?: string;
+  filters: VideoFilters;
+  hasApi: boolean;
+  loading: boolean;
+  loadingVideoId?: string;
+  onAddTag: (tag: string) => void;
+  onClearFilters: () => void;
+  onDownload: (video: VideoSummary) => void;
+  onFilterChange: (partial: Partial<VideoFilters>) => void;
+  onFilterSubmit: () => void;
+  onOpen: (id: string) => void;
+  onPage: (page: number) => void;
+  onQuickPlay: (video: VideoSummary) => void;
+  onRefresh: () => void;
+  onRemoveTag: (tag: string) => void;
+  onSortChange: (sort: SearchSort) => void;
+  onTagInputChange: (value: string) => void;
+  quickPlayingId?: string;
+  result?: VideoListResult;
+  sort: SearchSort;
+  tagInput: string;
+}) {
+  const videos = result?.results ?? [];
+  const hasQuery = Boolean(filters.query.trim());
+  const hasFilters = Boolean(hasQuery || filters.tags.length);
+
+  return (
+    <>
+      <div className="section-header">
+        <div>
+          <p>全站检索</p>
+          <h2>搜索</h2>
+        </div>
+        <button
+          className="icon-text-button"
+          disabled={!hasApi || !hasQuery || loading}
+          onClick={onRefresh}
+          type="button"
+        >
+          {loading ? <Loader2 className="spin" size={18} /> : <RefreshCw size={18} />}
+          刷新
+        </button>
+      </div>
+
+      <div className="feed-tabs" role="tablist">
+        {searchSortTabs.map(({ key, label, Icon }) => (
+          <button
+            aria-selected={sort === key}
+            className={sort === key ? "feed-tab active" : "feed-tab"}
+            disabled={loading}
+            key={key}
+            onClick={() => onSortChange(key)}
+            role="tab"
+            type="button"
+          >
+            <Icon size={17} />
+            {label}
+          </button>
+        ))}
+      </div>
+
+      <form
+        className="filter-panel"
+        onSubmit={(event) => {
+          event.preventDefault();
+          onFilterSubmit();
+        }}
+      >
+        <label className="filter-field search-filter">
+          <Search size={17} />
+          <input
+            value={filters.query}
+            onChange={(event) => onFilterChange({ query: event.target.value })}
+            placeholder="搜索视频关键词"
+          />
+        </label>
+        <label className="filter-field tag-filter">
+          <Tag size={17} />
+          <input
+            value={tagInput}
+            onChange={(event) => onTagInputChange(event.target.value)}
+            placeholder="本地标签筛选，例如 blender"
+          />
+          <button
+            className="secondary-button compact"
+            disabled={!tagInput.trim()}
+            onClick={() => onAddTag(tagInput)}
+            type="button"
+          >
+            添加
+          </button>
+        </label>
+        <button className="primary-button" disabled={!hasApi || !hasQuery || loading} type="submit">
+          搜索
+        </button>
+        <button className="secondary-button" disabled={!hasFilters || loading} onClick={onClearFilters} type="button">
+          清除
+        </button>
+      </form>
+
+      {filters.tags.length ? (
+        <div className="active-filter-tags">
+          {filters.tags.map((tag) => (
+            <button key={tag} onClick={() => onRemoveTag(tag)} type="button">
+              {tag}
+              <X size={13} />
+            </button>
+          ))}
+        </div>
+      ) : null}
+
+      <ListScanSummary result={result} />
+
+      {loading && !videos.length ? (
+        <SkeletonGrid />
+      ) : videos.length ? (
+        <>
+          <div className="list-scan-summary">
+            {result?.total ? <span>共 {compactNumber(result.total)} 个结果</span> : null}
+            <span>关键词：{result?.query ?? filters.query.trim()}</span>
+            <span>排序：{searchSortLabel(result?.sort ?? sort)}</span>
+          </div>
+          <div className="video-grid">
+            {videos.map((video) => (
+              <VideoCard
+                downloading={downloadingVideoId === video.id}
+                key={video.id}
+                loading={loadingVideoId === video.id}
+                onDownload={() => onDownload(video)}
+                onOpen={() => onOpen(video.id)}
+                onQuickPlay={() => onQuickPlay(video)}
+                quickPlaying={quickPlayingId === video.id}
+                video={video}
+              />
+            ))}
+          </div>
+
+          <div className="pager">
+            <button
+              disabled={!hasApi || loading || (result?.page ?? 0) <= 0}
+              onClick={() => onPage(Math.max((result?.page ?? 0) - 1, 0))}
+              type="button"
+            >
+              上一页
+            </button>
+            <span>第 {(result?.page ?? 0) + 1} 页</span>
+            <button
+              disabled={!hasApi || loading}
+              onClick={() => onPage((result?.page ?? 0) + 1)}
+              type="button"
+            >
+              下一页
+            </button>
+          </div>
+        </>
+      ) : (
+        <EmptyState
+          Icon={Search}
+          title={hasQuery ? "没有搜索结果" : "输入关键词搜索视频"}
+          actionLabel={hasQuery ? "重新搜索" : undefined}
+          disabled={!hasApi || loading}
+          onAction={hasQuery ? onRefresh : undefined}
+        />
+      )}
+    </>
+  );
+}
+
 function BrowseView({
   activeAuthor,
   activeFeed,
   activeFeedTab,
+  authorFollowBusyId,
+  canFollowAuthor,
+  downloadingVideoId,
   filters,
   hasApi,
   loadingFeed,
@@ -959,6 +1484,7 @@ function BrowseView({
   onAddTag,
   onBackToFeeds,
   onClearFilters,
+  onDownload,
   onFilterChange,
   onFilterSubmit,
   onOpen,
@@ -968,12 +1494,16 @@ function BrowseView({
   onRemoveTag,
   onFeedTabChange,
   onTagInputChange,
+  onToggleAuthorFollow,
   quickPlayingId,
   tagInput
 }: {
   activeAuthor?: ActiveAuthor;
   activeFeed?: VideoListResult;
   activeFeedTab: FeedTabKey;
+  authorFollowBusyId?: string;
+  canFollowAuthor: boolean;
+  downloadingVideoId?: string;
   filters: VideoFilters;
   hasApi: boolean;
   loadingFeed: boolean;
@@ -981,6 +1511,7 @@ function BrowseView({
   onAddTag: (tag: string) => void;
   onBackToFeeds: () => void;
   onClearFilters: () => void;
+  onDownload: (video: VideoSummary) => void;
   onFilterChange: (partial: Partial<VideoFilters>) => void;
   onFilterSubmit: () => void;
   onOpen: (id: string) => void;
@@ -990,11 +1521,16 @@ function BrowseView({
   onRemoveTag: (tag: string) => void;
   onFeedTabChange: (tab: FeedTabKey) => void;
   onTagInputChange: (value: string) => void;
+  onToggleAuthorFollow: (author: ActiveAuthor, currentFollowing?: boolean) => void;
   quickPlayingId?: string;
   tagInput: string;
 }) {
   const videos = activeFeed?.results ?? [];
   const hasFilters = Boolean(filters.query.trim() || filters.tags.length);
+  const activeAuthorFollowing = activeAuthor
+    ? activeAuthor.following ?? videos.find((video) => video.uploaderId === activeAuthor.id)?.uploaderFollowing
+    : undefined;
+  const authorFollowBusy = Boolean(activeAuthor && authorFollowBusyId === activeAuthor.id);
 
   return (
     <>
@@ -1004,21 +1540,35 @@ function BrowseView({
           <h2>{activeAuthor ? (activeAuthor.name ?? activeAuthor.username ?? "作者视频") : feedTitle(activeFeedTab)}</h2>
           {activeAuthor?.username && <span className="section-subtitle">@{activeAuthor.username}</span>}
         </div>
-        {activeAuthor && (
-          <button className="secondary-button compact" onClick={onBackToFeeds} type="button">
-            <ArrowLeft size={17} />
-            返回
+        <div className="section-header-actions">
+          {activeAuthor && (
+            <button
+              className={activeAuthorFollowing ? "secondary-button compact author-follow-button active" : "secondary-button compact author-follow-button"}
+              disabled={!hasApi || !canFollowAuthor || authorFollowBusy}
+              onClick={() => onToggleAuthorFollow(activeAuthor, activeAuthorFollowing)}
+              title={canFollowAuthor ? undefined : "登录后关注作者"}
+              type="button"
+            >
+              {authorFollowBusy ? <Loader2 className="spin" size={17} /> : activeAuthorFollowing ? <CheckCircle2 size={17} /> : <Heart size={17} />}
+              {activeAuthorFollowing ? "已关注" : "关注"}
+            </button>
+          )}
+          {activeAuthor && (
+            <button className="secondary-button compact" onClick={onBackToFeeds} type="button">
+              <ArrowLeft size={17} />
+              返回
+            </button>
+          )}
+          <button
+            className="icon-text-button"
+            disabled={!hasApi || loadingFeed}
+            onClick={onRefresh}
+            type="button"
+          >
+            {loadingFeed ? <Loader2 className="spin" size={18} /> : <RefreshCw size={18} />}
+            刷新
           </button>
-        )}
-        <button
-          className="icon-text-button"
-          disabled={!hasApi || loadingFeed}
-          onClick={onRefresh}
-          type="button"
-        >
-          {loadingFeed ? <Loader2 className="spin" size={18} /> : <RefreshCw size={18} />}
-          刷新
-        </button>
+        </div>
       </div>
 
       {!activeAuthor && (
@@ -1089,16 +1639,19 @@ function BrowseView({
         </div>
       ) : null}
 
+      <ListScanSummary result={activeFeed} />
+
       {loadingFeed && !videos.length ? (
         <SkeletonGrid />
       ) : videos.length ? (
         <>
-          <ListScanSummary result={activeFeed} />
           <div className="video-grid">
             {videos.map((video) => (
               <VideoCard
+                downloading={downloadingVideoId === video.id}
                 key={video.id}
                 loading={loadingVideoId === video.id}
+                onDownload={() => onDownload(video)}
                 onOpen={() => onOpen(video.id)}
                 onQuickPlay={() => onQuickPlay(video)}
                 quickPlaying={quickPlayingId === video.id}
@@ -1138,17 +1691,256 @@ function BrowseView({
   );
 }
 
+function SubscriptionView({
+  downloadingVideoId,
+  feed,
+  hasApi,
+  isLoggedIn,
+  loading,
+  loadingVideoId,
+  onDownload,
+  onLogin,
+  onOpen,
+  onPage,
+  onQuickPlay,
+  onRefresh,
+  quickPlayingId
+}: {
+  downloadingVideoId?: string;
+  feed?: VideoListResult;
+  hasApi: boolean;
+  isLoggedIn: boolean;
+  loading: boolean;
+  loadingVideoId?: string;
+  onDownload: (video: VideoSummary) => void;
+  onLogin: () => void;
+  onOpen: (id: string) => void;
+  onPage: (page: number) => void;
+  onQuickPlay: (video: VideoSummary) => void;
+  onRefresh: () => void;
+  quickPlayingId?: string;
+}) {
+  const videos = feed?.results ?? [];
+  const authorOptions = useMemo(() => subscriptionAuthors(videos), [videos]);
+  const [activeAuthorId, setActiveAuthorId] = useState("all");
+  const [authorsExpanded, setAuthorsExpanded] = useState(false);
+  const activeAuthor = authorOptions.find((author) => author.id === activeAuthorId);
+  const visibleVideos = activeAuthor
+    ? videos.filter((video) => subscriptionAuthorId(video) === activeAuthor.id)
+    : videos;
+
+  useEffect(() => {
+    if (activeAuthorId !== "all" && !authorOptions.some((author) => author.id === activeAuthorId)) {
+      setActiveAuthorId("all");
+    }
+  }, [activeAuthorId, authorOptions]);
+
+  return (
+    <>
+      <div className="section-header">
+        <div>
+          <p>订阅动态</p>
+          <h2>订阅视频</h2>
+        </div>
+        <button
+          className="icon-text-button"
+          disabled={!hasApi || !isLoggedIn || loading}
+          onClick={onRefresh}
+          type="button"
+        >
+          {loading ? <Loader2 className="spin" size={18} /> : <RefreshCw size={18} />}
+          刷新
+        </button>
+      </div>
+
+      {isLoggedIn && <ListScanSummary result={feed} />}
+
+      {!isLoggedIn ? (
+        <EmptyState
+          Icon={LogIn}
+          title="登录后查看订阅视频"
+          actionLabel="打开 Iwara 验证窗口"
+          disabled={!hasApi || loading}
+          onAction={onLogin}
+        />
+      ) : loading && !videos.length ? (
+        <SkeletonGrid />
+      ) : videos.length ? (
+        <>
+          <div className={authorsExpanded ? "author-filter-bar expanded" : "author-filter-bar"} role="tablist">
+            <button
+              aria-selected={activeAuthorId === "all"}
+              className={authorFilterButtonClass(activeAuthorId === "all", authorsExpanded)}
+              disabled={loading}
+              onClick={() => setActiveAuthorId("all")}
+              role="tab"
+              title="所有作者"
+              type="button"
+            >
+              <AuthorAvatar label="所有作者" />
+              {authorsExpanded && (
+                <span className="author-filter-name">
+                  所有作者
+                </span>
+              )}
+            </button>
+            {authorOptions.map((author) => (
+              <button
+                aria-selected={activeAuthorId === author.id}
+                className={authorFilterButtonClass(activeAuthorId === author.id, authorsExpanded)}
+                disabled={loading}
+                key={author.id}
+                onClick={() => setActiveAuthorId(author.id)}
+                role="tab"
+                title={author.label}
+                type="button"
+              >
+                <AuthorAvatar label={author.label} url={author.avatarUrl} />
+                {authorsExpanded && (
+                  <span className="author-filter-name">
+                    {author.label}
+                  </span>
+                )}
+              </button>
+            ))}
+            <button
+              aria-label={authorsExpanded ? "收起作者名称" : "展开作者名称"}
+              className="author-filter-toggle"
+              onClick={() => setAuthorsExpanded((current) => !current)}
+              title={authorsExpanded ? "收起作者名称" : "展开作者名称"}
+              type="button"
+            >
+              {authorsExpanded ? <ChevronUp size={18} /> : <ChevronDown size={18} />}
+            </button>
+          </div>
+
+          <div className="list-scan-summary">
+            {feed?.total ? <span>共 {compactNumber(feed.total)} 个订阅视频</span> : null}
+            <span>每页 {feed?.limit ?? 24} 个</span>
+            <span>{activeAuthor ? `当前页筛选：${visibleVideos.length} / ${videos.length}` : `当前页：${videos.length} 个`}</span>
+          </div>
+          {visibleVideos.length ? (
+            <div className="video-grid">
+              {visibleVideos.map((video) => (
+                <VideoCard
+                  downloading={downloadingVideoId === video.id}
+                  key={video.id}
+                  loading={loadingVideoId === video.id}
+                  onDownload={() => onDownload(video)}
+                  onOpen={() => onOpen(video.id)}
+                  onQuickPlay={() => onQuickPlay(video)}
+                  quickPlaying={quickPlayingId === video.id}
+                  video={video}
+                />
+              ))}
+            </div>
+          ) : (
+            <EmptyState Icon={UserRound} title="这个作者在当前页没有视频" />
+          )}
+
+          <div className="pager">
+            <button
+              disabled={!hasApi || loading || (feed?.page ?? 0) <= 0}
+              onClick={() => onPage(Math.max((feed?.page ?? 0) - 1, 0))}
+              type="button"
+            >
+              上一页
+            </button>
+            <span>第 {(feed?.page ?? 0) + 1} 页</span>
+            <button
+              disabled={!hasApi || loading}
+              onClick={() => onPage((feed?.page ?? 0) + 1)}
+              type="button"
+            >
+              下一页
+            </button>
+          </div>
+        </>
+      ) : (
+        <EmptyState
+          Icon={Bell}
+          title="还没有订阅视频"
+          actionLabel="重新加载"
+          disabled={!hasApi || loading}
+          onAction={onRefresh}
+        />
+      )}
+    </>
+  );
+}
+
+function AuthorAvatar({ label, url }: { label: string; url?: string }) {
+  const [imageReady, setImageReady] = useState(Boolean(url));
+
+  useEffect(() => {
+    setImageReady(Boolean(url));
+  }, [url]);
+
+  return (
+    <span className="author-avatar" aria-hidden="true">
+      {url && imageReady ? (
+        <img alt="" src={url} onError={() => setImageReady(false)} />
+      ) : (
+        <span>{authorInitial(label)}</span>
+      )}
+    </span>
+  );
+}
+
+function authorFilterButtonClass(active: boolean, expanded: boolean): string {
+  return [
+    "author-filter-button",
+    active ? "active" : "",
+    expanded ? "expanded" : ""
+  ].filter(Boolean).join(" ");
+}
+
 function ListScanSummary({ result }: { result?: VideoListResult }) {
-  if (!result || (!result.scannedPages && !result.blockedCount && !result.partialFailures?.length)) {
+  const attempts = result?.networkDiagnostics?.attempts ?? [];
+  if (!result || (!result.scannedPages && !result.blockedCount && !result.partialFailures?.length && !attempts.length)) {
     return null;
   }
 
   return (
-    <div className="list-scan-summary">
-      {result.scannedPages ? <span>已扫描 {result.scannedPages} 页</span> : null}
-      {result.blockedCount ? <span>已隐藏 {result.blockedCount} 个屏蔽标签视频</span> : null}
-      {result.partialFailures?.length ? <span>{result.partialFailures.length} 个请求失败，已显示部分结果</span> : null}
-    </div>
+    <>
+      <div className="list-scan-summary">
+        {result.scannedPages ? <span>已扫描 {result.scannedPages} 页</span> : null}
+        {result.blockedCount ? <span>已隐藏 {result.blockedCount} 个屏蔽标签视频</span> : null}
+        {result.partialFailures?.length ? <span>{result.partialFailures.length} 个请求失败，已显示部分结果</span> : null}
+      </div>
+      {attempts.length ? <NetworkDiagnostics attempts={attempts} /> : null}
+    </>
+  );
+}
+
+function NetworkDiagnostics({ attempts }: { attempts: VideoListNetworkAttempt[] }) {
+  const retryCount = attempts.filter((attempt) => attempt.attempt > 1).length;
+  const failedCount = attempts.filter((attempt) => !attempt.ok).length;
+  const totalElapsed = attempts.reduce((sum, attempt) => sum + attempt.elapsedMs, 0);
+  const lastAttempt = attempts.at(-1);
+  const statusText = retryCount
+    ? `已自动重试 ${retryCount} 次`
+    : failedCount
+      ? `${failedCount} 次失败`
+      : "连接正常";
+
+  return (
+    <details className="network-diagnostics">
+      <summary>
+        {failedCount ? <AlertTriangle size={15} /> : <Gauge size={15} />}
+        <span>网络诊断：{statusText}</span>
+        <span>{totalElapsed} ms</span>
+        {lastAttempt?.status ? <span>HTTP {lastAttempt.status}</span> : null}
+      </summary>
+      <div className="network-attempt-list">
+        {attempts.map((attempt, index) => (
+          <span className={attempt.ok ? "network-attempt ok" : "network-attempt failed"} key={`${attempt.endpoint}-${attempt.page}-${attempt.attempt}-${index}`}>
+            {attempt.endpoint} 第 {attempt.page + 1} 页 / 第 {attempt.attempt} 次：
+            {attempt.ok ? `HTTP ${attempt.status ?? "-"}，${attempt.resultCount ?? 0} 个，${attempt.elapsedMs} ms` : `${attempt.error ?? "请求失败"}，${attempt.elapsedMs} ms`}
+          </span>
+        ))}
+      </div>
+    </details>
   );
 }
 
@@ -1158,6 +1950,9 @@ function DetailPanel({
   sortedFormats,
   diagnostics,
   diagnosing,
+  downloading,
+  authorFollowBusy,
+  canFollowAuthor,
   video,
   onDiagnose,
   onBlockTag,
@@ -1166,6 +1961,8 @@ function DetailPanel({
   onFilterTag,
   onFollowTag,
   onOpenAuthor,
+  onToggleAuthorFollow,
+  onDownload,
   onPlay,
   onQualityChange,
   onRefreshComments,
@@ -1185,6 +1982,9 @@ function DetailPanel({
   sortedFormats: VideoDetail["formats"];
   diagnostics?: IwaraVideoDiagnostics;
   diagnosing: boolean;
+  downloading: boolean;
+  authorFollowBusy: boolean;
+  canFollowAuthor: boolean;
   video: VideoDetail;
   onDiagnose: () => void;
   onBlockTag: (tag: string) => void;
@@ -1193,6 +1993,8 @@ function DetailPanel({
   onFilterTag: (tag: string) => void;
   onFollowTag: (tag: string) => void;
   onOpenAuthor: (video: VideoDetail) => void;
+  onToggleAuthorFollow: (video: VideoDetail) => void;
+  onDownload: () => void;
   onPlay: (mode: PlayerMode) => void;
   onQualityChange: (quality: string) => void;
   onRefreshComments: () => void;
@@ -1211,6 +2013,7 @@ function DetailPanel({
   const displayedComments = comments?.comments ?? [];
   const followedTags = new Set(tagPreferences.followedTags);
   const blockedTags = new Set(tagPreferences.blockedTags);
+  const authorFollowing = video.uploaderFollowing === true;
 
   return (
     <aside className="detail-panel">
@@ -1231,15 +2034,27 @@ function DetailPanel({
             <strong>{authorName}</strong>
             {video.uploaderUsername && <span>@{video.uploaderUsername}</span>}
           </div>
-          <button
-            className="secondary-button compact"
-            disabled={!video.uploaderId}
-            onClick={() => onOpenAuthor(video)}
-            type="button"
-          >
-            <UserRound size={17} />
-            主页
-          </button>
+          <div className="detail-author-actions">
+            <button
+              className={authorFollowing ? "secondary-button compact author-follow-button active" : "secondary-button compact author-follow-button"}
+              disabled={!video.uploaderId || !canFollowAuthor || authorFollowBusy}
+              onClick={() => onToggleAuthorFollow(video)}
+              title={canFollowAuthor ? undefined : "登录后关注作者"}
+              type="button"
+            >
+              {authorFollowBusy ? <Loader2 className="spin" size={17} /> : authorFollowing ? <CheckCircle2 size={17} /> : <Heart size={17} />}
+              {authorFollowing ? "已关注" : "关注"}
+            </button>
+            <button
+              className="secondary-button compact"
+              disabled={!video.uploaderId}
+              onClick={() => onOpenAuthor(video)}
+              type="button"
+            >
+              <UserRound size={17} />
+              主页
+            </button>
+          </div>
         </div>
         <h2>{video.title}</h2>
         <div className="metric-row">
@@ -1316,6 +2131,10 @@ function DetailPanel({
           <button className="secondary-button" disabled={playing || !sortedFormats.length} onClick={() => onPlay("external")} type="button">
             <ExternalLink size={18} />
             外部
+          </button>
+          <button className="secondary-button" disabled={downloading || !sortedFormats.length} onClick={onDownload} type="button">
+            {downloading ? <Loader2 className="spin" size={18} /> : <Download size={18} />}
+            下载
           </button>
         </div>
 
@@ -1512,14 +2331,18 @@ function SpeedReportPanel({ report }: { report: MediaSpeedTestReport }) {
 
 function VideoCard({
   video,
+  downloading,
   loading,
   quickPlaying,
+  onDownload,
   onOpen,
   onQuickPlay
 }: {
   video: VideoSummary;
+  downloading: boolean;
   loading: boolean;
   quickPlaying: boolean;
+  onDownload: () => void;
   onOpen: () => void;
   onQuickPlay: () => void;
 }) {
@@ -1541,6 +2364,10 @@ function VideoCard({
           <span>{compactNumber(video.numViews)} 观看</span>
           <span>{compactNumber(video.numLikes)} 喜欢</span>
           {video.durationSeconds ? <span>{formatDuration(video.durationSeconds)}</span> : null}
+          <button className="quick-play-button" disabled={downloading} onClick={onDownload} type="button">
+            {downloading ? <Loader2 className="spin" size={16} /> : <Download size={16} />}
+            下载
+          </button>
           <button className="quick-play-button" onClick={onQuickPlay} type="button">
             {quickPlaying ? <Loader2 className="spin" size={16} /> : <Play size={16} />}
             播放
@@ -1591,8 +2418,10 @@ function HistoryView({
 function SettingsView({
   auth,
   diagnostics,
+  download,
   hasApi,
   mpvTest,
+  onChooseDownloadDirectory,
   onChooseExternal,
   onChooseMpv,
   onOpenIwaraSession,
@@ -1602,6 +2431,7 @@ function SettingsView({
   onSniffXVersionSalt,
   onSpeedTest,
   onTestMpv,
+  onUpdateDownload,
   onUpdateIwara,
   onUpdateMediaSpeed,
   onUpdatePlayer,
@@ -1620,8 +2450,10 @@ function SettingsView({
 }: {
   auth: AuthState;
   diagnostics?: PlayerDiagnostics;
+  download: AppSettings["download"];
   hasApi: boolean;
   mpvTest?: PlayerProbe;
+  onChooseDownloadDirectory: () => void;
   onChooseExternal: () => void;
   onChooseMpv: () => void;
   onOpenIwaraSession: () => void;
@@ -1631,6 +2463,7 @@ function SettingsView({
   onSniffXVersionSalt: () => void;
   onSpeedTest: () => void;
   onTestMpv: () => void;
+  onUpdateDownload: (partial: Partial<AppSettings["download"]>) => void;
   onUpdateIwara: (partial: Partial<AppSettings["iwara"]>) => void;
   onUpdateMediaSpeed: (partial: Partial<AppSettings["mediaSpeed"]>) => void;
   onUpdatePlayer: (partial: Partial<AppSettings["player"]>) => void;
@@ -1701,6 +2534,41 @@ function SettingsView({
               <option value="external">外部播放器</option>
             </select>
           </label>
+        </section>
+
+        <section className="settings-block">
+          <h3>下载偏好</h3>
+          <label className="field-label">
+            默认清晰度
+            <select
+              value={download.defaultQuality ?? ""}
+              onChange={(event) => onUpdateDownload({ defaultQuality: event.target.value || undefined })}
+            >
+              <option value="">最高可用</option>
+              {qualityOptions.map((quality) => (
+                <option key={quality} value={quality}>
+                  {quality}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label className="field-label">
+            保存路径
+            <div className="path-row">
+              <input
+                value={download.directory ?? ""}
+                onChange={(event) => onUpdateDownload({ directory: event.target.value || undefined })}
+                placeholder="选择视频下载保存文件夹"
+              />
+              <button className="secondary-button compact" disabled={!hasApi} onClick={onChooseDownloadDirectory} type="button">
+                <FolderOpen size={17} />
+                选择
+              </button>
+            </div>
+          </label>
+          <p className="subtle">
+            详情页下载会使用当前选择的清晰度；视频卡片会使用这里的默认清晰度，找不到时自动回退到最高可用清晰度。
+          </p>
         </section>
 
         <section className="settings-block">
@@ -2000,12 +2868,102 @@ function SkeletonGrid() {
   );
 }
 
+function updateVideoAuthorFollowing<T extends VideoSummary | undefined>(
+  video: T,
+  authorId: string,
+  following: boolean
+): T {
+  if (!video || video.uploaderId !== authorId) {
+    return video;
+  }
+
+  return { ...video, uploaderFollowing: following } as T;
+}
+
+function updateFeedAuthorFollowing(
+  feed: VideoListResult | undefined,
+  authorId: string,
+  following: boolean
+): VideoListResult | undefined {
+  if (!feed) {
+    return feed;
+  }
+
+  return {
+    ...feed,
+    results: feed.results.map((video) => updateVideoAuthorFollowing(video, authorId, following))
+  };
+}
+
+function updateFeedCollectionAuthorFollowing(
+  feeds: Partial<Record<FeedTabKey, VideoListResult>>,
+  authorId: string,
+  following: boolean
+): Partial<Record<FeedTabKey, VideoListResult>> {
+  const next = { ...feeds };
+  for (const key of Object.keys(next) as FeedTabKey[]) {
+    next[key] = updateFeedAuthorFollowing(next[key], authorId, following);
+  }
+
+  return next;
+}
+
 function feedTitle(tab: FeedTabKey): string {
   if (tab === "followed") {
     return "关注标签";
   }
 
   return tab === "date" ? "刚刚发布" : tab === "trending" ? "正在升温" : "长期热门";
+}
+
+function subscriptionAuthors(videos: VideoSummary[]): Array<{ id: string; label: string; avatarUrl?: string }> {
+  const authors = new Map<string, { id: string; label: string; avatarUrl?: string }>();
+  for (const video of videos) {
+    const id = subscriptionAuthorId(video);
+    const current = authors.get(id);
+    if (current) {
+      current.avatarUrl = current.avatarUrl ?? video.uploaderAvatarUrl;
+    } else {
+      authors.set(id, {
+        id,
+        label: subscriptionAuthorLabel(video),
+        avatarUrl: video.uploaderAvatarUrl
+      });
+    }
+  }
+
+  return [...authors.values()].sort((a, b) => a.label.localeCompare(b.label, "zh-CN"));
+}
+
+function subscriptionAuthorId(video: VideoSummary): string {
+  return video.uploaderId ?? `author:${video.uploaderUsername ?? video.uploaderName ?? "unknown"}`;
+}
+
+function subscriptionAuthorLabel(video: VideoSummary): string {
+  if (video.uploaderName && video.uploaderUsername && video.uploaderName !== video.uploaderUsername) {
+    return `${video.uploaderName} (@${video.uploaderUsername})`;
+  }
+
+  return video.uploaderName ?? video.uploaderUsername ?? "未知作者";
+}
+
+function authorInitial(label: string): string {
+  return label.trim().charAt(0).toUpperCase() || "?";
+}
+
+function searchSortLabel(sort: VideoSort): string {
+  switch (sort) {
+    case "relevance":
+      return "相关";
+    case "date":
+      return "最新";
+    case "views":
+      return "播放";
+    case "likes":
+      return "喜欢";
+    default:
+      return "相关";
+  }
 }
 
 function compactNumber(value: number): string {
@@ -2047,6 +3005,11 @@ function playStatus(result: { mode: PlayerMode; format: { label: string }; fallb
   return `已启动 ${player}${fallback}`;
 }
 
+function downloadStatus(result: DownloadResult): string {
+  const fallback = result.fallbackFrom ? `，${result.fallbackFrom} 不可用，已改用 ${result.format.label}` : "";
+  return `已下载 ${result.format.label}${fallback}：${formatBytes(result.bytesWritten)}。${result.path}`;
+}
+
 function formatLabelsText(labels: string[]): string {
   return labels.length ? labels.join(" / ") : "无清晰度";
 }
@@ -2061,6 +3024,26 @@ function formatSpeed(bytesPerSecond?: number): string {
   }
 
   return `${Math.max(Math.round(bytesPerSecond / 1024), 1)} KB/s`;
+}
+
+function formatBytes(value: number): string {
+  if (!Number.isFinite(value) || value <= 0) {
+    return "0 B";
+  }
+
+  if (value >= 1024 * 1024 * 1024) {
+    return `${(value / 1024 / 1024 / 1024).toFixed(1)} GB`;
+  }
+
+  if (value >= 1024 * 1024) {
+    return `${(value / 1024 / 1024).toFixed(1)} MB`;
+  }
+
+  if (value >= 1024) {
+    return `${Math.max(Math.round(value / 1024), 1)} KB`;
+  }
+
+  return `${Math.round(value)} B`;
 }
 
 function normalizeTagTokens(tags: string[]): string[] {

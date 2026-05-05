@@ -61,7 +61,10 @@ pub fn split_template_args(template: &str) -> AppResult<Vec<String>> {
     Ok(args)
 }
 
-pub fn build_external_player_args(template: &str, values: &PlayerTemplateValues<'_>) -> AppResult<Vec<String>> {
+pub fn build_external_player_args(
+    template: &str,
+    values: &PlayerTemplateValues<'_>,
+) -> AppResult<Vec<String>> {
     split_template_args(template).map(|args| {
         args.into_iter()
             .map(|arg| {
@@ -74,7 +77,9 @@ pub fn build_external_player_args(template: &str, values: &PlayerTemplateValues<
 }
 
 pub fn template_includes_url(template: &str) -> AppResult<bool> {
-    Ok(split_template_args(template)?.iter().any(|arg| arg.contains("{url}")))
+    Ok(split_template_args(template)?
+        .iter()
+        .any(|arg| arg.contains("{url}")))
 }
 
 #[cfg(test)]

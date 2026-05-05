@@ -1,10 +1,10 @@
 use std::collections::HashSet;
+use std::sync::OnceLock;
 
 use regex::Regex;
 use url::Url;
 
 pub fn normalize_media_host_list(hosts: &[String]) -> Vec<String> {
-    let pattern = Regex::new(r"(?i)^[a-z0-9-]+\.iwara\.tv$").unwrap();
     let mut seen = HashSet::new();
     let mut cleaned = Vec::new();
 
@@ -17,7 +17,7 @@ pub fn normalize_media_host_list(hosts: &[String]) -> Vec<String> {
             .next()
             .unwrap_or("")
             .to_string();
-        if pattern.is_match(&value) && seen.insert(value.clone()) {
+        if iwara_media_host_pattern().is_match(&value) && seen.insert(value.clone()) {
             cleaned.push(value);
         }
     }
@@ -57,6 +57,13 @@ fn normalize_absolute_media_url(url: &str) -> String {
     }
 }
 
+fn iwara_media_host_pattern() -> &'static Regex {
+    static PATTERN: OnceLock<Regex> = OnceLock::new();
+    PATTERN.get_or_init(|| {
+        Regex::new(r"(?i)^[a-z0-9-]+\.iwara\.tv$").expect("valid Iwara media host regex")
+    })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -72,7 +79,8 @@ mod tests {
             vec!["jade.iwara.tv".to_string(), "kafka.iwara.tv".to_string()]
         );
         assert_eq!(
-            replace_media_url_host("//jade.iwara.tv/view?hash=abc&path=2026", "kafka.iwara.tv").as_deref(),
+            replace_media_url_host("//jade.iwara.tv/view?hash=abc&path=2026", "kafka.iwara.tv")
+                .as_deref(),
             Some("https://kafka.iwara.tv/view?hash=abc&path=2026")
         );
     }

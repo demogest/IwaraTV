@@ -15,6 +15,8 @@ struct PersistedAuth {
     user_token: String,
     #[serde(default)]
     username: Option<String>,
+    #[serde(default)]
+    avatar_url: Option<String>,
 }
 
 pub struct AuthStore {
@@ -39,25 +41,50 @@ impl AuthStore {
     }
 
     pub fn get_media_token(&self) -> Option<String> {
-        self.media_token.lock().expect("media token mutex poisoned").clone()
+        self.media_token
+            .lock()
+            .expect("media token mutex poisoned")
+            .clone()
     }
 
     pub fn set_media_token(&self, token: String) {
         *self.media_token.lock().expect("media token mutex poisoned") = Some(token);
     }
 
-    pub fn save_user_token(&self, email: String, user_token: String, username: Option<String>) {
+    pub fn save_user_token(
+        &self,
+        email: String,
+        user_token: String,
+        username: Option<String>,
+        avatar_url: Option<String>,
+    ) {
         let persisted = PersistedAuth {
             email,
             user_token,
             username,
+            avatar_url,
         };
-        if let Ok(entry) = Entry::new(SERVICE, ACCOUNT) {
-            if let Ok(payload) = serde_json::to_string(&persisted) {
-                let _ = entry.set_password(&payload);
-            }
-        }
+        save_auth(&persisted);
         *self.persisted.lock().expect("auth mutex poisoned") = Some(persisted);
+    }
+
+    pub fn update_user_profile(&self, username: Option<String>, avatar_url: Option<String>) {
+        if username.is_none() && avatar_url.is_none() {
+            return;
+        }
+
+        let mut guard = self.persisted.lock().expect("auth mutex poisoned");
+        let Some(persisted) = guard.as_mut() else {
+            return;
+        };
+
+        if username.is_some() {
+            persisted.username = username;
+        }
+        if avatar_url.is_some() {
+            persisted.avatar_url = avatar_url;
+        }
+        save_auth(persisted);
     }
 
     pub fn clear(&self) {
@@ -70,13 +97,18 @@ impl AuthStore {
 
     pub fn state(&self) -> AuthState {
         let persisted = self.persisted.lock().expect("auth mutex poisoned").clone();
-        let username = persisted
-            .as_ref()
-            .and_then(|auth| auth.username.clone().or_else(|| username_from_jwt(&auth.user_token)));
+        let username = persisted.as_ref().and_then(|auth| {
+            auth.username
+                .clone()
+                .or_else(|| username_from_jwt(&auth.user_token))
+        });
         AuthState {
-            logged_in: persisted.as_ref().is_some_and(|auth| !auth.user_token.is_empty()),
+            logged_in: persisted
+                .as_ref()
+                .is_some_and(|auth| !auth.user_token.is_empty()),
             email: persisted.as_ref().map(|auth| auth.email.clone()),
             username,
+            avatar_url: persisted.as_ref().and_then(|auth| auth.avatar_url.clone()),
             has_media_token: self.get_media_token().is_some(),
             encryption_available: encryption_available(),
             site_session_ready: None,
@@ -131,12 +163,15 @@ fn jwt_payload(token: &str) -> Option<Value> {
     let mut parts = token.split('.');
     let _header = parts.next();
     let payload = parts.next()?;
-    let decoded = base64::engine::general_purpose::URL_SAFE_NO_PAD.decode(payload).ok()?;
+    let decoded = base64::engine::general_purpose::URL_SAFE_NO_PAD
+        .decode(payload)
+        .ok()?;
     serde_json::from_slice::<Value>(&decoded).ok()
 }
 
 fn value_at_path<'a>(value: &'a Value, path: &str) -> Option<&'a Value> {
-    path.split('.').try_fold(value, |current, key| current.get(key))
+    path.split('.')
+        .try_fold(value, |current, key| current.get(key))
 }
 
 fn non_empty_string(value: &Value) -> Option<String> {
@@ -158,6 +193,14 @@ fn load_auth() -> Option<PersistedAuth> {
     let entry = Entry::new(SERVICE, ACCOUNT).ok()?;
     let payload = entry.get_password().ok()?;
     serde_json::from_str(&payload).ok()
+}
+
+fn save_auth(auth: &PersistedAuth) {
+    if let Ok(entry) = Entry::new(SERVICE, ACCOUNT) {
+        if let Ok(payload) = serde_json::to_string(auth) {
+            let _ = entry.set_password(&payload);
+        }
+    }
 }
 
 fn encryption_available() -> bool {

@@ -7,8 +7,9 @@ use crate::error::AppResult;
 use crate::iwara_utils::DEFAULT_X_VERSION_SALT;
 use crate::media_speed::normalize_media_host_list;
 use crate::models::{
-    AppSettings, IwaraRuntimeSettings, MediaSpeedCandidateResult, MediaSpeedSettings, PartialAppSettings,
-    PlaybackHistoryItem, PlayerMode, PlayerSettings, TagPreferences, VideoSummary,
+    AppSettings, DownloadSettings, IwaraRuntimeSettings, MediaSpeedCandidateResult,
+    MediaSpeedSettings, PartialAppSettings, PlaybackHistoryItem, PlayerMode, PlayerSettings,
+    TagPreferences, VideoSummary,
 };
 
 pub struct SettingsStore {
@@ -34,7 +35,10 @@ impl SettingsStore {
     }
 
     pub fn get(&self) -> AppSettings {
-        self.settings.lock().expect("settings mutex poisoned").clone()
+        self.settings
+            .lock()
+            .expect("settings mutex poisoned")
+            .clone()
     }
 
     pub fn update(&self, partial: PartialAppSettings) -> AppResult<AppSettings> {
@@ -51,7 +55,9 @@ impl SettingsStore {
     pub fn add_history(&self, item: PlaybackHistoryItem) -> AppResult<AppSettings> {
         let next = {
             let mut settings = self.settings.lock().expect("settings mutex poisoned");
-            settings.history.retain(|entry| entry.video.id != item.video.id);
+            settings
+                .history
+                .retain(|entry| entry.video.id != item.video.id);
             settings.history.insert(0, item);
             settings.history.truncate(100);
             settings.clone()
@@ -149,6 +155,10 @@ pub fn default_settings() -> AppSettings {
             test_bytes: 524_288,
             timeout_ms: 4_500,
         },
+        download: DownloadSettings {
+            directory: default_download_directory(),
+            default_quality: Some("Source".to_string()),
+        },
         tag_preferences: TagPreferences {
             followed_tags: Vec::new(),
             blocked_tags: Vec::new(),
@@ -181,12 +191,16 @@ fn persist_settings(path: &Path, settings: &AppSettings) -> AppResult<()> {
     if let Some(parent) = path.parent() {
         fs::create_dir_all(parent)?;
     }
-    fs::write(path, format!("{}\n", serde_json::to_string_pretty(settings)?))?;
+    fs::write(
+        path,
+        format!("{}\n", serde_json::to_string_pretty(settings)?),
+    )?;
     Ok(())
 }
 
 fn merge_with_defaults(raw: serde_json::Value) -> AppSettings {
-    let mut defaults = serde_json::to_value(default_settings()).expect("default settings serializable");
+    let mut defaults =
+        serde_json::to_value(default_settings()).expect("default settings serializable");
     merge_json(&mut defaults, raw);
     serde_json::from_value(defaults).unwrap_or_else(|_| default_settings())
 }
@@ -260,6 +274,15 @@ fn apply_partial(settings: &mut AppSettings, partial: PartialAppSettings) {
         }
     }
 
+    if let Some(download) = partial.download {
+        if let Some(value) = download.directory {
+            settings.download.directory = value;
+        }
+        if let Some(value) = download.default_quality {
+            settings.download.default_quality = value;
+        }
+    }
+
     if let Some(tag_preferences) = partial.tag_preferences {
         if let Some(value) = tag_preferences.followed_tags {
             settings.tag_preferences.followed_tags = value;
@@ -281,9 +304,29 @@ fn apply_partial(settings: &mut AppSettings, partial: PartialAppSettings) {
 }
 
 fn normalize_settings(settings: &mut AppSettings) {
-    settings.media_speed.candidate_hosts = normalize_media_host_list(&settings.media_speed.candidate_hosts);
-    settings.media_speed.ranked_hosts = normalize_media_host_list(&settings.media_speed.ranked_hosts);
+    settings.media_speed.candidate_hosts =
+        normalize_media_host_list(&settings.media_speed.candidate_hosts);
+    settings.media_speed.ranked_hosts =
+        normalize_media_host_list(&settings.media_speed.ranked_hosts);
+    settings.download = normalize_download_settings(settings.download.clone());
     settings.tag_preferences = normalize_tag_preferences(settings.tag_preferences.clone());
+}
+
+fn normalize_download_settings(settings: DownloadSettings) -> DownloadSettings {
+    DownloadSettings {
+        directory: settings
+            .directory
+            .map(|value| value.trim().to_string())
+            .filter(|value| !value.is_empty()),
+        default_quality: settings
+            .default_quality
+            .map(|value| value.trim().to_string())
+            .filter(|value| !value.is_empty()),
+    }
+}
+
+fn default_download_directory() -> Option<String> {
+    dirs::download_dir().map(|path| path.join("IwaraTV").to_string_lossy().to_string())
 }
 
 fn normalize_tag_preferences(preferences: TagPreferences) -> TagPreferences {

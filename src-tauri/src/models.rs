@@ -14,6 +14,10 @@ pub struct VideoSummary {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub uploader_username: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
+    pub uploader_avatar_url: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub uploader_following: Option<bool>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub thumbnail_url: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub rating: Option<String>,
@@ -110,6 +114,15 @@ pub struct TagPreferences {
     pub blocked_tags: Vec<String>,
     pub max_scan_pages: u64,
     pub request_delay_ms: u64,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DownloadSettings {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub directory: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub default_quality: Option<String>,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -214,6 +227,28 @@ pub struct IwaraVideoDiagnostics {
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
+pub struct VideoListNetworkAttempt {
+    pub endpoint: String,
+    pub page: u64,
+    pub attempt: u64,
+    pub ok: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub status: Option<u16>,
+    pub elapsed_ms: u64,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub result_count: Option<usize>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub error: Option<String>,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct VideoListNetworkDiagnostics {
+    pub attempts: Vec<VideoListNetworkAttempt>,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct VideoListResult {
     pub sort: VideoSort,
     pub page: u64,
@@ -229,6 +264,8 @@ pub struct VideoListResult {
     pub partial_failures: Option<Vec<String>>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub total: Option<u64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub network_diagnostics: Option<VideoListNetworkDiagnostics>,
     pub results: Vec<VideoSummary>,
 }
 
@@ -260,6 +297,7 @@ pub struct AppSettings {
     pub player: PlayerSettings,
     pub iwara: IwaraRuntimeSettings,
     pub media_speed: MediaSpeedSettings,
+    pub download: DownloadSettings,
     pub tag_preferences: TagPreferences,
     pub history: Vec<PlaybackHistoryItem>,
 }
@@ -273,6 +311,8 @@ pub struct PartialAppSettings {
     pub iwara: Option<PartialIwaraRuntimeSettings>,
     #[serde(default)]
     pub media_speed: Option<PartialMediaSpeedSettings>,
+    #[serde(default)]
+    pub download: Option<PartialDownloadSettings>,
     #[serde(default)]
     pub tag_preferences: Option<PartialTagPreferences>,
     #[serde(default)]
@@ -328,6 +368,15 @@ pub struct PartialMediaSpeedSettings {
 
 #[derive(Clone, Debug, Default, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
+pub struct PartialDownloadSettings {
+    #[serde(default)]
+    pub directory: Option<Option<String>>,
+    #[serde(default)]
+    pub default_quality: Option<Option<String>>,
+}
+
+#[derive(Clone, Debug, Default, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct PartialTagPreferences {
     #[serde(default)]
     pub followed_tags: Option<Vec<String>>,
@@ -347,6 +396,8 @@ pub struct AuthState {
     pub email: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub username: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub avatar_url: Option<String>,
     pub has_media_token: bool,
     pub encryption_available: bool,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -376,6 +427,9 @@ pub enum VideoSort {
     Date,
     Trending,
     Popularity,
+    Relevance,
+    Views,
+    Likes,
 }
 
 impl VideoSort {
@@ -384,6 +438,9 @@ impl VideoSort {
             Self::Date => "date",
             Self::Trending => "trending",
             Self::Popularity => "popularity",
+            Self::Relevance => "relevance",
+            Self::Views => "views",
+            Self::Likes => "likes",
         }
     }
 }
@@ -428,6 +485,10 @@ pub struct ListVideosRequest {
     #[serde(default)]
     pub followed_only: Option<bool>,
     #[serde(default)]
+    pub subscribed_only: Option<bool>,
+    #[serde(default)]
+    pub search_only: Option<bool>,
+    #[serde(default)]
     pub user_id: Option<String>,
 }
 
@@ -448,6 +509,20 @@ pub struct SendVideoCommentRequest {
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
+pub struct AuthorFollowRequest {
+    pub author_id: String,
+    pub following: bool,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AuthorFollowResult {
+    pub author_id: String,
+    pub following: bool,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct PlayRequest {
     pub video_id: String,
     #[serde(default)]
@@ -462,6 +537,26 @@ pub struct PlayResult {
     pub ok: bool,
     pub mode: PlayerMode,
     pub player_path: String,
+    pub format: VideoFormat,
+    pub video: VideoDetail,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub fallback_from: Option<String>,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DownloadVideoRequest {
+    pub video_id: String,
+    #[serde(default)]
+    pub quality: Option<String>,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DownloadResult {
+    pub ok: bool,
+    pub path: String,
+    pub bytes_written: u64,
     pub format: VideoFormat,
     pub video: VideoDetail,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -500,6 +595,22 @@ pub struct SelectExecutableRequest {
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct SelectExecutableResult {
+    pub canceled: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub path: Option<String>,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SelectDirectoryRequest {
+    pub title: String,
+    #[serde(default)]
+    pub current_path: Option<String>,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SelectDirectoryResult {
     pub canceled: bool,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub path: Option<String>,

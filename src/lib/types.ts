@@ -1,4 +1,4 @@
-export type VideoSort = "date" | "trending" | "popularity";
+export type VideoSort = "date" | "trending" | "popularity" | "relevance" | "views" | "likes";
 export type RatingFilter = "all" | "general" | "ecchi";
 export type PlayerMode = "mpv" | "external";
 
@@ -9,6 +9,8 @@ export interface VideoSummary {
   uploaderId?: string;
   uploaderName?: string;
   uploaderUsername?: string;
+  uploaderAvatarUrl?: string;
+  uploaderFollowing?: boolean;
   thumbnailUrl?: string;
   rating?: string;
   tags: string[];
@@ -77,6 +79,11 @@ export interface TagPreferences {
   requestDelayMs: number;
 }
 
+export interface DownloadSettings {
+  directory?: string;
+  defaultQuality?: string;
+}
+
 export interface MediaSpeedCandidateResult {
   host: string;
   url: string;
@@ -142,6 +149,21 @@ export interface IwaraVideoDiagnostics {
   network?: IwaraNetworkCapture;
 }
 
+export interface VideoListNetworkAttempt {
+  endpoint: string;
+  page: number;
+  attempt: number;
+  ok: boolean;
+  status?: number;
+  elapsedMs: number;
+  resultCount?: number;
+  error?: string;
+}
+
+export interface VideoListNetworkDiagnostics {
+  attempts: VideoListNetworkAttempt[];
+}
+
 export interface VideoListResult {
   sort: VideoSort;
   page: number;
@@ -152,6 +174,7 @@ export interface VideoListResult {
   blockedCount?: number;
   partialFailures?: string[];
   total?: number;
+  networkDiagnostics?: VideoListNetworkDiagnostics;
   results: VideoSummary[];
 }
 
@@ -174,6 +197,7 @@ export interface AppSettings {
   player: PlayerSettings;
   iwara: IwaraRuntimeSettings;
   mediaSpeed: MediaSpeedSettings;
+  download: DownloadSettings;
   tagPreferences: TagPreferences;
   history: PlaybackHistoryItem[];
 }
@@ -182,6 +206,7 @@ export interface AuthState {
   loggedIn: boolean;
   email?: string;
   username?: string;
+  avatarUrl?: string;
   hasMediaToken: boolean;
   encryptionAvailable: boolean;
   siteSessionReady?: boolean;
@@ -204,6 +229,8 @@ export interface ListVideosRequest {
   query?: string;
   tags?: string[];
   followedOnly?: boolean;
+  subscribedOnly?: boolean;
+  searchOnly?: boolean;
   userId?: string;
 }
 
@@ -217,6 +244,16 @@ export interface SendVideoCommentRequest {
   parentId?: string;
 }
 
+export interface AuthorFollowRequest {
+  authorId: string;
+  following: boolean;
+}
+
+export interface AuthorFollowResult {
+  authorId: string;
+  following: boolean;
+}
+
 export interface PlayRequest {
   videoId: string;
   quality?: string;
@@ -227,6 +264,20 @@ export interface PlayResult {
   ok: true;
   mode: PlayerMode;
   playerPath: string;
+  format: VideoFormat;
+  video: VideoDetail;
+  fallbackFrom?: string;
+}
+
+export interface DownloadVideoRequest {
+  videoId: string;
+  quality?: string;
+}
+
+export interface DownloadResult {
+  ok: true;
+  path: string;
+  bytesWritten: number;
   format: VideoFormat;
   video: VideoDetail;
   fallbackFrom?: string;
@@ -253,6 +304,16 @@ export interface SelectExecutableRequest {
 }
 
 export interface SelectExecutableResult {
+  canceled: boolean;
+  path?: string;
+}
+
+export interface SelectDirectoryRequest {
+  title: string;
+  currentPath?: string;
+}
+
+export interface SelectDirectoryResult {
   canceled: boolean;
   path?: string;
 }

@@ -6,9 +6,11 @@ use tauri_plugin_opener::OpenerExt;
 use crate::error::{message, AppResult};
 use crate::media_speed::media_url_host;
 use crate::models::{
-    AppSettings, AuthState, IwaraVideoDiagnostics, ListVideoCommentsRequest, ListVideosRequest,
-    LoginRequest, MediaSpeedTestReport, PartialAppSettings, PlayRequest, PlayResult, PlayerDiagnostics,
-    PlayerProbe, SelectExecutableRequest, SelectExecutableResult, SendVideoCommentRequest, VideoComment,
+    AppSettings, AuthState, AuthorFollowRequest, AuthorFollowResult, DownloadResult,
+    DownloadVideoRequest, IwaraVideoDiagnostics, ListVideoCommentsRequest, ListVideosRequest,
+    LoginRequest, MediaSpeedTestReport, PartialAppSettings, PlayRequest, PlayResult,
+    PlayerDiagnostics, PlayerProbe, SelectDirectoryRequest, SelectDirectoryResult,
+    SelectExecutableRequest, SelectExecutableResult, SendVideoCommentRequest, VideoComment,
     VideoCommentsResult, VideoDetail, VideoListResult, XVersionSaltReport,
 };
 use crate::state::AppState;
@@ -26,17 +28,23 @@ pub async fn iwara_list_videos(
 }
 
 #[tauri::command]
-pub async fn iwara_get_video(state: State<'_, AppState>, id_or_url: String) -> AppResult<VideoDetail> {
+pub async fn iwara_get_video(
+    state: State<'_, AppState>,
+    id_or_url: String,
+) -> AppResult<VideoDetail> {
     maybe_sniff_x_version_salt(&state).await;
     let video = state.iwara_client.get_video(&id_or_url).await?;
     state.settings.add_media_hosts(
-        video.formats
+        video
+            .formats
             .iter()
             .filter_map(|format| media_url_host(&format.url))
             .collect(),
     )?;
     let settings = state.settings.get();
-    Ok(state.iwara_client.route_video_formats(video, &settings.media_speed))
+    Ok(state
+        .iwara_client
+        .route_video_formats(video, &settings.media_speed))
 }
 
 #[tauri::command]
@@ -71,7 +79,10 @@ pub async fn iwara_list_comments(
     state: State<'_, AppState>,
     request: ListVideoCommentsRequest,
 ) -> AppResult<VideoCommentsResult> {
-    state.iwara_client.list_video_comments(&request.video_id).await
+    state
+        .iwara_client
+        .list_video_comments(&request.video_id)
+        .await
 }
 
 #[tauri::command]
@@ -83,7 +94,17 @@ pub async fn iwara_send_comment(
 }
 
 #[tauri::command]
-pub async fn iwara_sniff_x_version_salt(state: State<'_, AppState>) -> AppResult<XVersionSaltReport> {
+pub async fn iwara_set_author_following(
+    state: State<'_, AppState>,
+    request: AuthorFollowRequest,
+) -> AppResult<AuthorFollowResult> {
+    state.iwara_client.set_author_following(request).await
+}
+
+#[tauri::command]
+pub async fn iwara_sniff_x_version_salt(
+    state: State<'_, AppState>,
+) -> AppResult<XVersionSaltReport> {
     let report = state.iwara_client.sniff_x_version_salt().await?;
     update_x_version_salt(&state, &report)?;
     Ok(report)
@@ -106,7 +127,32 @@ pub async fn iwara_speed_test_video(
 }
 
 #[tauri::command]
-pub async fn player_play(state: State<'_, AppState>, request: PlayRequest) -> AppResult<PlayResult> {
+pub async fn iwara_download_video(
+    state: State<'_, AppState>,
+    request: DownloadVideoRequest,
+) -> AppResult<DownloadResult> {
+    maybe_sniff_x_version_salt(&state).await;
+    let settings = state.settings.get();
+    let result = state
+        .iwara_client
+        .download_video(request, &settings.download, &settings.media_speed)
+        .await?;
+    state.settings.add_media_hosts(
+        result
+            .video
+            .formats
+            .iter()
+            .filter_map(|format| media_url_host(&format.url))
+            .collect(),
+    )?;
+    Ok(result)
+}
+
+#[tauri::command]
+pub async fn player_play(
+    state: State<'_, AppState>,
+    request: PlayRequest,
+) -> AppResult<PlayResult> {
     state
         .player
         .play(&state.iwara_client, &state.settings, request)
@@ -195,6 +241,39 @@ pub async fn system_select_executable(
 }
 
 #[tauri::command]
+pub async fn system_select_directory(
+    app: AppHandle,
+    request: SelectDirectoryRequest,
+) -> AppResult<SelectDirectoryResult> {
+    let mut picker = app.dialog().file().set_title(request.title);
+    if let Some(current_path) = request.current_path {
+        let current = std::path::PathBuf::from(current_path);
+        let directory = if current.is_dir() {
+            current
+        } else {
+            current.parent().map(ToOwned::to_owned).unwrap_or(current)
+        };
+        picker = picker.set_directory(directory);
+    }
+    let selected = picker.blocking_pick_folder();
+    Ok(match selected {
+        Some(path) => SelectDirectoryResult {
+            canceled: false,
+            path: Some(
+                path.into_path()
+                    .map_err(|err| message(err.to_string()))?
+                    .to_string_lossy()
+                    .to_string(),
+            ),
+        },
+        None => SelectDirectoryResult {
+            canceled: true,
+            path: None,
+        },
+    })
+}
+
+#[tauri::command]
 pub fn system_open_external(app: AppHandle, url: String) -> AppResult<()> {
     app.opener()
         .open_url(url, None::<&str>)
@@ -211,11 +290,26 @@ pub fn system_write_clipboard(app: AppHandle, text: String) -> AppResult<()> {
 async fn merged_auth_state(state: &State<'_, AppState>) -> AppResult<AuthState> {
     let base = state.iwara_client.auth_state();
     let session = state.session.state().await?;
-    let current_username = state.iwara_client.current_username().await.ok().flatten();
+    let mut username = base.username.clone().or_else(|| session.username.clone());
+    let mut avatar_url = base
+        .avatar_url
+        .clone()
+        .or_else(|| session.avatar_url.clone());
+    if username.is_none() || avatar_url.is_none() {
+        if let Ok(profile) = state.iwara_client.current_user_profile().await {
+            if username.is_none() {
+                username = profile.username;
+            }
+            if avatar_url.is_none() {
+                avatar_url = profile.avatar_url;
+            }
+        }
+    }
     Ok(AuthState {
         logged_in: base.logged_in,
         email: base.email.or(session.email),
-        username: current_username.or(base.username).or(session.username),
+        username,
+        avatar_url,
         has_media_token: base.has_media_token,
         encryption_available: base.encryption_available,
         site_session_ready: session.site_session_ready,
@@ -229,7 +323,9 @@ async fn merged_auth_state(state: &State<'_, AppState>) -> AppResult<AuthState> 
 
 async fn maybe_sniff_x_version_salt(state: &State<'_, AppState>) {
     let current = state.settings.get().iwara;
-    if !current.auto_sniff_x_version_salt || is_fresh_iso_date(current.last_salt_sniff_at.as_deref(), 24 * 60 * 60) {
+    if !current.auto_sniff_x_version_salt
+        || is_fresh_iso_date(current.last_salt_sniff_at.as_deref(), 24 * 60 * 60)
+    {
         return;
     }
     if let Ok(report) = state.iwara_client.sniff_x_version_salt().await {
@@ -237,7 +333,10 @@ async fn maybe_sniff_x_version_salt(state: &State<'_, AppState>) {
     }
 }
 
-fn update_x_version_salt(state: &State<'_, AppState>, report: &XVersionSaltReport) -> AppResult<AppSettings> {
+fn update_x_version_salt(
+    state: &State<'_, AppState>,
+    report: &XVersionSaltReport,
+) -> AppResult<AppSettings> {
     let current = state.settings.get().iwara;
     state.settings.update(PartialAppSettings {
         iwara: Some(crate::models::PartialIwaraRuntimeSettings {
@@ -254,7 +353,9 @@ fn is_fresh_iso_date(value: Option<&str>, max_age_seconds: i64) -> bool {
     let Some(value) = value else {
         return false;
     };
-    let Ok(date) = time::OffsetDateTime::parse(value, &time::format_description::well_known::Rfc3339) else {
+    let Ok(date) =
+        time::OffsetDateTime::parse(value, &time::format_description::well_known::Rfc3339)
+    else {
         return false;
     };
     (time::OffsetDateTime::now_utc() - date).whole_seconds() < max_age_seconds

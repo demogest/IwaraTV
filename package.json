@@ -4,6 +4,7 @@
   "private": true,
   "description": "Local Iwara.tv browser and MPV launcher.",
   "author": "Demogest",
+  "license": "MIT",
   "engines": {
     "node": ">=24.14.1",
     "npm": ">=11.11.0"

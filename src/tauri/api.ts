@@ -1,6 +1,10 @@
 import type {
   AppSettings,
+  AuthorFollowRequest,
+  AuthorFollowResult,
   AuthState,
+  DownloadResult,
+  DownloadVideoRequest,
   IwaraVideoDiagnostics,
   ListVideoCommentsRequest,
   ListVideosRequest,
@@ -13,6 +17,8 @@ import type {
   SendVideoCommentRequest,
   SelectExecutableRequest,
   SelectExecutableResult,
+  SelectDirectoryRequest,
+  SelectDirectoryResult,
   VideoComment,
   VideoCommentsResult,
   VideoDetail,
@@ -38,10 +44,12 @@ const commandMap = {
   listVideos: "iwara_list_videos",
   getVideo: "iwara_get_video",
   diagnoseVideo: "iwara_diagnose_video",
+  setAuthorFollowing: "iwara_set_author_following",
   listComments: "iwara_list_comments",
   sendComment: "iwara_send_comment",
   sniffXVersionSalt: "iwara_sniff_x_version_salt",
   speedTestVideo: "iwara_speed_test_video",
+  downloadVideo: "iwara_download_video",
   play: "player_play",
   probe: "player_probe",
   testMpv: "player_test_mpv",
@@ -52,6 +60,7 @@ const commandMap = {
   logout: "auth_logout",
   openIwaraSession: "auth_open_iwara_session",
   selectExecutable: "system_select_executable",
+  selectDirectory: "system_select_directory",
   openExternal: "system_open_external",
   writeClipboard: "system_write_clipboard"
 } as const;
@@ -70,11 +79,14 @@ export const tauriApi = {
     listVideos: (request: ListVideosRequest) => tauriInvoke<VideoListResult>(commandMap.listVideos, { request }),
     getVideo: (idOrUrl: string) => tauriInvoke<VideoDetail>(commandMap.getVideo, { idOrUrl }),
     diagnoseVideo: (idOrUrl: string) => tauriInvoke<IwaraVideoDiagnostics>(commandMap.diagnoseVideo, { idOrUrl }),
+    setAuthorFollowing: (request: AuthorFollowRequest) =>
+      tauriInvoke<AuthorFollowResult>(commandMap.setAuthorFollowing, { request }),
     listComments: (request: ListVideoCommentsRequest) =>
       tauriInvoke<VideoCommentsResult>(commandMap.listComments, { request }),
     sendComment: (request: SendVideoCommentRequest) => tauriInvoke<VideoComment>(commandMap.sendComment, { request }),
     sniffXVersionSalt: () => tauriInvoke<XVersionSaltReport>(commandMap.sniffXVersionSalt),
-    speedTestVideo: (idOrUrl: string) => tauriInvoke<MediaSpeedTestReport>(commandMap.speedTestVideo, { idOrUrl })
+    speedTestVideo: (idOrUrl: string) => tauriInvoke<MediaSpeedTestReport>(commandMap.speedTestVideo, { idOrUrl }),
+    downloadVideo: (request: DownloadVideoRequest) => tauriInvoke<DownloadResult>(commandMap.downloadVideo, { request })
   },
   player: {
     play: (request: PlayRequest) => tauriInvoke<PlayResult>(commandMap.play, { request }),
@@ -94,6 +106,8 @@ export const tauriApi = {
   system: {
     selectExecutable: (request: SelectExecutableRequest) =>
       tauriInvoke<SelectExecutableResult>(commandMap.selectExecutable, { request }),
+    selectDirectory: (request: SelectDirectoryRequest) =>
+      tauriInvoke<SelectDirectoryResult>(commandMap.selectDirectory, { request }),
     openExternal: (url: string) => tauriInvoke<void>(commandMap.openExternal, { url }),
     writeClipboard: (text: string) => tauriInvoke<void>(commandMap.writeClipboard, { text })
   }

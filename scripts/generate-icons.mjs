@@ -26,36 +26,28 @@ fs.mkdirSync(iconDir, { recursive: true });
 
 const svg = `<?xml version="1.0" encoding="UTF-8"?>
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" role="img" aria-labelledby="title desc">
-  <title id="title">IwaraTV original mark</title>
-  <desc id="desc">An original Iwara-inspired dark rounded app icon with a teal video frame, warm play mark, soft coral accent, and compact media signal dot.</desc>
+  <title id="title">IwaraTV Iwara-style mark</title>
+  <desc id="desc">An original Iwara-style green app icon with a white angled diamond ribbon, dark center cutout, and compact play mark.</desc>
   <defs>
-    <linearGradient id="bg" x1="128" y1="80" x2="896" y2="944" gradientUnits="userSpaceOnUse">
-      <stop offset="0" stop-color="#22282d"/>
-      <stop offset="1" stop-color="#0f1115"/>
+    <linearGradient id="bg" x1="128" y1="64" x2="896" y2="960" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#597d5b"/>
+      <stop offset=".56" stop-color="#496d4e"/>
+      <stop offset="1" stop-color="#385642"/>
     </linearGradient>
-    <linearGradient id="frame" x1="176" y1="146" x2="848" y2="878" gradientUnits="userSpaceOnUse">
-      <stop offset="0" stop-color="#2c8478"/>
-      <stop offset="1" stop-color="#244a52"/>
+    <linearGradient id="cutout" x1="384" y1="296" x2="684" y2="716" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#243a2f"/>
+      <stop offset="1" stop-color="#182920"/>
     </linearGradient>
-    <linearGradient id="screen" x1="218" y1="198" x2="802" y2="832" gradientUnits="userSpaceOnUse">
-      <stop offset="0" stop-color="#1b2228"/>
-      <stop offset="1" stop-color="#101216"/>
-    </linearGradient>
-    <linearGradient id="gold" x1="308" y1="250" x2="718" y2="766" gradientUnits="userSpaceOnUse">
-      <stop offset="0" stop-color="#f6d179"/>
-      <stop offset="1" stop-color="#dfad46"/>
-    </linearGradient>
+    <filter id="soft-shadow" x="0" y="0" width="1024" height="1024" color-interpolation-filters="sRGB">
+      <feDropShadow dx="28" dy="34" stdDeviation="20" flood-color="#17251c" flood-opacity=".32"/>
+    </filter>
   </defs>
-  <rect x="64" y="64" width="896" height="896" rx="220" fill="url(#bg)"/>
-  <rect x="136" y="152" width="752" height="720" rx="184" fill="url(#frame)"/>
-  <rect x="178" y="192" width="668" height="640" rx="148" fill="url(#screen)"/>
-  <rect x="226" y="220" width="572" height="28" rx="14" fill="#ffffff" opacity=".12"/>
-  <path d="M334 196a64 64 0 1 1 0 128 64 64 0 0 1 0-128Z" fill="url(#gold)"/>
-  <rect x="278" y="338" width="112" height="386" rx="56" fill="url(#gold)"/>
-  <path d="M474 318 474 706 774 512Z" fill="#080a0d" opacity=".28" transform="translate(20 24)"/>
-  <path d="M458 306 458 718 780 512Z" fill="url(#gold)"/>
-  <circle cx="742" cy="284" r="40" fill="#ed735f"/>
-  <circle cx="792" cy="336" r="16" fill="#52bda8"/>
+  <rect x="64" y="64" width="896" height="896" rx="196" fill="url(#bg)"/>
+  <path d="M424 108 578 214 926 512 578 810 424 916 92 512Z" fill="#f8faf6" filter="url(#soft-shadow)"/>
+  <path d="M540 288 760 512 540 736 344 512Z" fill="url(#cutout)"/>
+  <path d="M420 382 420 642 656 512Z" fill="#f8faf6"/>
+  <path d="M420 382 420 642 456 622 456 402Z" fill="#eef5ee"/>
+  <path d="M160 512 438 122 424 108 92 512 424 916 438 902Z" fill="#ffffff" opacity=".24"/>
 </svg>
 `;
 
@@ -81,36 +73,68 @@ function renderPng(size) {
   const high = new Uint8ClampedArray(width * height * 4);
 
   const c = (value) => value * scale;
-  fillRoundRect(high, width, height, c(64), c(64), c(896), c(896), c(220), hex("#22282d"), hex("#0f1115"));
-  fillRoundRect(high, width, height, c(136), c(152), c(752), c(720), c(184), hex("#2c8478"), hex("#244a52"));
-  fillRoundRect(high, width, height, c(178), c(192), c(668), c(640), c(148), hex("#1b2228"), hex("#101216"));
-  fillRoundRect(high, width, height, c(226), c(220), c(572), c(28), c(14), [255, 255, 255, 31]);
-  fillCircle(high, width, height, c(334), c(260), c(64), hex("#f2c96f"), hex("#dfad46"));
-  fillRoundRect(high, width, height, c(278), c(338), c(112), c(386), c(56), hex("#f2c96f"), hex("#dfad46"));
+  const outer = [
+    [c(424), c(108)],
+    [c(578), c(214)],
+    [c(926), c(512)],
+    [c(578), c(810)],
+    [c(424), c(916)],
+    [c(92), c(512)]
+  ];
+  const shadow = outer.map(([x, y]) => [x + c(28), y + c(34)]);
+
+  fillRoundRect(high, width, height, c(64), c(64), c(896), c(896), c(196), hex("#597d5b"), hex("#385642"));
+  fillPolygon(high, width, height, shadow, [23, 37, 28, 82]);
+  fillPolygon(high, width, height, outer, hex("#f8faf6"));
   fillPolygon(
     high,
     width,
     height,
     [
-      [c(494), c(342)],
-      [c(494), c(730)],
-      [c(794), c(536)]
+      [c(540), c(288)],
+      [c(760), c(512)],
+      [c(540), c(736)],
+      [c(344), c(512)]
     ],
-    [8, 10, 13, 72]
+    hex("#243a2f")
   );
   fillPolygon(
     high,
     width,
     height,
     [
-      [c(458), c(306)],
-      [c(458), c(718)],
-      [c(780), c(512)]
+      [c(420), c(382)],
+      [c(420), c(642)],
+      [c(656), c(512)]
     ],
-    hex("#f4cf76")
+    hex("#f8faf6")
   );
-  fillCircle(high, width, height, c(742), c(284), c(40), hex("#ed735f"));
-  fillCircle(high, width, height, c(792), c(336), c(16), hex("#52bda8"));
+  fillPolygon(
+    high,
+    width,
+    height,
+    [
+      [c(420), c(382)],
+      [c(420), c(642)],
+      [c(456), c(622)],
+      [c(456), c(402)]
+    ],
+    hex("#eef5ee")
+  );
+  fillPolygon(
+    high,
+    width,
+    height,
+    [
+      [c(160), c(512)],
+      [c(438), c(122)],
+      [c(424), c(108)],
+      [c(92), c(512)],
+      [c(424), c(916)],
+      [c(438), c(902)]
+    ],
+    [255, 255, 255, 61]
+  );
 
   const rgba = downsample(high, width, height, ss);
   return encodePng(size, size, rgba);

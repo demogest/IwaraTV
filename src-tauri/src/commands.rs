@@ -1,3 +1,6 @@
+use std::path::PathBuf;
+use std::sync::Arc;
+
 use tauri::{AppHandle, State};
 use tauri_plugin_clipboard_manager::ClipboardExt;
 use tauri_plugin_dialog::DialogExt;
@@ -6,12 +9,13 @@ use tauri_plugin_opener::OpenerExt;
 use crate::error::{message, AppResult};
 use crate::media_speed::media_url_host;
 use crate::models::{
-    AppSettings, AuthState, AuthorFollowRequest, AuthorFollowResult, DownloadResult,
-    DownloadVideoRequest, IwaraVideoDiagnostics, ListVideoCommentsRequest, ListVideosRequest,
-    LoginRequest, MediaSpeedTestReport, PartialAppSettings, PlayRequest, PlayResult,
-    PlayerDiagnostics, PlayerProbe, SelectDirectoryRequest, SelectDirectoryResult,
-    SelectExecutableRequest, SelectExecutableResult, SendVideoCommentRequest, VideoComment,
-    VideoCommentsResult, VideoDetail, VideoListResult, XVersionSaltReport,
+    AppSettings, AuthState, AuthorFollowRequest, AuthorFollowResult, DownloadDeleteRequest,
+    DownloadResult, DownloadState, DownloadTask, DownloadVideoRequest, IwaraVideoDiagnostics,
+    ListVideoCommentsRequest, ListVideosRequest, LoginRequest, MediaSpeedTestReport,
+    PartialAppSettings, PlayRequest, PlayResult, PlayerDiagnostics, PlayerProbe,
+    SelectDirectoryRequest, SelectDirectoryResult, SelectExecutableRequest, SelectExecutableResult,
+    SendVideoCommentRequest, VideoComment, VideoCommentsResult, VideoDetail, VideoListResult,
+    XVersionSaltReport,
 };
 use crate::state::AppState;
 
@@ -145,7 +149,80 @@ pub async fn iwara_download_video(
             .filter_map(|format| media_url_host(&format.url))
             .collect(),
     )?;
+    state.downloads.complete(
+        &format!("legacy-{}", crate::iwara_client::now_iso_string()),
+        result.clone(),
+    )?;
     Ok(result)
+}
+
+#[tauri::command]
+pub fn downloads_list(state: State<'_, AppState>) -> DownloadState {
+    state.downloads.state()
+}
+
+#[tauri::command]
+pub async fn downloads_start(
+    state: State<'_, AppState>,
+    request: DownloadVideoRequest,
+) -> AppResult<DownloadTask> {
+    maybe_sniff_x_version_salt(&state).await;
+    let request = normalize_download_request(&state, request);
+    let start = state.downloads.start(request.clone());
+    if start.is_new {
+        spawn_download_task(&state, start.task.id.clone(), request);
+    }
+    Ok(start.task)
+}
+
+#[tauri::command]
+pub async fn downloads_retry(state: State<'_, AppState>, id: String) -> AppResult<DownloadTask> {
+    maybe_sniff_x_version_salt(&state).await;
+    let request = normalize_download_request(&state, state.downloads.request_for_retry(&id)?);
+    let start = state.downloads.start(request.clone());
+    if start.is_new {
+        spawn_download_task(&state, start.task.id.clone(), request);
+    }
+    Ok(start.task)
+}
+
+#[tauri::command]
+pub async fn downloads_delete(
+    state: State<'_, AppState>,
+    request: DownloadDeleteRequest,
+) -> AppResult<DownloadState> {
+    state.downloads.delete(request).await
+}
+
+#[tauri::command]
+pub fn downloads_open_file(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    id: String,
+) -> AppResult<()> {
+    let path = download_task_path(&state, &id)?;
+    app.opener()
+        .open_path(path, None::<&str>)
+        .map_err(|err| message(err.to_string()))
+}
+
+#[tauri::command]
+pub fn downloads_open_folder(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    id: String,
+) -> AppResult<()> {
+    let path = PathBuf::from(download_task_path(&state, &id)?);
+    let directory = if path.is_dir() {
+        path
+    } else {
+        path.parent()
+            .map(ToOwned::to_owned)
+            .ok_or_else(|| message("下载文件没有可打开的文件夹。"))?
+    };
+    app.opener()
+        .open_path(directory.to_string_lossy().to_string(), None::<&str>)
+        .map_err(|err| message(err.to_string()))
 }
 
 #[tauri::command]
@@ -285,6 +362,71 @@ pub fn system_write_clipboard(app: AppHandle, text: String) -> AppResult<()> {
     app.clipboard()
         .write_text(text)
         .map_err(|err| message(err.to_string()))
+}
+
+fn spawn_download_task(
+    state: &State<'_, AppState>,
+    task_id: String,
+    request: DownloadVideoRequest,
+) {
+    let iwara_client = Arc::clone(&state.iwara_client);
+    let settings_store = Arc::clone(&state.settings);
+    let downloads = Arc::clone(&state.downloads);
+
+    tokio::spawn(async move {
+        let settings = settings_store.get();
+        let result: AppResult<DownloadResult> = async {
+            let plan = iwara_client
+                .prepare_download(request, &settings.download, &settings.media_speed)
+                .await?;
+            downloads.mark_downloading(&task_id, &plan)?;
+            let progress_downloads = Arc::clone(&downloads);
+            let progress_task_id = task_id.clone();
+            let bytes_written = iwara_client
+                .download_plan_to_file(&plan, &settings.download, move |bytes, total| {
+                    progress_downloads.update_progress(&progress_task_id, bytes, total);
+                })
+                .await?;
+            let result = plan.clone().result(bytes_written);
+            settings_store.add_media_hosts(
+                result
+                    .video
+                    .formats
+                    .iter()
+                    .filter_map(|format| media_url_host(&format.url))
+                    .collect(),
+            )?;
+            Ok(result)
+        }
+        .await;
+
+        match result {
+            Ok(result) => {
+                let _ = downloads.complete(&task_id, result);
+            }
+            Err(err) => {
+                let _ = downloads.fail(&task_id, err.to_string());
+            }
+        }
+    });
+}
+
+fn download_task_path(state: &State<'_, AppState>, id: &str) -> AppResult<String> {
+    state
+        .downloads
+        .task(id)
+        .and_then(|task| task.path)
+        .ok_or_else(|| message("下载记录没有可打开的文件路径。"))
+}
+
+fn normalize_download_request(
+    state: &State<'_, AppState>,
+    mut request: DownloadVideoRequest,
+) -> DownloadVideoRequest {
+    if request.quality.is_none() {
+        request.quality = state.settings.get().download.default_quality;
+    }
+    request
 }
 
 async fn merged_auth_state(state: &State<'_, AppState>) -> AppResult<AuthState> {

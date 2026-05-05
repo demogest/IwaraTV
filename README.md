@@ -61,6 +61,10 @@ Useful commands:
 | `cargo test --manifest-path src-tauri/Cargo.toml` | Run Rust tests. |
 | `npm run build:web` | Build the web UI into `dist`. |
 | `npm run build` | Build the Tauri app. |
+| `npm run check:release` | Run TypeScript, Vitest, and Rust release-gate checks. |
+| `npm run release:portable:win` | Package the current Windows release build as a portable EXE and unpacked ZIP. |
+| `npm run release:win` | Run release checks, then build the Windows NSIS installer, portable EXE, and unpacked ZIP. |
+| `npm run release:win:fast` | Build the Windows release artifacts without rerunning checks. |
 
 Windows packaging with bundled MPV:
 
@@ -68,6 +72,8 @@ Windows packaging with bundled MPV:
 npm run mpv:update
 npm run dist:win
 ```
+
+Release builds use Rust LTO, a single codegen unit, stripped symbols, and panic aborts. Tauri devtools are only enabled through `npm run dev:tauri`, so packaged builds do not carry the development tooling feature. Windows releases write an NSIS installer plus `release/IwaraTV_<version>_x64-portable.exe` and `release/IwaraTV_<version>_x64-unpacked.zip`.
 
 ## Architecture
 
@@ -81,7 +87,7 @@ The `main` branch is the Tauri/Rust desktop app. The former Electron implementat
 
 ## Releases
 
-The `Build` workflow compiles Windows, macOS, and Linux artifacts on pushes, pull requests, manual runs, and version tags. Pushing a tag like `v0.2.0` publishes a GitHub Release with the generated bundles and checksums.
+The `Build` workflow runs checks on pull requests, compiles release artifacts when the package version changes on `main`, and also supports manual artifact builds. Version tags like `v1.0.0` publish a GitHub Release with the generated bundles and checksums.
 
 ## License
 

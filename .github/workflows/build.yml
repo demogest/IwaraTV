@@ -4,19 +4,26 @@ on:
   push:
     branches:
       - main
+    tags:
+      - "v*"
   pull_request:
   workflow_dispatch:
 
 permissions:
   contents: read
 
+concurrency:
+  group: build-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   version:
     name: Detect version change
     runs-on: ubuntu-latest
-    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
     outputs:
       changed: ${{ steps.detect.outputs.changed }}
+      publish: ${{ steps.detect.outputs.publish }}
       tag: ${{ steps.detect.outputs.tag }}
       version: ${{ steps.detect.outputs.version }}
 
@@ -26,7 +33,7 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Detect package version change
+      - name: Detect release target
         id: detect
         shell: bash
         run: |
@@ -37,15 +44,32 @@ jobs:
 
           echo "version=${current_version}" >> "$GITHUB_OUTPUT"
           echo "tag=v${current_version}" >> "$GITHUB_OUTPUT"
+          echo "changed=false" >> "$GITHUB_OUTPUT"
+          echo "publish=false" >> "$GITHUB_OUTPUT"
+
+          if [[ "${GITHUB_EVENT_NAME}" == "workflow_dispatch" ]]; then
+            echo "changed=true" >> "$GITHUB_OUTPUT"
+            echo "Manual build for ${current_version}; release publish is disabled."
+            exit 0
+          fi
+
+          if [[ "${GITHUB_REF}" == refs/tags/v* ]]; then
+            tag="${GITHUB_REF_NAME}"
+            version="${tag#v}"
+            echo "version=${version}" >> "$GITHUB_OUTPUT"
+            echo "tag=${tag}" >> "$GITHUB_OUTPUT"
+            echo "changed=true" >> "$GITHUB_OUTPUT"
+            echo "publish=true" >> "$GITHUB_OUTPUT"
+            echo "Building tagged release ${tag}."
+            exit 0
+          fi
 
           if [[ -z "$previous_sha" || "$previous_sha" == "0000000000000000000000000000000000000000" ]]; then
-            echo "changed=false" >> "$GITHUB_OUTPUT"
             echo "No previous commit is available for version comparison."
             exit 0
           fi
 
           if ! git cat-file -e "${previous_sha}^{commit}"; then
-            echo "changed=false" >> "$GITHUB_OUTPUT"
             echo "Previous commit ${previous_sha} is not available locally."
             exit 0
           fi
@@ -54,9 +78,9 @@ jobs:
 
           if [[ "$current_version" != "$previous_version" ]]; then
             echo "changed=true" >> "$GITHUB_OUTPUT"
+            echo "publish=true" >> "$GITHUB_OUTPUT"
             echo "Version changed: ${previous_version} -> ${current_version}"
           else
-            echo "changed=false" >> "$GITHUB_OUTPUT"
             echo "Version unchanged: ${current_version}"
           fi
 
@@ -120,6 +144,8 @@ jobs:
             artifact_name: IwaraTV-windows
             artifact_path: |
               src-tauri/target/release/bundle/nsis/*.exe
+              release/IwaraTV_*_x64-portable.exe
+              release/IwaraTV_*_x64-unpacked.zip
           - name: macOS
             os: macos-latest
             bundles: dmg
@@ -175,6 +201,10 @@ jobs:
       - name: Build Tauri app
         run: npm run build:tauri -- --bundles ${{ matrix.bundles }}
 
+      - name: Package Windows portable artifacts
+        if: runner.os == 'Windows'
+        run: npm run release:portable:win
+
       - name: Upload bundle artifacts
         uses: actions/upload-artifact@v4
         with:
@@ -188,7 +218,7 @@ jobs:
     needs:
       - build
       - version
-    if: needs.version.outputs.changed == 'true'
+    if: needs.version.outputs.publish == 'true'
     permissions:
       contents: write
 

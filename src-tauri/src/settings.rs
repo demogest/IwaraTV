@@ -158,6 +158,8 @@ pub fn default_settings() -> AppSettings {
         download: DownloadSettings {
             directory: default_download_directory(),
             default_quality: Some("Source".to_string()),
+            max_connections: 4,
+            min_split_bytes: 16 * 1024 * 1024,
         },
         tag_preferences: TagPreferences {
             followed_tags: Vec::new(),
@@ -281,6 +283,12 @@ fn apply_partial(settings: &mut AppSettings, partial: PartialAppSettings) {
         if let Some(value) = download.default_quality {
             settings.download.default_quality = value;
         }
+        if let Some(value) = download.max_connections {
+            settings.download.max_connections = value;
+        }
+        if let Some(value) = download.min_split_bytes {
+            settings.download.min_split_bytes = value;
+        }
     }
 
     if let Some(tag_preferences) = partial.tag_preferences {
@@ -322,6 +330,13 @@ fn normalize_download_settings(settings: DownloadSettings) -> DownloadSettings {
             .default_quality
             .map(|value| value.trim().to_string())
             .filter(|value| !value.is_empty()),
+        max_connections: clamp_integer(settings.max_connections, 1, 8, 4),
+        min_split_bytes: clamp_integer(
+            settings.min_split_bytes,
+            1024 * 1024,
+            256 * 1024 * 1024,
+            16 * 1024 * 1024,
+        ),
     }
 }
 

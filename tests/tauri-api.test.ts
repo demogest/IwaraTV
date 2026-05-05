@@ -6,6 +6,12 @@ describe("Tauri command API mapping", () => {
     expect(commandMap).toEqual({
       authState: "auth_state",
       diagnoseVideo: "iwara_diagnose_video",
+      downloadsDelete: "downloads_delete",
+      downloadsList: "downloads_list",
+      downloadsOpenFile: "downloads_open_file",
+      downloadsOpenFolder: "downloads_open_folder",
+      downloadsRetry: "downloads_retry",
+      downloadsStart: "downloads_start",
       downloadVideo: "iwara_download_video",
       getSettings: "settings_get",
       listVideos: "iwara_list_videos",

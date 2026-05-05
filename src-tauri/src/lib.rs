@@ -1,5 +1,6 @@
 mod auth;
 mod commands;
+mod downloads;
 mod error;
 mod iwara_client;
 mod iwara_utils;
@@ -43,6 +44,12 @@ pub fn run() {
             commands::iwara_sniff_x_version_salt,
             commands::iwara_speed_test_video,
             commands::iwara_download_video,
+            commands::downloads_list,
+            commands::downloads_start,
+            commands::downloads_retry,
+            commands::downloads_delete,
+            commands::downloads_open_file,
+            commands::downloads_open_folder,
             commands::player_play,
             commands::player_probe,
             commands::player_test_mpv,

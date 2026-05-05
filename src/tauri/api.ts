@@ -3,7 +3,10 @@ import type {
   AuthorFollowRequest,
   AuthorFollowResult,
   AuthState,
+  DownloadDeleteRequest,
   DownloadResult,
+  DownloadState,
+  DownloadTask,
   DownloadVideoRequest,
   IwaraVideoDiagnostics,
   ListVideoCommentsRequest,
@@ -50,6 +53,12 @@ const commandMap = {
   sniffXVersionSalt: "iwara_sniff_x_version_salt",
   speedTestVideo: "iwara_speed_test_video",
   downloadVideo: "iwara_download_video",
+  downloadsList: "downloads_list",
+  downloadsStart: "downloads_start",
+  downloadsRetry: "downloads_retry",
+  downloadsDelete: "downloads_delete",
+  downloadsOpenFile: "downloads_open_file",
+  downloadsOpenFolder: "downloads_open_folder",
   play: "player_play",
   probe: "player_probe",
   testMpv: "player_test_mpv",
@@ -87,6 +96,14 @@ export const tauriApi = {
     sniffXVersionSalt: () => tauriInvoke<XVersionSaltReport>(commandMap.sniffXVersionSalt),
     speedTestVideo: (idOrUrl: string) => tauriInvoke<MediaSpeedTestReport>(commandMap.speedTestVideo, { idOrUrl }),
     downloadVideo: (request: DownloadVideoRequest) => tauriInvoke<DownloadResult>(commandMap.downloadVideo, { request })
+  },
+  downloads: {
+    list: () => tauriInvoke<DownloadState>(commandMap.downloadsList),
+    start: (request: DownloadVideoRequest) => tauriInvoke<DownloadTask>(commandMap.downloadsStart, { request }),
+    retry: (id: string) => tauriInvoke<DownloadTask>(commandMap.downloadsRetry, { id }),
+    delete: (request: DownloadDeleteRequest) => tauriInvoke<DownloadState>(commandMap.downloadsDelete, { request }),
+    openFile: (id: string) => tauriInvoke<void>(commandMap.downloadsOpenFile, { id }),
+    openFolder: (id: string) => tauriInvoke<void>(commandMap.downloadsOpenFolder, { id })
   },
   player: {
     play: (request: PlayRequest) => tauriInvoke<PlayResult>(commandMap.play, { request }),

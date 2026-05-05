@@ -40,6 +40,8 @@ import type {
   AppSettings,
   AuthState,
   DownloadResult,
+  DownloadState,
+  DownloadTask,
   IwaraVideoDiagnostics,
   MediaSpeedTestReport,
   PlayerDiagnostics,
@@ -58,10 +60,11 @@ import { normalizeMediaHostList } from "./lib/media-speed-utils";
 import logoMarkUrl from "./assets/iwara-tv-mark.svg";
 import { classifyIssue, type UiIssue } from "./lib/issue-utils";
 
-type MainSection = "browse" | "search" | "subscriptions" | "history" | "settings";
+type MainSection = "browse" | "search" | "subscriptions" | "downloads" | "history" | "settings";
 type AppSection = MainSection | "detail";
 type FeedTabKey = Extract<VideoSort, "date" | "trending" | "popularity"> | "followed";
 type SearchSort = Extract<VideoSort, "relevance" | "date" | "views" | "likes">;
+type DownloadButtonState = "idle" | "downloading" | "completed";
 interface ActiveAuthor {
   id: string;
   name?: string;
@@ -78,6 +81,7 @@ const sectionTabs: Array<{ section: MainSection; label: string; Icon: LucideIcon
   { section: "browse", label: "浏览", Icon: MonitorPlay },
   { section: "search", label: "搜索", Icon: Search },
   { section: "subscriptions", label: "订阅", Icon: Bell },
+  { section: "downloads", label: "下载", Icon: Download },
   { section: "history", label: "历史", Icon: History },
   { section: "settings", label: "设置", Icon: Settings }
 ];
@@ -122,7 +126,9 @@ const defaultSettings: AppSettings = {
     timeoutMs: 4500
   },
   download: {
-    defaultQuality: "Source"
+    defaultQuality: "Source",
+    maxConnections: 4,
+    minSplitBytes: 16777216
   },
   tagPreferences: {
     followedTags: [],
@@ -137,6 +143,11 @@ const defaultAuth: AuthState = {
   loggedIn: false,
   hasMediaToken: false,
   encryptionAvailable: false
+};
+
+const defaultDownloadState: DownloadState = {
+  active: [],
+  history: []
 };
 
 export function App() {
@@ -155,6 +166,7 @@ export function App() {
   const [tagInput, setTagInput] = useState("");
   const [searchTagInput, setSearchTagInput] = useState("");
   const [settings, setSettings] = useState<AppSettings>(defaultSettings);
+  const [downloads, setDownloads] = useState<DownloadState>(defaultDownloadState);
   const [auth, setAuth] = useState<AuthState>(defaultAuth);
   const [diagnostics, setDiagnostics] = useState<PlayerDiagnostics | undefined>();
   const [mpvTest, setMpvTest] = useState<PlayerProbe | undefined>();
@@ -178,6 +190,7 @@ export function App() {
   const [loadingVideoTitle, setLoadingVideoTitle] = useState<string | undefined>();
   const [quickPlayingId, setQuickPlayingId] = useState<string | undefined>();
   const [downloadingVideoId, setDownloadingVideoId] = useState<string | undefined>();
+  const [downloadActionId, setDownloadActionId] = useState<string | undefined>();
   const [playing, setPlaying] = useState(false);
   const [authorFollowBusyId, setAuthorFollowBusyId] = useState<string | undefined>();
   const [probing, setProbing] = useState(false);
@@ -208,6 +221,14 @@ export function App() {
     () => [...(selectedVideo?.formats ?? [])].sort((a, b) => b.qualityRank - a.qualityRank),
     [selectedVideo]
   );
+  const activeDownloadVideoIds = useMemo(
+    () => new Set(downloads.active.map((task) => task.videoId)),
+    [downloads.active]
+  );
+  const completedDownloadVideoIds = useMemo(
+    () => new Set(downloads.history.filter((task) => task.status === "completed").map((task) => task.videoId)),
+    [downloads.history]
+  );
 
   useEffect(() => {
     if (!api) {
@@ -215,9 +236,22 @@ export function App() {
     }
 
     void api.settings.get().then(setSettings).catch(handleError);
+    void refreshDownloads(false);
     void api.player.probe().then(setDiagnostics).catch(handleError);
     void api.auth.state().then(setAuth).catch(handleError);
   }, [api]);
+
+  useEffect(() => {
+    if (!api) {
+      return;
+    }
+
+    const intervalMs = activeSection === "downloads" || downloads.active.length ? 1200 : 5000;
+    const timer = window.setInterval(() => {
+      void refreshDownloads(false);
+    }, intervalMs);
+    return () => window.clearInterval(timer);
+  }, [api, activeSection, downloads.active.length]);
 
   useEffect(() => {
     setAvatarImageReady(Boolean(auth.avatarUrl));
@@ -472,20 +506,31 @@ export function App() {
     }
   }
 
+  async function refreshDownloads(reportError = true) {
+    if (!api) {
+      return;
+    }
+
+    try {
+      setDownloads(await api.downloads.list());
+    } catch (err) {
+      if (reportError) {
+        handleError(err);
+      }
+    }
+  }
+
   async function downloadVideo(video: VideoSummary, quality?: string) {
-    if (!api || downloadingVideoId) {
+    if (!api || downloadingVideoId === video.id || activeDownloadVideoIds.has(video.id)) {
       return;
     }
 
     setDownloadingVideoId(video.id);
     clearMessages();
     try {
-      const result = await api.iwara.downloadVideo({ videoId: video.id, quality });
-      setSettings(await api.settings.get());
-      if (selectedVideo?.id === result.video.id) {
-        setSelectedVideo(result.video);
-      }
-      setStatus(downloadStatus(result));
+      const task = await api.downloads.start({ videoId: video.id, quality });
+      await refreshDownloads(false);
+      setStatus(`已开始下载：${downloadTaskTitle(task)}。`);
     } catch (err) {
       handleError(err);
     } finally {
@@ -956,6 +1001,85 @@ export function App() {
     setSettings(next);
   }
 
+  function downloadStateForVideo(videoId: string): DownloadButtonState {
+    if (downloadingVideoId === videoId || activeDownloadVideoIds.has(videoId)) {
+      return "downloading";
+    }
+
+    if (completedDownloadVideoIds.has(videoId)) {
+      return "completed";
+    }
+
+    return "idle";
+  }
+
+  async function retryDownload(id: string) {
+    if (!api || downloadActionId) {
+      return;
+    }
+
+    setDownloadActionId(id);
+    clearMessages();
+    try {
+      const task = await api.downloads.retry(id);
+      await refreshDownloads(false);
+      setStatus(`已重新开始下载：${downloadTaskTitle(task)}。`);
+    } catch (err) {
+      handleError(err);
+    } finally {
+      setDownloadActionId(undefined);
+    }
+  }
+
+  async function deleteDownload(id: string) {
+    if (!api || downloadActionId) {
+      return;
+    }
+
+    setDownloadActionId(id);
+    clearMessages();
+    try {
+      setDownloads(await api.downloads.delete({ id, deleteFile: true }));
+      setStatus("已删除下载记录和本地文件。");
+    } catch (err) {
+      handleError(err);
+    } finally {
+      setDownloadActionId(undefined);
+    }
+  }
+
+  async function openDownloadFile(id: string) {
+    if (!api || downloadActionId) {
+      return;
+    }
+
+    setDownloadActionId(id);
+    clearMessages();
+    try {
+      await api.downloads.openFile(id);
+    } catch (err) {
+      handleError(err);
+    } finally {
+      setDownloadActionId(undefined);
+    }
+  }
+
+  async function openDownloadFolder(id: string) {
+    if (!api || downloadActionId) {
+      return;
+    }
+
+    setDownloadActionId(id);
+    clearMessages();
+    try {
+      await api.downloads.openFolder(id);
+    } catch (err) {
+      handleError(err);
+    } finally {
+      setDownloadActionId(undefined);
+    }
+  }
+
   async function refreshAuthState() {
     if (!api) {
       return;
@@ -1038,6 +1162,8 @@ export function App() {
       await loadSearch(searchFeed?.page ?? 0, searchFilters, searchSort);
     } else if (activeSection === "subscriptions") {
       await loadSubscriptionFeed(subscriptionFeed?.page ?? 0);
+    } else if (activeSection === "downloads") {
+      await refreshDownloads();
     } else {
       await loadFeed(activeFeedTab, activeFeed?.page ?? 0);
     }
@@ -1130,7 +1256,7 @@ export function App() {
             sortedFormats={sortedFormats}
             diagnostics={videoDiagnostics}
             diagnosing={diagnosingVideo}
-            downloading={Boolean(selectedVideo && downloadingVideoId === selectedVideo.id)}
+            downloadState={selectedVideo ? downloadStateForVideo(selectedVideo.id) : "idle"}
             authorFollowBusy={Boolean(selectedVideo && authorFollowBusyId === selectedVideo.uploaderId)}
             canFollowAuthor={canFollowAuthors}
             video={selectedVideo}
@@ -1170,7 +1296,7 @@ export function App() {
                 activeFeedTab={activeFeedTab}
                 authorFollowBusyId={authorFollowBusyId}
                 canFollowAuthor={canFollowAuthors}
-                downloadingVideoId={downloadingVideoId}
+                downloadStateForVideo={downloadStateForVideo}
                 hasApi={hasApi}
                 filters={filters}
                 loadingFeed={loadingFeed}
@@ -1196,7 +1322,7 @@ export function App() {
 
             {activeSection === "search" && (
               <SearchView
-                downloadingVideoId={downloadingVideoId}
+                downloadStateForVideo={downloadStateForVideo}
                 filters={searchFilters}
                 hasApi={hasApi}
                 loading={loadingSearch}
@@ -1222,7 +1348,7 @@ export function App() {
 
             {activeSection === "subscriptions" && (
               <SubscriptionView
-                downloadingVideoId={downloadingVideoId}
+                downloadStateForVideo={downloadStateForVideo}
                 feed={subscriptionFeed}
                 hasApi={hasApi}
                 isLoggedIn={canLoadSubscriptions}
@@ -1244,6 +1370,20 @@ export function App() {
                 loadingVideoId={loadingVideoId}
                 onClear={clearHistory}
                 onOpen={(video) => void openVideo(video.id, video.title)}
+              />
+            )}
+
+            {activeSection === "downloads" && (
+              <DownloadsView
+                actionId={downloadActionId}
+                downloads={downloads}
+                hasApi={hasApi}
+                onDelete={deleteDownload}
+                onOpenFile={openDownloadFile}
+                onOpenFolder={openDownloadFolder}
+                onOpenVideo={(videoId, title) => void openVideo(videoId, title)}
+                onRefresh={() => refreshDownloads()}
+                onRetry={retryDownload}
               />
             )}
 
@@ -1296,7 +1436,7 @@ function VideoDetailRoute({
   sortedFormats,
   diagnostics,
   diagnosing,
-  downloading,
+  downloadState,
   authorFollowBusy,
   canFollowAuthor,
   video,
@@ -1331,7 +1471,7 @@ function VideoDetailRoute({
   sortedFormats: VideoDetail["formats"];
   diagnostics?: IwaraVideoDiagnostics;
   diagnosing: boolean;
-  downloading: boolean;
+  downloadState: DownloadButtonState;
   authorFollowBusy: boolean;
   canFollowAuthor: boolean;
   video?: VideoDetail;
@@ -1385,7 +1525,7 @@ function VideoDetailRoute({
           sortedFormats={sortedFormats}
           diagnostics={diagnostics}
           diagnosing={diagnosing}
-          downloading={downloading}
+          downloadState={downloadState}
           authorFollowBusy={authorFollowBusy}
           canFollowAuthor={canFollowAuthor}
           video={video}
@@ -1430,7 +1570,7 @@ function DetailLoadingState({ idOrUrl, title }: { idOrUrl: string; title?: strin
 }
 
 function SearchView({
-  downloadingVideoId,
+  downloadStateForVideo,
   filters,
   hasApi,
   loading,
@@ -1452,7 +1592,7 @@ function SearchView({
   sort,
   tagInput
 }: {
-  downloadingVideoId?: string;
+  downloadStateForVideo: (videoId: string) => DownloadButtonState;
   filters: VideoFilters;
   hasApi: boolean;
   loading: boolean;
@@ -1577,7 +1717,7 @@ function SearchView({
           <div className="video-grid">
             {videos.map((video) => (
               <VideoCard
-                downloading={downloadingVideoId === video.id}
+                downloadState={downloadStateForVideo(video.id)}
                 key={video.id}
                 loading={loadingVideoId === video.id}
                 onDownload={() => onDownload(video)}
@@ -1626,7 +1766,7 @@ function BrowseView({
   activeFeedTab,
   authorFollowBusyId,
   canFollowAuthor,
-  downloadingVideoId,
+  downloadStateForVideo,
   filters,
   hasApi,
   loadingFeed,
@@ -1653,7 +1793,7 @@ function BrowseView({
   activeFeedTab: FeedTabKey;
   authorFollowBusyId?: string;
   canFollowAuthor: boolean;
-  downloadingVideoId?: string;
+  downloadStateForVideo: (videoId: string) => DownloadButtonState;
   filters: VideoFilters;
   hasApi: boolean;
   loadingFeed: boolean;
@@ -1798,7 +1938,7 @@ function BrowseView({
           <div className="video-grid">
             {videos.map((video) => (
               <VideoCard
-                downloading={downloadingVideoId === video.id}
+                downloadState={downloadStateForVideo(video.id)}
                 key={video.id}
                 loading={loadingVideoId === video.id}
                 onDownload={() => onDownload(video)}
@@ -1842,7 +1982,7 @@ function BrowseView({
 }
 
 function SubscriptionView({
-  downloadingVideoId,
+  downloadStateForVideo,
   feed,
   hasApi,
   isLoggedIn,
@@ -1856,7 +1996,7 @@ function SubscriptionView({
   onRefresh,
   quickPlayingId
 }: {
-  downloadingVideoId?: string;
+  downloadStateForVideo: (videoId: string) => DownloadButtonState;
   feed?: VideoListResult;
   hasApi: boolean;
   isLoggedIn: boolean;
@@ -1973,7 +2113,7 @@ function SubscriptionView({
             <div className="video-grid">
               {visibleVideos.map((video) => (
                 <VideoCard
-                  downloading={downloadingVideoId === video.id}
+                  downloadState={downloadStateForVideo(video.id)}
                   key={video.id}
                   loading={loadingVideoId === video.id}
                   onDownload={() => onDownload(video)}
@@ -2100,7 +2240,7 @@ function DetailPanel({
   sortedFormats,
   diagnostics,
   diagnosing,
-  downloading,
+  downloadState,
   authorFollowBusy,
   canFollowAuthor,
   video,
@@ -2132,7 +2272,7 @@ function DetailPanel({
   sortedFormats: VideoDetail["formats"];
   diagnostics?: IwaraVideoDiagnostics;
   diagnosing: boolean;
-  downloading: boolean;
+  downloadState: DownloadButtonState;
   authorFollowBusy: boolean;
   canFollowAuthor: boolean;
   video: VideoDetail;
@@ -2282,9 +2422,8 @@ function DetailPanel({
             <ExternalLink size={18} />
             外部
           </button>
-          <button className="secondary-button" disabled={downloading || !sortedFormats.length} onClick={onDownload} type="button">
-            {downloading ? <Loader2 className="spin" size={18} /> : <Download size={18} />}
-            下载
+          <button className="secondary-button" disabled={downloadState !== "idle" || !sortedFormats.length} onClick={onDownload} type="button">
+            <DownloadButtonContent state={downloadState} size={18} />
           </button>
         </div>
 
@@ -2479,9 +2618,36 @@ function SpeedReportPanel({ report }: { report: MediaSpeedTestReport }) {
   );
 }
 
+function DownloadButtonContent({ state, size }: { state: DownloadButtonState; size: number }) {
+  if (state === "downloading") {
+    return (
+      <>
+        <Loader2 className="spin" size={size} />
+        下载中
+      </>
+    );
+  }
+
+  if (state === "completed") {
+    return (
+      <>
+        <CheckCircle2 size={size} />
+        已完成
+      </>
+    );
+  }
+
+  return (
+    <>
+      <Download size={size} />
+      下载
+    </>
+  );
+}
+
 function VideoCard({
   video,
-  downloading,
+  downloadState,
   loading,
   quickPlaying,
   onDownload,
@@ -2489,7 +2655,7 @@ function VideoCard({
   onQuickPlay
 }: {
   video: VideoSummary;
-  downloading: boolean;
+  downloadState: DownloadButtonState;
   loading: boolean;
   quickPlaying: boolean;
   onDownload: () => void;
@@ -2514,9 +2680,8 @@ function VideoCard({
           <span>{compactNumber(video.numViews)} 观看</span>
           <span>{compactNumber(video.numLikes)} 喜欢</span>
           {video.durationSeconds ? <span>{formatDuration(video.durationSeconds)}</span> : null}
-          <button className="quick-play-button" disabled={downloading} onClick={onDownload} type="button">
-            {downloading ? <Loader2 className="spin" size={16} /> : <Download size={16} />}
-            下载
+          <button className="quick-play-button" disabled={downloadState !== "idle"} onClick={onDownload} type="button">
+            <DownloadButtonContent state={downloadState} size={16} />
           </button>
           <button className="quick-play-button" onClick={onQuickPlay} type="button">
             {quickPlaying ? <Loader2 className="spin" size={16} /> : <Play size={16} />}
@@ -2582,6 +2747,174 @@ function HistoryView({
         <EmptyState Icon={History} title="还没有播放历史" />
       )}
     </>
+  );
+}
+
+function DownloadsView({
+  actionId,
+  downloads,
+  hasApi,
+  onDelete,
+  onOpenFile,
+  onOpenFolder,
+  onOpenVideo,
+  onRefresh,
+  onRetry
+}: {
+  actionId?: string;
+  downloads: DownloadState;
+  hasApi: boolean;
+  onDelete: (id: string) => void;
+  onOpenFile: (id: string) => void;
+  onOpenFolder: (id: string) => void;
+  onOpenVideo: (videoId: string, title?: string) => void;
+  onRefresh: () => void;
+  onRetry: (id: string) => void;
+}) {
+  const active = downloads.active;
+  const history = downloads.history;
+
+  return (
+    <>
+      <div className="section-header">
+        <div>
+          <p>下载管理</p>
+          <h2>下载</h2>
+        </div>
+        <button className="icon-text-button" disabled={!hasApi} onClick={onRefresh} type="button">
+          <RefreshCw size={18} />
+          刷新
+        </button>
+      </div>
+
+      <div className="downloads-grid">
+        <section className="downloads-section">
+          <div className="downloads-section-heading">
+            <h3>当前任务</h3>
+            <span>{active.length} 个</span>
+          </div>
+          {active.length ? (
+            <div className="download-list">
+              {active.map((task) => (
+                <DownloadTaskItem
+                  actionId={actionId}
+                  key={task.id}
+                  task={task}
+                  onDelete={onDelete}
+                  onOpenFile={onOpenFile}
+                  onOpenFolder={onOpenFolder}
+                  onOpenVideo={onOpenVideo}
+                  onRetry={onRetry}
+                />
+              ))}
+            </div>
+          ) : (
+            <EmptyState Icon={Download} title="没有正在下载的任务" />
+          )}
+        </section>
+
+        <section className="downloads-section">
+          <div className="downloads-section-heading">
+            <h3>下载历史</h3>
+            <span>{history.length} 条</span>
+          </div>
+          {history.length ? (
+            <div className="download-list">
+              {history.map((task) => (
+                <DownloadTaskItem
+                  actionId={actionId}
+                  key={task.id}
+                  task={task}
+                  onDelete={onDelete}
+                  onOpenFile={onOpenFile}
+                  onOpenFolder={onOpenFolder}
+                  onOpenVideo={onOpenVideo}
+                  onRetry={onRetry}
+                />
+              ))}
+            </div>
+          ) : (
+            <EmptyState Icon={History} title="还没有下载历史" />
+          )}
+        </section>
+      </div>
+    </>
+  );
+}
+
+function DownloadTaskItem({
+  actionId,
+  task,
+  onDelete,
+  onOpenFile,
+  onOpenFolder,
+  onOpenVideo,
+  onRetry
+}: {
+  actionId?: string;
+  task: DownloadTask;
+  onDelete: (id: string) => void;
+  onOpenFile: (id: string) => void;
+  onOpenFolder: (id: string) => void;
+  onOpenVideo: (videoId: string, title?: string) => void;
+  onRetry: (id: string) => void;
+}) {
+  const progress = downloadProgressPercent(task);
+  const busy = actionId === task.id;
+  const isActive = task.status === "queued" || task.status === "downloading";
+  const canOpenFile = task.status === "completed" && Boolean(task.path);
+  const canOpenFolder = Boolean(task.path);
+  const canRetry = !isActive;
+  const canDelete = !isActive;
+
+  return (
+    <article className={`download-item ${task.status}`}>
+      {task.video?.thumbnailUrl ? (
+        <button className="download-thumb" onClick={() => onOpenVideo(task.videoId, task.video?.title)} type="button">
+          <img alt={downloadTaskTitle(task)} src={task.video.thumbnailUrl} />
+        </button>
+      ) : (
+        <button className="download-thumb empty" onClick={() => onOpenVideo(task.videoId, task.video?.title)} type="button">
+          <Download size={22} />
+        </button>
+      )}
+      <div className="download-main">
+        <button className="download-title" onClick={() => onOpenVideo(task.videoId, task.video?.title)} type="button">
+          {downloadTaskTitle(task)}
+        </button>
+        <div className="download-meta">
+          <span>{downloadStatusLabel(task.status)}</span>
+          {task.format?.label ? <span>{task.format.label}</span> : task.requestedQuality ? <span>{task.requestedQuality}</span> : null}
+          <span>{formatBytes(task.bytesWritten)}{task.totalBytes ? ` / ${formatBytes(task.totalBytes)}` : ""}</span>
+          <span>{formatFullDate(task.updatedAt)}</span>
+        </div>
+        {progress !== undefined && (
+          <div className="download-progress" aria-label={`下载进度 ${Math.round(progress)}%`}>
+            <span style={{ width: `${progress}%` }} />
+          </div>
+        )}
+        {task.path && <code className="download-path">{task.path}</code>}
+        {task.error && <div className="download-error">{task.error}</div>}
+      </div>
+      <div className="download-actions">
+        <button className="secondary-button compact" disabled={!canOpenFile || busy} onClick={() => onOpenFile(task.id)} type="button">
+          {busy && canOpenFile ? <Loader2 className="spin" size={16} /> : <ExternalLink size={16} />}
+          打开
+        </button>
+        <button className="secondary-button compact" disabled={!canOpenFolder || busy} onClick={() => onOpenFolder(task.id)} type="button">
+          <FolderOpen size={16} />
+          文件夹
+        </button>
+        <button className="secondary-button compact" disabled={!canRetry || busy} onClick={() => onRetry(task.id)} type="button">
+          {busy && canRetry ? <Loader2 className="spin" size={16} /> : <RefreshCw size={16} />}
+          重试
+        </button>
+        <button className="secondary-button compact danger-button" disabled={!canDelete || busy} onClick={() => onDelete(task.id)} type="button">
+          <Trash2 size={16} />
+          删除
+        </button>
+      </div>
+    </article>
   );
 }
 
@@ -2736,8 +3069,36 @@ function SettingsView({
               </button>
             </div>
           </label>
+          <div className="speed-options">
+            <label className="field-label">
+              分片连接
+              <select
+                value={download.maxConnections}
+                onChange={(event) => onUpdateDownload({ maxConnections: Number(event.target.value) })}
+              >
+                <option value={1}>1</option>
+                <option value={2}>2</option>
+                <option value={4}>4</option>
+                <option value={6}>6</option>
+                <option value={8}>8</option>
+              </select>
+            </label>
+            <label className="field-label">
+              分片阈值
+              <select
+                value={download.minSplitBytes}
+                onChange={(event) => onUpdateDownload({ minSplitBytes: Number(event.target.value) })}
+              >
+                <option value={1048576}>1 MB</option>
+                <option value={8388608}>8 MB</option>
+                <option value={16777216}>16 MB</option>
+                <option value={33554432}>32 MB</option>
+                <option value={67108864}>64 MB</option>
+              </select>
+            </label>
+          </div>
           <p className="subtle">
-            详情页下载会使用当前选择的清晰度；视频卡片会使用这里的默认清晰度，找不到时自动回退到最高可用清晰度。
+            详情页下载会使用当前选择的清晰度；视频卡片会使用默认清晰度。支持断点续传，文件足够大且服务端支持 Range 时会启用分片下载。
           </p>
         </section>
 
@@ -3086,6 +3447,8 @@ function sectionLabel(section: MainSection): string {
       return "搜索";
     case "subscriptions":
       return "订阅";
+    case "downloads":
+      return "下载";
     case "history":
       return "历史";
     case "settings":
@@ -3190,6 +3553,33 @@ function playStatus(result: { mode: PlayerMode; format: { label: string }; fallb
   const player = result.mode === "mpv" ? "MPV" : "外部播放器";
   const fallback = result.fallbackFrom ? `，${result.fallbackFrom} 不可用，已改用 ${result.format.label}` : `：${result.format.label}`;
   return `已启动 ${player}${fallback}`;
+}
+
+function downloadTaskTitle(task: DownloadTask): string {
+  return task.video?.title ?? task.videoId;
+}
+
+function downloadStatusLabel(status: DownloadTask["status"]): string {
+  switch (status) {
+    case "queued":
+      return "等待中";
+    case "downloading":
+      return "下载中";
+    case "completed":
+      return "已完成";
+    case "failed":
+      return "失败";
+    default:
+      return "下载";
+  }
+}
+
+function downloadProgressPercent(task: DownloadTask): number | undefined {
+  if (!task.totalBytes || task.totalBytes <= 0) {
+    return task.status === "completed" ? 100 : undefined;
+  }
+
+  return Math.min(Math.max((task.bytesWritten / task.totalBytes) * 100, 0), 100);
 }
 
 function downloadStatus(result: DownloadResult): string {

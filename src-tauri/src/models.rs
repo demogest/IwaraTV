@@ -123,6 +123,8 @@ pub struct DownloadSettings {
     pub directory: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub default_quality: Option<String>,
+    pub max_connections: u64,
+    pub min_split_bytes: u64,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -373,6 +375,10 @@ pub struct PartialDownloadSettings {
     pub directory: Option<Option<String>>,
     #[serde(default)]
     pub default_quality: Option<Option<String>>,
+    #[serde(default)]
+    pub max_connections: Option<u64>,
+    #[serde(default)]
+    pub min_split_bytes: Option<u64>,
 }
 
 #[derive(Clone, Debug, Default, Serialize, Deserialize)]
@@ -561,6 +567,58 @@ pub struct DownloadResult {
     pub video: VideoDetail,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub fallback_from: Option<String>,
+}
+
+#[derive(Copy, Clone, Debug, Serialize, Deserialize, Eq, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub enum DownloadTaskStatus {
+    Queued,
+    Downloading,
+    Completed,
+    Failed,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DownloadTask {
+    pub id: String,
+    pub video_id: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub requested_quality: Option<String>,
+    pub status: DownloadTaskStatus,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub video: Option<VideoSummary>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub format: Option<VideoFormat>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub path: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub directory: Option<String>,
+    pub bytes_written: u64,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub total_bytes: Option<u64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub fallback_from: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub error: Option<String>,
+    pub created_at: String,
+    pub updated_at: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub completed_at: Option<String>,
+}
+
+#[derive(Clone, Debug, Default, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DownloadState {
+    pub active: Vec<DownloadTask>,
+    pub history: Vec<DownloadTask>,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DownloadDeleteRequest {
+    pub id: String,
+    pub delete_file: bool,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]

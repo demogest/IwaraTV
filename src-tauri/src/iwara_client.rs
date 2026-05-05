@@ -1,5 +1,6 @@
 use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, OnceLock};
 use std::time::{Duration, Instant};
 
@@ -8,6 +9,7 @@ use regex::Regex;
 use reqwest::header::{HeaderMap, HeaderName, HeaderValue};
 use serde_json::Value;
 use time::{format_description::well_known::Rfc3339, OffsetDateTime};
+use tokio::fs::OpenOptions;
 use tokio::io::AsyncWriteExt;
 use tokio::time::sleep;
 use url::Url;
@@ -40,6 +42,7 @@ const SUBSCRIBED_LIMIT: u64 = 24;
 const COMMENT_LIMIT: u64 = 8;
 const LIST_RETRY_ATTEMPTS: u64 = 3;
 const LIST_RETRY_BASE_DELAY_MS: u64 = 450;
+const DOWNLOAD_SEGMENT_FLOOR_BYTES: u64 = 1024 * 1024;
 
 #[derive(Clone, Debug, Default)]
 pub struct AuthProfile {
@@ -57,6 +60,40 @@ struct ListPageFetch {
 struct ListPageFetchFailure {
     message: String,
     attempts: Vec<VideoListNetworkAttempt>,
+}
+
+#[derive(Clone, Debug)]
+pub struct DownloadPlan {
+    pub path: PathBuf,
+    pub format: VideoFormat,
+    pub video: VideoDetail,
+    pub fallback_from: Option<String>,
+}
+
+impl DownloadPlan {
+    pub fn result(self, bytes_written: u64) -> DownloadResult {
+        DownloadResult {
+            ok: true,
+            path: path_to_string(&self.path),
+            bytes_written,
+            format: self.format,
+            video: self.video,
+            fallback_from: self.fallback_from,
+        }
+    }
+}
+
+#[derive(Clone, Debug)]
+struct DownloadProbe {
+    total_bytes: Option<u64>,
+    accepts_ranges: bool,
+}
+
+#[derive(Clone, Debug)]
+struct DownloadSegment {
+    index: u64,
+    start: u64,
+    end: u64,
 }
 
 impl From<crate::error::AppError> for ListPageFetchFailure {
@@ -1037,6 +1074,21 @@ impl IwaraClient {
         download_settings: &DownloadSettings,
         speed_settings: &MediaSpeedSettings,
     ) -> AppResult<DownloadResult> {
+        let plan = self
+            .prepare_download(request, download_settings, speed_settings)
+            .await?;
+        let bytes_written = self
+            .download_plan_to_file(&plan, download_settings, |_, _| {})
+            .await?;
+        Ok(plan.result(bytes_written))
+    }
+
+    pub async fn prepare_download(
+        &self,
+        request: DownloadVideoRequest,
+        download_settings: &DownloadSettings,
+        speed_settings: &MediaSpeedSettings,
+    ) -> AppResult<DownloadPlan> {
         let mut video = self.get_video(&request.video_id).await?;
         if speed_settings.replace_links {
             video = self.route_video_formats(video, speed_settings);
@@ -1044,9 +1096,8 @@ impl IwaraClient {
 
         let requested_quality = request
             .quality
-            .as_deref()
-            .or(download_settings.default_quality.as_deref());
-        let format = choose_video_format(&video.formats, requested_quality)
+            .or_else(|| download_settings.default_quality.clone());
+        let format = choose_video_format(&video.formats, requested_quality.as_deref())
             .ok_or_else(|| message("没有找到可下载的清晰度。"))?;
         let directory = download_settings
             .directory
@@ -1057,19 +1108,32 @@ impl IwaraClient {
         let path =
             unique_download_path(directory, &video.summary.title, &video.summary.id, &format)
                 .await?;
-        let bytes_written = self.download_media_to_file(&format.url, &path).await?;
 
-        Ok(DownloadResult {
-            ok: true,
-            path: path_to_string(&path),
-            bytes_written,
+        Ok(DownloadPlan {
+            path,
             format: format.clone(),
             video,
-            fallback_from: request
-                .quality
-                .or_else(|| download_settings.default_quality.clone())
-                .filter(|quality| quality != &format.id),
+            fallback_from: requested_quality.filter(|quality| quality != &format.id),
         })
+    }
+
+    pub async fn download_plan_to_file<F>(
+        &self,
+        plan: &DownloadPlan,
+        download_settings: &DownloadSettings,
+        progress: F,
+    ) -> AppResult<u64>
+    where
+        F: Fn(u64, Option<u64>) + Send + Sync,
+    {
+        self.download_media_to_file(
+            &plan.format.url,
+            &plan.path,
+            download_settings.max_connections,
+            download_settings.min_split_bytes,
+            progress,
+        )
+        .await
     }
 
     pub fn route_video_formats(
@@ -1371,19 +1435,85 @@ impl IwaraClient {
         }
     }
 
-    async fn download_media_to_file(&self, url: &str, path: &Path) -> AppResult<u64> {
+    async fn download_media_to_file<F>(
+        &self,
+        url: &str,
+        path: &Path,
+        max_connections: u64,
+        min_split_bytes: u64,
+        progress: F,
+    ) -> AppResult<u64>
+    where
+        F: Fn(u64, Option<u64>) + Send + Sync,
+    {
         let mut headers = self.session.headers_for(url).await.unwrap_or_default();
         headers.extend([
             ("Accept".to_string(), "*/*".to_string()),
             ("Referer".to_string(), "https://www.iwara.tv/".to_string()),
             ("Origin".to_string(), "https://www.iwara.tv".to_string()),
         ]);
+
+        let probe = self.probe_download(url, &headers).await;
+        if let Ok(probe) = &probe {
+            if let Some(total_bytes) = probe.total_bytes {
+                let connections = max_connections.clamp(1, 8);
+                if probe.accepts_ranges
+                    && connections > 1
+                    && total_bytes >= min_split_bytes.max(DOWNLOAD_SEGMENT_FLOOR_BYTES)
+                {
+                    return self
+                        .download_media_segments(
+                            url,
+                            path,
+                            &headers,
+                            total_bytes,
+                            connections,
+                            progress,
+                        )
+                        .await;
+                }
+            }
+        }
+
+        self.download_media_single(
+            url,
+            path,
+            &headers,
+            probe.ok().and_then(|probe| probe.total_bytes),
+            progress,
+        )
+        .await
+    }
+
+    async fn probe_download(
+        &self,
+        url: &str,
+        headers: &[(String, String)],
+    ) -> AppResult<DownloadProbe> {
         let response = self
             .http
             .get(url)
-            .headers(to_header_map(headers))
+            .headers(to_header_map(
+                headers
+                    .iter()
+                    .cloned()
+                    .chain([("Range".to_string(), "bytes=0-0".to_string())])
+                    .collect(),
+            ))
             .send()
             .await?;
+        if response.status().as_u16() == 206 {
+            let headers = response.headers();
+            return Ok(DownloadProbe {
+                total_bytes: headers
+                    .get("content-range")
+                    .and_then(|value| value.to_str().ok())
+                    .and_then(total_bytes_from_content_range)
+                    .or_else(|| headers.get("content-length").and_then(header_u64)),
+                accepts_ranges: true,
+            });
+        }
+
         if !response.status().is_success() {
             return Err(message(format!(
                 "下载请求失败：HTTP {}",
@@ -1391,14 +1521,72 @@ impl IwaraClient {
             )));
         }
 
+        let headers = response.headers();
+        Ok(DownloadProbe {
+            total_bytes: headers.get("content-length").and_then(header_u64),
+            accepts_ranges: headers
+                .get("accept-ranges")
+                .and_then(|value| value.to_str().ok())
+                .is_some_and(|value| value.eq_ignore_ascii_case("bytes")),
+        })
+    }
+
+    async fn download_media_single<F>(
+        &self,
+        url: &str,
+        path: &Path,
+        headers: &[(String, String)],
+        total_bytes: Option<u64>,
+        progress: F,
+    ) -> AppResult<u64>
+    where
+        F: Fn(u64, Option<u64>) + Send + Sync,
+    {
         let part_path = partial_download_path(path);
-        let mut file = tokio::fs::File::create(&part_path).await?;
-        let mut bytes_written = 0_u64;
+        let existing_bytes = tokio::fs::metadata(&part_path)
+            .await
+            .map(|metadata| metadata.len())
+            .unwrap_or(0);
+        if existing_bytes > 0 && total_bytes.is_some_and(|total| existing_bytes >= total) {
+            tokio::fs::rename(&part_path, path).await?;
+            progress(existing_bytes, total_bytes);
+            return Ok(existing_bytes);
+        }
+        let mut request_headers = headers.to_vec();
+        if existing_bytes > 0 {
+            request_headers.push(("Range".to_string(), format!("bytes={existing_bytes}-")));
+        }
+        let response = self
+            .http
+            .get(url)
+            .headers(to_header_map(request_headers))
+            .send()
+            .await?;
+        if existing_bytes > 0 && response.status().as_u16() != 206 {
+            let _ = tokio::fs::remove_file(&part_path).await;
+        }
+        if !response.status().is_success() {
+            return Err(message(format!(
+                "下载请求失败：HTTP {}",
+                response.status().as_u16()
+            )));
+        }
+        let appending = existing_bytes > 0 && response.status().as_u16() == 206;
+        let mut file = OpenOptions::new()
+            .create(true)
+            .append(appending)
+            .write(true)
+            .truncate(!appending)
+            .open(&part_path)
+            .await?;
+        let mut bytes_written = if appending { existing_bytes } else { 0 };
+        progress(bytes_written, total_bytes);
         let mut stream = response.bytes_stream();
         while let Some(chunk) = stream.next().await {
             let chunk = chunk?;
             file.write_all(&chunk).await?;
             bytes_written += chunk.len() as u64;
+            progress(bytes_written, total_bytes);
         }
         file.flush().await?;
         drop(file);
@@ -1410,6 +1598,134 @@ impl IwaraClient {
 
         tokio::fs::rename(&part_path, path).await?;
         Ok(bytes_written)
+    }
+
+    async fn download_media_segments<F>(
+        &self,
+        url: &str,
+        path: &Path,
+        headers: &[(String, String)],
+        total_bytes: u64,
+        max_connections: u64,
+        progress: F,
+    ) -> AppResult<u64>
+    where
+        F: Fn(u64, Option<u64>) + Send + Sync,
+    {
+        let segments = download_segments(total_bytes, max_connections);
+        let initial_bytes = initial_segment_bytes(path, &segments).await;
+        let progress_bytes = Arc::new(AtomicU64::new(initial_bytes));
+        progress(initial_bytes, Some(total_bytes));
+        let progress = Arc::new(progress);
+        let results = futures_util::stream::iter(segments.clone())
+            .map(|segment| {
+                let headers = headers.to_vec();
+                let progress_bytes = Arc::clone(&progress_bytes);
+                let progress = Arc::clone(&progress);
+                async move {
+                    self.download_segment(
+                        url,
+                        path,
+                        &headers,
+                        total_bytes,
+                        segment,
+                        progress_bytes,
+                        progress,
+                    )
+                    .await
+                }
+            })
+            .buffer_unordered(max_connections as usize)
+            .collect::<Vec<_>>()
+            .await;
+
+        for result in results {
+            result?;
+        }
+
+        merge_segments(path, &segments).await?;
+        progress(total_bytes, Some(total_bytes));
+        Ok(total_bytes)
+    }
+
+    async fn download_segment<F>(
+        &self,
+        url: &str,
+        path: &Path,
+        headers: &[(String, String)],
+        total_bytes: u64,
+        segment: DownloadSegment,
+        progress_bytes: Arc<AtomicU64>,
+        progress: Arc<F>,
+    ) -> AppResult<()>
+    where
+        F: Fn(u64, Option<u64>) + Send + Sync,
+    {
+        let part_path = segment_part_path(path, segment.index);
+        let expected_len = segment.end - segment.start + 1;
+        let actual_len = tokio::fs::metadata(&part_path)
+            .await
+            .map(|metadata| metadata.len())
+            .unwrap_or(0);
+        if actual_len > expected_len {
+            let file = OpenOptions::new().write(true).open(&part_path).await?;
+            file.set_len(expected_len).await?;
+        }
+        let mut existing_len = actual_len.min(expected_len);
+        if existing_len == expected_len {
+            return Ok(());
+        }
+        if existing_len > 0 {
+            let file = OpenOptions::new().write(true).open(&part_path).await?;
+            file.set_len(existing_len).await?;
+        }
+
+        let range_start = segment.start + existing_len;
+        let mut request_headers = headers.to_vec();
+        request_headers.push((
+            "Range".to_string(),
+            format!("bytes={range_start}-{}", segment.end),
+        ));
+        let response = self
+            .http
+            .get(url)
+            .headers(to_header_map(request_headers))
+            .send()
+            .await?;
+        if response.status().as_u16() != 206 {
+            return Err(message(format!(
+                "分片下载请求失败：HTTP {}",
+                response.status().as_u16()
+            )));
+        }
+        let mut file = OpenOptions::new()
+            .create(true)
+            .append(existing_len > 0)
+            .write(true)
+            .truncate(existing_len == 0)
+            .open(&part_path)
+            .await?;
+        let mut stream = response.bytes_stream();
+        while let Some(chunk) = stream.next().await {
+            let chunk = chunk?;
+            file.write_all(&chunk).await?;
+            existing_len += chunk.len() as u64;
+            let current = progress_bytes.fetch_add(chunk.len() as u64, Ordering::Relaxed)
+                + chunk.len() as u64;
+            progress(current.min(total_bytes), Some(total_bytes));
+        }
+        file.flush().await?;
+
+        if existing_len != expected_len {
+            return Err(message(format!(
+                "分片 {} 下载不完整：{} / {}",
+                segment.index + 1,
+                existing_len,
+                expected_len
+            )));
+        }
+
+        Ok(())
     }
 
     async fn prefer_cached_formats(
@@ -1822,6 +2138,72 @@ fn partial_download_path(path: &Path) -> PathBuf {
         .map(|name| format!("{name}.part"))
         .unwrap_or_else(|| "download.part".to_string());
     path.with_file_name(part_name)
+}
+
+fn segment_part_path(path: &Path, index: u64) -> PathBuf {
+    let part_name = path
+        .file_name()
+        .and_then(|name| name.to_str())
+        .map(|name| format!("{name}.part{index}"))
+        .unwrap_or_else(|| format!("download.part{index}"));
+    path.with_file_name(part_name)
+}
+
+fn download_segments(total_bytes: u64, max_connections: u64) -> Vec<DownloadSegment> {
+    let count = max_connections
+        .max(1)
+        .min(8)
+        .min((total_bytes / DOWNLOAD_SEGMENT_FLOOR_BYTES).max(1));
+    let segment_size = total_bytes.div_ceil(count);
+    (0..count)
+        .filter_map(|index| {
+            let start = index * segment_size;
+            if start >= total_bytes {
+                return None;
+            }
+            Some(DownloadSegment {
+                index,
+                start,
+                end: ((index + 1) * segment_size)
+                    .saturating_sub(1)
+                    .min(total_bytes - 1),
+            })
+        })
+        .collect()
+}
+
+async fn initial_segment_bytes(path: &Path, segments: &[DownloadSegment]) -> u64 {
+    let mut total = 0;
+    for segment in segments {
+        let expected = segment.end - segment.start + 1;
+        total += tokio::fs::metadata(segment_part_path(path, segment.index))
+            .await
+            .map(|metadata| metadata.len().min(expected))
+            .unwrap_or(0);
+    }
+    total
+}
+
+async fn merge_segments(path: &Path, segments: &[DownloadSegment]) -> AppResult<()> {
+    let mut output = tokio::fs::File::create(path).await?;
+    for segment in segments {
+        let part_path = segment_part_path(path, segment.index);
+        let mut input = tokio::fs::File::open(&part_path).await?;
+        tokio::io::copy(&mut input, &mut output).await?;
+        tokio::fs::remove_file(part_path).await?;
+    }
+    output.flush().await?;
+    Ok(())
+}
+
+fn header_u64(value: &HeaderValue) -> Option<u64> {
+    value.to_str().ok()?.parse().ok()
+}
+
+fn total_bytes_from_content_range(value: &str) -> Option<u64> {
+    value
+        .rsplit_once('/')
+        .and_then(|(_, total)| total.parse::<u64>().ok())
 }
 
 fn path_to_string(path: &Path) -> String {
@@ -2392,6 +2774,28 @@ mod tests {
             &videos[0].tags,
             &["muted".to_string()].into_iter().collect()
         ));
+    }
+
+    #[test]
+    fn splits_download_segments_without_gaps() {
+        let total = 10 * 1024 * 1024;
+        let segments = download_segments(total, 4);
+
+        assert_eq!(segments.len(), 4);
+        assert_eq!(segments[0].start, 0);
+        assert_eq!(segments.last().map(|segment| segment.end), Some(total - 1));
+        for pair in segments.windows(2) {
+            assert_eq!(pair[0].end + 1, pair[1].start);
+        }
+    }
+
+    #[test]
+    fn parses_content_range_total_size() {
+        assert_eq!(
+            total_bytes_from_content_range("bytes 0-0/12345"),
+            Some(12_345)
+        );
+        assert_eq!(total_bytes_from_content_range("bytes */987"), Some(987));
     }
 
     #[test]

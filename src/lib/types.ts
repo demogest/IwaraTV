@@ -82,6 +82,8 @@ export interface TagPreferences {
 export interface DownloadSettings {
   directory?: string;
   defaultQuality?: string;
+  maxConnections: number;
+  minSplitBytes: number;
 }
 
 export interface MediaSpeedCandidateResult {
@@ -281,6 +283,36 @@ export interface DownloadResult {
   format: VideoFormat;
   video: VideoDetail;
   fallbackFrom?: string;
+}
+
+export type DownloadTaskStatus = "queued" | "downloading" | "completed" | "failed";
+
+export interface DownloadTask {
+  id: string;
+  videoId: string;
+  requestedQuality?: string;
+  status: DownloadTaskStatus;
+  video?: VideoSummary;
+  format?: VideoFormat;
+  path?: string;
+  directory?: string;
+  bytesWritten: number;
+  totalBytes?: number;
+  fallbackFrom?: string;
+  error?: string;
+  createdAt: string;
+  updatedAt: string;
+  completedAt?: string;
+}
+
+export interface DownloadState {
+  active: DownloadTask[];
+  history: DownloadTask[];
+}
+
+export interface DownloadDeleteRequest {
+  id: string;
+  deleteFile: boolean;
 }
 
 export interface PlayerProbe {

@@ -456,6 +456,7 @@ button:disabled {
 .field-label input,
 .field-label select,
 .login-form input {
+  min-width: 0;
   min-height: 40px;
   padding: 0 10px;
 }
@@ -542,7 +543,6 @@ button:disabled {
 }
 
 .history-list,
-.settings-grid,
 .login-form {
   display: grid;
   gap: 12px;
@@ -566,12 +566,16 @@ button:disabled {
 }
 
 .settings-grid {
-  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+  display: grid;
+  grid-template-columns: minmax(0, 980px);
   align-items: start;
+  gap: 12px;
+  max-width: 980px;
 }
 
 .settings-block {
   display: grid;
+  min-width: 0;
   align-content: start;
   gap: 14px;
   border: 1px solid rgba(255, 255, 255, 0.08);
@@ -582,6 +586,10 @@ button:disabled {
 
 .settings-block h3 {
   margin: 0;
+}
+
+.settings-block.compact-block {
+  max-width: 520px;
 }
 
 .login-state {
@@ -603,12 +611,18 @@ button:disabled {
 
 .probe-line {
   display: flex;
+  min-width: 0;
   align-items: flex-start;
   gap: 8px;
   border-radius: 8px;
   padding: 10px 11px;
   font-size: 13px;
   line-height: 1.4;
+}
+
+.probe-line span {
+  min-width: 0;
+  overflow-wrap: anywhere;
 }
 
 .probe-line.ok {
@@ -629,6 +643,11 @@ button:disabled {
   color: #cfc9bf;
   font-size: 12px;
   line-height: 1.5;
+}
+
+.quality-panel {
+  display: grid;
+  gap: 8px;
 }
 
 .spin {

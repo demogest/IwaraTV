@@ -169,9 +169,8 @@ export class IwaraClient {
 
   private mapVideoFormat(raw: unknown): VideoFormat | undefined {
     const value = raw as Record<string, unknown>;
-    const src = (value.src ?? {}) as Record<string, unknown>;
     const label = String(value.name ?? "unknown");
-    const url = stringOrUndefined(src.view) ?? stringOrUndefined(src.download);
+    const url = this.formatUrl(value);
 
     if (!url) {
       return undefined;
@@ -187,6 +186,25 @@ export class IwaraClient {
       height: Number.isFinite(Number.parseInt(label, 10)) ? Number.parseInt(label, 10) : undefined,
       qualityRank: qualityRank(label)
     };
+  }
+
+  private formatUrl(value: Record<string, unknown>): string | undefined {
+    const src = value.src;
+    if (typeof src === "string") {
+      return src;
+    }
+
+    if (src && typeof src === "object") {
+      const srcRecord = src as Record<string, unknown>;
+      return stringOrUndefined(srcRecord.view)
+        ?? stringOrUndefined(srcRecord.download)
+        ?? stringOrUndefined(srcRecord.src)
+        ?? stringOrUndefined(srcRecord.url);
+    }
+
+    return stringOrUndefined(value.view)
+      ?? stringOrUndefined(value.download)
+      ?? stringOrUndefined(value.url);
   }
 
   private thumbnailUrl(file: Record<string, unknown>): string | undefined {

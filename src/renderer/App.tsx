@@ -446,6 +446,7 @@ export function App() {
 
           {showDetailPanel && selectedVideo && (
             <DetailPanel
+              siteSessionReady={Boolean(auth.siteSessionReady)}
               playing={playing}
               selectedQuality={selectedQuality}
               sortedFormats={sortedFormats}
@@ -570,6 +571,7 @@ function BrowseView({
 }
 
 function DetailPanel({
+  siteSessionReady,
   playing,
   selectedQuality,
   sortedFormats,
@@ -577,6 +579,7 @@ function DetailPanel({
   onPlay,
   onQualityChange
 }: {
+  siteSessionReady: boolean;
   playing: boolean;
   selectedQuality?: string;
   sortedFormats: VideoDetail["formats"];
@@ -603,16 +606,24 @@ function DetailPanel({
         </div>
 
         {sortedFormats.length ? (
-          <label className="field-label">
-            清晰度
-            <select value={selectedQuality ?? ""} onChange={(event) => onQualityChange(event.target.value)}>
-              {sortedFormats.map((format) => (
-                <option key={format.id} value={format.id}>
-                  {format.label}
-                </option>
-              ))}
-            </select>
-          </label>
+          <div className="quality-panel">
+            <label className="field-label">
+              清晰度
+              <select value={selectedQuality ?? ""} onChange={(event) => onQualityChange(event.target.value)}>
+                {sortedFormats.map((format) => (
+                  <option key={format.id} value={format.id}>
+                    {format.label}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <p className="subtle">
+              Iwara 当前只返回：{sortedFormats.map((format) => format.label).join(" / ")}。
+              {siteSessionReady
+                ? "如果网页版也没有更高清晰度，通常是视频源或站点转码限制。"
+                : "如果网页版有 Source/540，请先在设置里完成应用内验证后重新打开视频。"}
+            </p>
+          </div>
         ) : (
           <div className="inline-warning">没有可用直链清晰度。</div>
         )}
@@ -754,66 +765,6 @@ function SettingsView({
 
       <div className="settings-grid">
         <section className="settings-block">
-          <h3>播放器</h3>
-          <label className="field-label">
-            默认模式
-            <select
-              value={player.preferredMode}
-              onChange={(event) => onUpdatePlayer({ preferredMode: event.target.value as PlayerMode })}
-            >
-              <option value="mpv">MPV</option>
-              <option value="external">外部播放器</option>
-            </select>
-          </label>
-          <label className="field-label">
-            MPV 路径
-            <div className="path-row">
-              <input
-                value={player.mpvPath ?? ""}
-                onChange={(event) => onUpdatePlayer({ mpvPath: event.target.value || undefined })}
-                placeholder="vendor/mpv/mpv.exe 或自定义路径"
-              />
-              <button className="secondary-button compact" disabled={!hasBridge} onClick={onChooseMpv} type="button">
-                <FolderOpen size={17} />
-                选择
-              </button>
-            </div>
-          </label>
-          <ProbeLine probe={diagnostics?.mpv} />
-          {mpvTest && <ProbeLine probe={mpvTest} />}
-          <button className="secondary-button" disabled={!hasBridge || probing} onClick={onTestMpv} type="button">
-            <MonitorPlay size={18} />
-            测试 MPV
-          </button>
-
-          <label className="field-label">
-            外部播放器路径
-            <div className="path-row">
-              <input
-                value={player.externalPlayerPath ?? ""}
-                onChange={(event) => onUpdatePlayer({ externalPlayerPath: event.target.value || undefined })}
-                placeholder="例如 PotPlayerMini64.exe"
-              />
-              <button className="secondary-button compact" disabled={!hasBridge} onClick={onChooseExternal} type="button">
-                <FolderOpen size={17} />
-                选择
-              </button>
-            </div>
-          </label>
-          <label className="field-label">
-            外部播放器参数
-            <input
-              value={player.externalPlayerArgs}
-              onChange={(event) => onUpdatePlayer({ externalPlayerArgs: event.target.value })}
-            />
-          </label>
-          <ProbeLine probe={diagnostics?.external} />
-          {diagnostics?.externalArgsPreview.length ? (
-            <code className="args-preview">{diagnostics.externalArgsPreview.join(" ")}</code>
-          ) : null}
-        </section>
-
-        <section className="settings-block">
           <h3>Iwara 会话</h3>
           <div className={auth.siteSessionReady ? "probe-line ok" : "probe-line bad"}>
             {auth.siteSessionReady ? <CheckCircle2 size={17} /> : <AlertTriangle size={17} />}
@@ -837,6 +788,73 @@ function SettingsView({
             在弹出的应用内窗口完成 Cloudflare 验证或登录后，回到这里刷新会话；应用请求会复用这个窗口的 cookie。
           </p>
           {auth.warning && <p className="subtle">{auth.warning}</p>}
+        </section>
+
+        <section className="settings-block compact-block">
+          <h3>播放偏好</h3>
+          <label className="field-label">
+            默认播放器
+            <select
+              value={player.preferredMode}
+              onChange={(event) => onUpdatePlayer({ preferredMode: event.target.value as PlayerMode })}
+            >
+              <option value="mpv">内置 MPV</option>
+              <option value="external">外部播放器</option>
+            </select>
+          </label>
+        </section>
+
+        <section className="settings-block">
+          <h3>内置 MPV</h3>
+          <label className="field-label">
+            MPV 路径
+            <div className="path-row">
+              <input
+                value={player.mpvPath ?? ""}
+                onChange={(event) => onUpdatePlayer({ mpvPath: event.target.value || undefined })}
+                placeholder="自动使用打包内置 MPV，也可手动指定 mpv.exe"
+              />
+              <button className="secondary-button compact" disabled={!hasBridge} onClick={onChooseMpv} type="button">
+                <FolderOpen size={17} />
+                选择
+              </button>
+            </div>
+          </label>
+          <ProbeLine probe={diagnostics?.mpv} />
+          {mpvTest && <ProbeLine probe={mpvTest} />}
+          <button className="secondary-button" disabled={!hasBridge || probing} onClick={onTestMpv} type="button">
+            <MonitorPlay size={18} />
+            测试 MPV
+          </button>
+        </section>
+
+        <section className="settings-block">
+          <h3>外部播放器</h3>
+          <label className="field-label">
+            播放器路径
+            <div className="path-row">
+              <input
+                value={player.externalPlayerPath ?? ""}
+                onChange={(event) => onUpdatePlayer({ externalPlayerPath: event.target.value || undefined })}
+                placeholder="例如 PotPlayerMini64.exe"
+              />
+              <button className="secondary-button compact" disabled={!hasBridge} onClick={onChooseExternal} type="button">
+                <FolderOpen size={17} />
+                选择
+              </button>
+            </div>
+          </label>
+          <label className="field-label">
+            启动参数
+            <input
+              value={player.externalPlayerArgs}
+              onChange={(event) => onUpdatePlayer({ externalPlayerArgs: event.target.value })}
+            />
+          </label>
+          <ProbeLine probe={diagnostics?.external} />
+          {diagnostics?.externalArgsPreview.length ? (
+            <code className="args-preview">{diagnostics.externalArgsPreview.join(" ")}</code>
+          ) : null}
         </section>
       </div>
     </>

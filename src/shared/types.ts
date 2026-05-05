@@ -148,6 +148,9 @@ export interface VideoListResult {
   limit: number;
   query?: string;
   tags: string[];
+  scannedPages?: number;
+  blockedCount?: number;
+  partialFailures?: string[];
   total?: number;
   results: VideoSummary[];
 }

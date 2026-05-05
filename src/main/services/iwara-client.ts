@@ -27,7 +27,8 @@ import type {
   VideoSort,
   VideoCommentsResult,
   XVersionSaltReport,
-  VideoSummary
+  VideoSummary,
+  TagPreferences
 } from "../../shared/types";
 import { AuthStore } from "./auth-store";
 
@@ -38,6 +39,9 @@ const DEFAULT_LIMIT = 32;
 const COMMENT_LIMIT = 8;
 const SALT_SCRIPT_PATTERN = /<script[^>]+src=["']([^"']+\.js(?:\?[^"']*)?)["']/gi;
 type IwaraFetch = (url: string, init?: RequestInit) => Promise<Response>;
+type ListVideosOptions = {
+  tagPreferences?: TagPreferences;
+};
 
 export class IwaraApiError extends Error {
   constructor(
@@ -84,23 +88,97 @@ export class IwaraClient {
     return this.authStore.state();
   }
 
-  async listVideos(request: ListVideosRequest): Promise<VideoListResult> {
+  async listVideos(request: ListVideosRequest, options: ListVideosOptions = {}): Promise<VideoListResult> {
     const sort = request.sort;
     const page = request.page ?? 0;
     const rating = request.rating ?? "all";
     const query = request.query?.trim();
     const tags = normalizeTags(request.tags ?? []);
+    const tagPreferences = normalizeListPreferences(options.tagPreferences);
+    const requiredTags = new Set(tags);
+    const blockedTags = new Set(tagPreferences.blockedTags);
+    const needsClientScan = tags.length > 1 || blockedTags.size > 0;
+    const serverTag = tags[0];
+    const pagesToScan = needsClientScan ? tagPreferences.maxScanPages : 1;
+    const startPage = needsClientScan ? page * pagesToScan : page;
+    const results: VideoSummary[] = [];
+    let total: number | undefined;
+    let scannedPages = 0;
+    let blockedCount = 0;
+    const failures: string[] = [];
+
+    for (let offset = 0; offset < pagesToScan; offset += 1) {
+      const currentPage = startPage + offset;
+      if (offset > 0) {
+        await delay(tagPreferences.requestDelayMs);
+      }
+
+      try {
+        const response = await this.fetchVideoListPage({
+          sort,
+          page: currentPage,
+          rating,
+          query,
+          tag: serverTag,
+          userId: request.userId
+        });
+        total = response.total ?? total;
+        scannedPages += 1;
+        for (const video of response.results) {
+          if (matchesAnyTag(video, blockedTags)) {
+            blockedCount += 1;
+            continue;
+          }
+          if (requiredTags.size && !matchesAllTags(video, requiredTags)) {
+            continue;
+          }
+          results.push(video);
+          if (results.length >= DEFAULT_LIMIT) {
+            break;
+          }
+        }
+      } catch (err) {
+        failures.push(`第 ${currentPage + 1} 页：${err instanceof Error ? err.message : String(err)}`);
+      }
+
+      if (!needsClientScan || results.length >= DEFAULT_LIMIT) {
+        break;
+      }
+    }
+
+    return {
+      sort,
+      page,
+      limit: DEFAULT_LIMIT,
+      query,
+      tags,
+      total,
+      scannedPages,
+      blockedCount,
+      partialFailures: failures.length ? failures : undefined,
+      results: dedupeVideos(results).slice(0, DEFAULT_LIMIT)
+    };
+  }
+
+  private async fetchVideoListPage(request: {
+    sort: VideoSort;
+    page: number;
+    rating: RatingFilter;
+    query?: string;
+    tag?: string;
+    userId?: string;
+  }): Promise<{ total?: number; results: VideoSummary[] }> {
     const url = new URL(`${API_BASE}/videos`);
-    url.searchParams.set("sort", sort);
-    url.searchParams.set("rating", rating);
-    url.searchParams.set("page", String(page));
+    url.searchParams.set("sort", request.sort);
+    url.searchParams.set("rating", request.rating);
+    url.searchParams.set("page", String(request.page));
     url.searchParams.set("limit", String(DEFAULT_LIMIT));
     url.searchParams.set("subscribed", "false");
-    if (query) {
-      url.searchParams.set("query", query);
+    if (request.query) {
+      url.searchParams.set("query", request.query);
     }
-    if (tags.length) {
-      url.searchParams.set("tags", tags.join(","));
+    if (request.tag) {
+      url.searchParams.set("tags", request.tag);
     }
     if (request.userId) {
       url.searchParams.set("user", request.userId);
@@ -115,11 +193,6 @@ export class IwaraClient {
     });
 
     return {
-      sort,
-      page,
-      limit: DEFAULT_LIMIT,
-      query,
-      tags,
       total: data.total ?? data.count,
       results: (data.results ?? []).map((item) => this.mapVideoSummary(item))
     };
@@ -712,7 +785,59 @@ function stringOrUndefined(value: unknown): string | undefined {
 }
 
 function normalizeTags(tags: string[]): string[] {
-  return [...new Set(tags.map((tag) => tag.trim()).filter(Boolean))];
+  return [...new Set(tags.map((tag) => tag.trim().toLowerCase()).filter(Boolean))];
+}
+
+function normalizeListPreferences(preferences: TagPreferences | undefined): TagPreferences {
+  return {
+    followedTags: normalizeTags(preferences?.followedTags ?? []),
+    blockedTags: normalizeTags(preferences?.blockedTags ?? []),
+    maxScanPages: clampInteger(preferences?.maxScanPages, 1, 10, 5),
+    requestDelayMs: clampInteger(preferences?.requestDelayMs, 0, 1500, 250)
+  };
+}
+
+function matchesAnyTag(video: VideoSummary, tags: Set<string>): boolean {
+  if (!tags.size) {
+    return false;
+  }
+
+  const videoTags = new Set(video.tags.map(normalizeTagValue));
+  return [...tags].some((tag) => videoTags.has(tag));
+}
+
+function matchesAllTags(video: VideoSummary, tags: Set<string>): boolean {
+  if (!tags.size) {
+    return true;
+  }
+
+  const videoTags = new Set(video.tags.map(normalizeTagValue));
+  return [...tags].every((tag) => videoTags.has(tag));
+}
+
+function normalizeTagValue(tag: string): string {
+  return tag.trim().toLowerCase();
+}
+
+function dedupeVideos(videos: VideoSummary[]): VideoSummary[] {
+  const seen = new Set<string>();
+  return videos.filter((video) => {
+    if (seen.has(video.id)) {
+      return false;
+    }
+
+    seen.add(video.id);
+    return true;
+  });
+}
+
+function clampInteger(value: number | undefined, min: number, max: number, fallback: number): number {
+  const numeric = Number(value);
+  if (!Number.isFinite(numeric)) {
+    return fallback;
+  }
+
+  return Math.min(max, Math.max(min, Math.round(numeric)));
 }
 
 function plainText(value: unknown): string | undefined {
@@ -876,4 +1001,14 @@ function isJwtExpired(token: string, skewSeconds: number): boolean {
   } catch {
     return false;
   }
+}
+
+function delay(ms: number): Promise<void> {
+  if (ms <= 0) {
+    return Promise.resolve();
+  }
+
+  return new Promise((resolve) => {
+    setTimeout(resolve, ms);
+  });
 }

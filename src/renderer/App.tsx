@@ -1083,6 +1083,7 @@ function BrowseView({
         <SkeletonGrid />
       ) : videos.length ? (
         <>
+          <ListScanSummary result={activeFeed} />
           <div className="video-grid">
             {videos.map((video) => (
               <VideoCard
@@ -1124,6 +1125,20 @@ function BrowseView({
         />
       )}
     </>
+  );
+}
+
+function ListScanSummary({ result }: { result?: VideoListResult }) {
+  if (!result || (!result.scannedPages && !result.blockedCount && !result.partialFailures?.length)) {
+    return null;
+  }
+
+  return (
+    <div className="list-scan-summary">
+      {result.scannedPages ? <span>已扫描 {result.scannedPages} 页</span> : null}
+      {result.blockedCount ? <span>已隐藏 {result.blockedCount} 个屏蔽标签视频</span> : null}
+      {result.partialFailures?.length ? <span>{result.partialFailures.length} 个请求失败，已显示部分结果</span> : null}
+    </div>
   );
 }
 

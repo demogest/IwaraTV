@@ -1,6 +1,6 @@
 {
   "name": "iwara-tv-local-player",
-  "version": "0.1.12",
+  "version": "0.1.13",
   "private": true,
   "description": "Local Iwara.tv browser and MPV launcher.",
   "author": "Demogest",

@@ -315,6 +315,21 @@ button:disabled {
   font-size: 12px;
 }
 
+.list-scan-summary {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-bottom: 12px;
+  color: #aaa59a;
+  font-size: 12px;
+}
+
+.list-scan-summary span {
+  border-radius: 8px;
+  padding: 5px 8px;
+  background: rgba(255, 255, 255, 0.06);
+}
+
 .notice {
   margin-bottom: 12px;
   border-radius: 8px;

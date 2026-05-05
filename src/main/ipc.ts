@@ -61,7 +61,8 @@ export function registerIpc(
     }
   };
 
-  ipcMain.handle("iwara:listVideos", (_event, request: ListVideosRequest) => iwaraClient.listVideos(request));
+  ipcMain.handle("iwara:listVideos", (_event, request: ListVideosRequest) =>
+    iwaraClient.listVideos(request, { tagPreferences: settingsStore.get().tagPreferences }));
   ipcMain.handle("iwara:getVideo", async (_event, payload: { idOrUrl: string }) => {
     await maybeSniffXVersionSalt();
     const video = withRememberedHosts(await iwaraClient.getVideo(payload.idOrUrl));

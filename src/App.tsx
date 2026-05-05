@@ -58,7 +58,8 @@ import { normalizeMediaHostList } from "./lib/media-speed-utils";
 import logoMarkUrl from "./assets/iwara-tv-mark.svg";
 import { classifyIssue, type UiIssue } from "./lib/issue-utils";
 
-type AppSection = "browse" | "search" | "subscriptions" | "history" | "settings";
+type MainSection = "browse" | "search" | "subscriptions" | "history" | "settings";
+type AppSection = MainSection | "detail";
 type FeedTabKey = Extract<VideoSort, "date" | "trending" | "popularity"> | "followed";
 type SearchSort = Extract<VideoSort, "relevance" | "date" | "views" | "likes">;
 interface ActiveAuthor {
@@ -73,7 +74,7 @@ interface VideoFilters {
   tags: string[];
 }
 
-const sectionTabs: Array<{ section: AppSection; label: string; Icon: LucideIcon }> = [
+const sectionTabs: Array<{ section: MainSection; label: string; Icon: LucideIcon }> = [
   { section: "browse", label: "浏览", Icon: MonitorPlay },
   { section: "search", label: "搜索", Icon: Search },
   { section: "subscriptions", label: "订阅", Icon: Bell },
@@ -141,6 +142,7 @@ const defaultAuth: AuthState = {
 export function App() {
   const api = window.iwaraTV;
   const [activeSection, setActiveSection] = useState<AppSection>("browse");
+  const [detailReturnSection, setDetailReturnSection] = useState<MainSection>("browse");
   const [activeFeedTab, setActiveFeedTab] = useState<FeedTabKey>("date");
   const [feeds, setFeeds] = useState<Partial<Record<FeedTabKey, VideoListResult>>>({});
   const [searchFeed, setSearchFeed] = useState<VideoListResult | undefined>();
@@ -173,6 +175,7 @@ export function App() {
   const loadingSubscriptionsRef = useRef(false);
   const [loadingComments, setLoadingComments] = useState(false);
   const [loadingVideoId, setLoadingVideoId] = useState<string | undefined>();
+  const [loadingVideoTitle, setLoadingVideoTitle] = useState<string | undefined>();
   const [quickPlayingId, setQuickPlayingId] = useState<string | undefined>();
   const [downloadingVideoId, setDownloadingVideoId] = useState<string | undefined>();
   const [playing, setPlaying] = useState(false);
@@ -192,7 +195,7 @@ export function App() {
   const hasApi = Boolean(api);
   const canLoadSubscriptions = Boolean(auth.loggedIn || auth.siteTokenReady);
   const canFollowAuthors = canLoadSubscriptions;
-  const showDetailPanel = (activeSection === "browse" || activeSection === "search" || activeSection === "subscriptions") && Boolean(selectedVideo);
+  const showDetailPage = activeSection === "detail";
   const authDisplayName = auth.username
     ?? auth.email
     ?? (auth.siteTokenReady ? "网页登录" : auth.siteSessionReady ? "已验证会话" : "匿名");
@@ -365,15 +368,21 @@ export function App() {
     }
   }
 
-  async function openVideo(idOrUrl: string) {
-    if (!api || !idOrUrl.trim()) {
+  async function openVideo(idOrUrl: string, title?: string) {
+    const target = idOrUrl.trim();
+    if (!api || !target) {
       return;
     }
 
-    setLoadingVideoId(idOrUrl);
+    const returnSection = activeSection === "detail" ? detailReturnSection : activeSection;
+    setDetailReturnSection(returnSection);
+    setActiveSection("detail");
+    setSelectedVideo(undefined);
+    setLoadingVideoId(target);
+    setLoadingVideoTitle(title);
     clearMessages();
     try {
-      const video = await api.iwara.getVideo(idOrUrl);
+      const video = await api.iwara.getVideo(target);
       const loadedSettings = await api.settings.get();
       const currentAuth = await api.auth.state().catch(() => auth);
       setSettings(loadedSettings);
@@ -414,6 +423,7 @@ export function App() {
       handleError(err);
     } finally {
       setLoadingVideoId(undefined);
+      setLoadingVideoTitle(undefined);
     }
   }
 
@@ -483,7 +493,7 @@ export function App() {
     }
   }
 
-  function closeDetailPanel() {
+  function closeDetailPanel(nextSection: MainSection = detailReturnSection) {
     setSelectedVideo(undefined);
     setSelectedQuality(undefined);
     setVideoDiagnostics(undefined);
@@ -492,6 +502,7 @@ export function App() {
     setReplyDrafts({});
     setCommentDraft("");
     setSpeedReport(undefined);
+    setActiveSection(nextSection);
   }
 
   async function setAuthorFollowing(author: ActiveAuthor, following: boolean) {
@@ -550,7 +561,7 @@ export function App() {
       return;
     }
 
-    closeDetailPanel();
+    closeDetailPanel("browse");
     await loadAuthorFeed({
       id: video.uploaderId,
       name: video.uploaderName,
@@ -581,7 +592,7 @@ export function App() {
   }
 
   async function applyTagFromDetail(tag: string) {
-    closeDetailPanel();
+    closeDetailPanel("browse");
     await addTagFilter(tag);
   }
 
@@ -688,7 +699,6 @@ export function App() {
 
   async function handleSubmit(event: FormEvent) {
     event.preventDefault();
-    setActiveSection("browse");
     await openVideo(urlInput);
   }
 
@@ -1068,9 +1078,9 @@ export function App() {
               className={activeSection === section ? "nav-button active" : "nav-button"}
               key={section}
               onClick={() => {
-                const detailRouteChanging = section === "search" || section === "subscriptions" || activeSection === "search" || activeSection === "subscriptions";
-                if (section !== activeSection && detailRouteChanging) {
-                  closeDetailPanel();
+                if (activeSection === "detail") {
+                  closeDetailPanel(section);
+                  return;
                 }
                 setActiveSection(section);
               }}
@@ -1083,7 +1093,7 @@ export function App() {
         </nav>
       </aside>
 
-      <section className={showDetailPanel ? "workspace detail-open" : "workspace"}>
+      <section className={showDetailPage ? "workspace detail-route" : "workspace"}>
         <header className="topbar">
           <form className="url-form" onSubmit={handleSubmit}>
             <Search size={18} />
@@ -1093,7 +1103,7 @@ export function App() {
               placeholder="Iwara 视频链接或 ID"
             />
             <button disabled={!hasApi || !urlInput.trim() || Boolean(loadingVideoId)} type="submit">
-              {loadingVideoId === urlInput ? <Loader2 className="spin" size={18} /> : <ExternalLink size={18} />}
+              {loadingVideoId === urlInput.trim() ? <Loader2 className="spin" size={18} /> : <ExternalLink size={18} />}
               打开
             </button>
           </form>
@@ -1113,7 +1123,45 @@ export function App() {
         {issue && <ActionNotice issue={issue} onAction={() => handleIssueAction(issue)} />}
         {status && <div className="notice success">{status}</div>}
 
-        <div className={showDetailPanel ? "content-grid with-detail" : "content-grid"}>
+        {showDetailPage ? (
+          <VideoDetailRoute
+            playing={playing}
+            selectedQuality={selectedQuality}
+            sortedFormats={sortedFormats}
+            diagnostics={videoDiagnostics}
+            diagnosing={diagnosingVideo}
+            downloading={Boolean(selectedVideo && downloadingVideoId === selectedVideo.id)}
+            authorFollowBusy={Boolean(selectedVideo && authorFollowBusyId === selectedVideo.uploaderId)}
+            canFollowAuthor={canFollowAuthors}
+            video={selectedVideo}
+            loadingVideoId={loadingVideoId}
+            loadingVideoTitle={loadingVideoTitle}
+            backLabel={sectionLabel(detailReturnSection)}
+            onBack={() => closeDetailPanel()}
+            onDiagnose={diagnoseSelectedVideo}
+            onBlockTag={blockTag}
+            onCommentDraftChange={setCommentDraft}
+            onFilterTag={applyTagFromDetail}
+            onFollowTag={followTag}
+            onOpenAuthor={openAuthorProfile}
+            onToggleAuthorFollow={toggleAuthorFollowFromVideo}
+            onPlay={playVideo}
+            onDownload={() => selectedVideo && downloadVideo(selectedVideo, selectedQuality)}
+            onQualityChange={setSelectedQuality}
+            onRefreshComments={() => selectedVideo && loadComments(selectedVideo.id)}
+            onReplyDraftChange={(commentId, value) => setReplyDrafts((current) => ({ ...current, [commentId]: value }))}
+            onReplyToggle={(commentId) => setReplyingTo((current) => current === commentId ? undefined : commentId)}
+            onSubmitComment={submitComment}
+            commentDraft={commentDraft}
+            comments={commentsResult}
+            loadingComments={loadingComments}
+            replyDrafts={replyDrafts}
+            replyingTo={replyingTo}
+            submittingComment={submittingComment}
+            tagPreferences={settings.tagPreferences}
+          />
+        ) : (
+        <div className="content-grid">
           <section className="primary-panel">
             {activeSection === "browse" && (
               <BrowseView
@@ -1193,11 +1241,9 @@ export function App() {
             {activeSection === "history" && (
               <HistoryView
                 history={settings.history}
+                loadingVideoId={loadingVideoId}
                 onClear={clearHistory}
-                onOpen={(id) => {
-                  setActiveSection("browse");
-                  void openVideo(id);
-                }}
+                onOpen={(video) => void openVideo(video.id, video.title)}
               />
             )}
 
@@ -1237,45 +1283,149 @@ export function App() {
               />
             )}
           </section>
-
-          {showDetailPanel && selectedVideo && (
-            <DetailPanel
-              playing={playing}
-              selectedQuality={selectedQuality}
-              sortedFormats={sortedFormats}
-              diagnostics={videoDiagnostics}
-              diagnosing={diagnosingVideo}
-              downloading={downloadingVideoId === selectedVideo.id}
-              authorFollowBusy={authorFollowBusyId === selectedVideo.uploaderId}
-              canFollowAuthor={canFollowAuthors}
-              video={selectedVideo}
-              onDiagnose={diagnoseSelectedVideo}
-              onBlockTag={blockTag}
-              onClose={closeDetailPanel}
-              onCommentDraftChange={setCommentDraft}
-              onFilterTag={applyTagFromDetail}
-              onFollowTag={followTag}
-              onOpenAuthor={openAuthorProfile}
-              onToggleAuthorFollow={toggleAuthorFollowFromVideo}
-              onPlay={playVideo}
-              onDownload={() => downloadVideo(selectedVideo, selectedQuality)}
-              onQualityChange={setSelectedQuality}
-              onRefreshComments={() => loadComments(selectedVideo.id)}
-              onReplyDraftChange={(commentId, value) => setReplyDrafts((current) => ({ ...current, [commentId]: value }))}
-              onReplyToggle={(commentId) => setReplyingTo((current) => current === commentId ? undefined : commentId)}
-              onSubmitComment={submitComment}
-              commentDraft={commentDraft}
-              comments={commentsResult}
-              loadingComments={loadingComments}
-              replyDrafts={replyDrafts}
-              replyingTo={replyingTo}
-              submittingComment={submittingComment}
-              tagPreferences={settings.tagPreferences}
-            />
-          )}
         </div>
+        )}
       </section>
     </main>
+  );
+}
+
+function VideoDetailRoute({
+  playing,
+  selectedQuality,
+  sortedFormats,
+  diagnostics,
+  diagnosing,
+  downloading,
+  authorFollowBusy,
+  canFollowAuthor,
+  video,
+  loadingVideoId,
+  loadingVideoTitle,
+  backLabel,
+  onBack,
+  onDiagnose,
+  onBlockTag,
+  onCommentDraftChange,
+  onFilterTag,
+  onFollowTag,
+  onOpenAuthor,
+  onToggleAuthorFollow,
+  onDownload,
+  onPlay,
+  onQualityChange,
+  onRefreshComments,
+  onReplyDraftChange,
+  onReplyToggle,
+  onSubmitComment,
+  commentDraft,
+  comments,
+  loadingComments,
+  replyDrafts,
+  replyingTo,
+  submittingComment,
+  tagPreferences
+}: {
+  playing: boolean;
+  selectedQuality?: string;
+  sortedFormats: VideoDetail["formats"];
+  diagnostics?: IwaraVideoDiagnostics;
+  diagnosing: boolean;
+  downloading: boolean;
+  authorFollowBusy: boolean;
+  canFollowAuthor: boolean;
+  video?: VideoDetail;
+  loadingVideoId?: string;
+  loadingVideoTitle?: string;
+  backLabel: string;
+  onBack: () => void;
+  onDiagnose: () => void;
+  onBlockTag: (tag: string) => void;
+  onCommentDraftChange: (value: string) => void;
+  onFilterTag: (tag: string) => void;
+  onFollowTag: (tag: string) => void;
+  onOpenAuthor: (video: VideoDetail) => void;
+  onToggleAuthorFollow: (video: VideoDetail) => void;
+  onDownload: () => void;
+  onPlay: (mode: PlayerMode) => void;
+  onQualityChange: (quality: string) => void;
+  onRefreshComments: () => void;
+  onReplyDraftChange: (commentId: string, value: string) => void;
+  onReplyToggle: (commentId: string) => void;
+  onSubmitComment: (parentId?: string) => void;
+  commentDraft: string;
+  comments?: VideoCommentsResult;
+  loadingComments: boolean;
+  replyDrafts: Record<string, string>;
+  replyingTo?: string;
+  submittingComment: boolean;
+  tagPreferences: AppSettings["tagPreferences"];
+}) {
+  const heading = video?.title ?? (loadingVideoId ? "正在打开视频" : "视频详情");
+
+  return (
+    <div className="detail-page">
+      <div className="detail-page-header">
+        <button className="secondary-button compact" onClick={onBack} type="button">
+          <ArrowLeft size={17} />
+          返回{backLabel}
+        </button>
+        <div>
+          <p>视频详情</p>
+          <h2>{heading}</h2>
+        </div>
+      </div>
+
+      {loadingVideoId && !video ? (
+        <DetailLoadingState idOrUrl={loadingVideoId} title={loadingVideoTitle} />
+      ) : video ? (
+        <DetailPanel
+          playing={playing}
+          selectedQuality={selectedQuality}
+          sortedFormats={sortedFormats}
+          diagnostics={diagnostics}
+          diagnosing={diagnosing}
+          downloading={downloading}
+          authorFollowBusy={authorFollowBusy}
+          canFollowAuthor={canFollowAuthor}
+          video={video}
+          onDiagnose={onDiagnose}
+          onBlockTag={onBlockTag}
+          onClose={onBack}
+          onCommentDraftChange={onCommentDraftChange}
+          onFilterTag={onFilterTag}
+          onFollowTag={onFollowTag}
+          onOpenAuthor={onOpenAuthor}
+          onToggleAuthorFollow={onToggleAuthorFollow}
+          onPlay={onPlay}
+          onDownload={onDownload}
+          onQualityChange={onQualityChange}
+          onRefreshComments={onRefreshComments}
+          onReplyDraftChange={onReplyDraftChange}
+          onReplyToggle={onReplyToggle}
+          onSubmitComment={onSubmitComment}
+          commentDraft={commentDraft}
+          comments={comments}
+          loadingComments={loadingComments}
+          replyDrafts={replyDrafts}
+          replyingTo={replyingTo}
+          submittingComment={submittingComment}
+          tagPreferences={tagPreferences}
+        />
+      ) : (
+        <EmptyState Icon={AlertTriangle} title="视频没有打开" actionLabel={`返回${backLabel}`} onAction={onBack} />
+      )}
+    </div>
+  );
+}
+
+function DetailLoadingState({ idOrUrl, title }: { idOrUrl: string; title?: string }) {
+  return (
+    <div className="detail-loading-state">
+      <Loader2 className="spin" size={36} />
+      <h3>正在打开视频</h3>
+      <p>{title ?? idOrUrl}</p>
+    </div>
   );
 }
 
@@ -2380,12 +2530,14 @@ function VideoCard({
 
 function HistoryView({
   history,
+  loadingVideoId,
   onClear,
   onOpen
 }: {
   history: AppSettings["history"];
+  loadingVideoId?: string;
   onClear: () => void;
-  onOpen: (id: string) => void;
+  onOpen: (video: VideoSummary) => void;
 }) {
   return (
     <>
@@ -2401,12 +2553,30 @@ function HistoryView({
       </div>
       {history.length ? (
         <div className="history-list">
-          {history.map((item) => (
-            <button className="history-item" key={`${item.video.id}-${item.playedAt}`} onClick={() => onOpen(item.video.id)} type="button">
-              <span>{item.video.title}</span>
-              <small>{item.mode.toUpperCase()} · {item.formatId} · {formatDate(item.playedAt)}</small>
-            </button>
-          ))}
+          {history.map((item) => {
+            const loading = loadingVideoId === item.video.id;
+
+            return (
+              <button
+                className={loading ? "history-item loading" : "history-item"}
+                disabled={Boolean(loadingVideoId)}
+                key={`${item.video.id}-${item.playedAt}`}
+                onClick={() => onOpen(item.video)}
+                type="button"
+              >
+                <span className="history-item-copy">
+                  <span>{item.video.title}</span>
+                  <small>{item.mode.toUpperCase()} · {item.formatId} · {formatDate(item.playedAt)}</small>
+                </span>
+                {loading && (
+                  <span className="history-item-loader">
+                    <Loader2 className="spin" size={17} />
+                    打开中
+                  </span>
+                )}
+              </button>
+            );
+          })}
         </div>
       ) : (
         <EmptyState Icon={History} title="还没有播放历史" />
@@ -2906,6 +3076,23 @@ function updateFeedCollectionAuthorFollowing(
   }
 
   return next;
+}
+
+function sectionLabel(section: MainSection): string {
+  switch (section) {
+    case "browse":
+      return "浏览";
+    case "search":
+      return "搜索";
+    case "subscriptions":
+      return "订阅";
+    case "history":
+      return "历史";
+    case "settings":
+      return "设置";
+    default:
+      return "浏览";
+  }
 }
 
 function feedTitle(tab: FeedTabKey): string {

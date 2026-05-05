@@ -3,6 +3,7 @@ import { app, BrowserWindow, shell } from "electron";
 import { registerIpc } from "./ipc";
 import { AuthStore } from "./services/auth-store";
 import { IwaraClient } from "./services/iwara-client";
+import { IwaraSessionService } from "./services/iwara-session";
 import { PlayerService } from "./services/player-service";
 import { SettingsStore } from "./services/settings-store";
 
@@ -40,10 +41,11 @@ function createWindow(): void {
 app.whenReady().then(() => {
   const settingsStore = new SettingsStore(app.getPath("userData"));
   const authStore = new AuthStore(app.getPath("userData"));
-  const iwaraClient = new IwaraClient(authStore);
+  const iwaraSessionService = new IwaraSessionService();
+  const iwaraClient = new IwaraClient(authStore, (url) => iwaraSessionService.headersFor(url));
   const playerService = new PlayerService(iwaraClient, settingsStore);
 
-  registerIpc(iwaraClient, playerService, settingsStore);
+  registerIpc(iwaraClient, playerService, settingsStore, iwaraSessionService);
   createWindow();
 
   app.on("activate", () => {
@@ -58,4 +60,3 @@ app.on("window-all-closed", () => {
     app.quit();
   }
 });
-

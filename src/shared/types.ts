@@ -66,6 +66,9 @@ export interface AuthState {
   email?: string;
   hasMediaToken: boolean;
   encryptionAvailable: boolean;
+  siteSessionReady?: boolean;
+  siteCookieCount?: number;
+  browserUserAgent?: string;
   warning?: string;
 }
 

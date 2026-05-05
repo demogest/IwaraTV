@@ -8,7 +8,6 @@ import {
   History,
   Loader2,
   LogIn,
-  LogOut,
   MonitorPlay,
   Play,
   RefreshCw,
@@ -81,11 +80,11 @@ export function App() {
   const [quickPlayingId, setQuickPlayingId] = useState<string | undefined>();
   const [playing, setPlaying] = useState(false);
   const [probing, setProbing] = useState(false);
-  const [loginBusy, setLoginBusy] = useState(false);
-  const [loginForm, setLoginForm] = useState({ email: "", password: "" });
+  const [sessionBusy, setSessionBusy] = useState(false);
 
   const activeFeed = feeds[activeSort];
   const hasBridge = Boolean(bridge);
+  const showDetailPanel = activeSection === "browse" && Boolean(selectedVideo);
   const sortedFormats = useMemo(
     () => [...(selectedVideo?.formats ?? [])].sort((a, b) => b.qualityRank - a.qualityRank),
     [selectedVideo]
@@ -273,32 +272,38 @@ export function App() {
     setSettings(next);
   }
 
-  async function login(event: FormEvent) {
-    event.preventDefault();
+  async function refreshAuthState() {
     if (!bridge) {
       return;
     }
 
-    setLoginBusy(true);
+    setSessionBusy(true);
     clearMessages();
     try {
-      setAuth(await bridge.auth.login(loginForm));
-      setLoginForm((current) => ({ ...current, password: "" }));
-      setStatus("登录已更新。");
+      setAuth(await bridge.auth.state());
+      setStatus("会话状态已刷新。");
     } catch (err) {
       handleError(err);
     } finally {
-      setLoginBusy(false);
+      setSessionBusy(false);
     }
   }
 
-  async function logout() {
+  async function openIwaraSession() {
     if (!bridge) {
       return;
     }
 
-    setAuth(await bridge.auth.logout());
-    setStatus("已退出登录。");
+    setSessionBusy(true);
+    clearMessages();
+    try {
+      setAuth(await bridge.auth.openIwaraSession());
+      setStatus("已打开 Iwara 验证窗口。完成验证或登录后，回到这里刷新会话再重试。");
+    } catch (err) {
+      handleError(err);
+    } finally {
+      setSessionBusy(false);
+    }
   }
 
   async function handleIssueAction(target: UiIssue) {
@@ -313,7 +318,7 @@ export function App() {
     }
 
     if (target.action === "open-iwara") {
-      await bridge?.system.openExternal("https://www.iwara.tv/");
+      await openIwaraSession();
       return;
     }
 
@@ -376,8 +381,8 @@ export function App() {
           </form>
 
           <button className="auth-pill" onClick={() => setActiveSection("settings")} type="button">
-            {auth.loggedIn ? <Star size={16} /> : <LogIn size={16} />}
-            {auth.loggedIn ? "已登录" : "匿名模式"}
+            {auth.siteSessionReady || auth.loggedIn ? <Star size={16} /> : <LogIn size={16} />}
+            {auth.siteSessionReady ? "会话就绪" : auth.loggedIn ? "已登录" : "未验证"}
           </button>
         </header>
 
@@ -390,7 +395,7 @@ export function App() {
         {issue && <ActionNotice issue={issue} onAction={() => handleIssueAction(issue)} />}
         {status && <div className="notice success">{status}</div>}
 
-        <div className="content-grid">
+        <div className={showDetailPanel ? "content-grid with-detail" : "content-grid"}>
           <section className="primary-panel">
             {activeSection === "browse" && (
               <BrowseView
@@ -409,7 +414,14 @@ export function App() {
             )}
 
             {activeSection === "history" && (
-              <HistoryView history={settings.history} onClear={clearHistory} onOpen={(id) => openVideo(id)} />
+              <HistoryView
+                history={settings.history}
+                onClear={clearHistory}
+                onOpen={(id) => {
+                  setActiveSection("browse");
+                  void openVideo(id);
+                }}
+              />
             )}
 
             {activeSection === "settings" && (
@@ -417,31 +429,31 @@ export function App() {
                 auth={auth}
                 diagnostics={diagnostics}
                 hasBridge={hasBridge}
-                loginBusy={loginBusy}
-                loginForm={loginForm}
                 mpvTest={mpvTest}
                 onChooseExternal={() => chooseExecutable("external")}
                 onChooseMpv={() => chooseExecutable("mpv")}
-                onLogin={login}
-                onLogout={logout}
-                onLoginFormChange={setLoginForm}
+                onOpenIwaraSession={openIwaraSession}
                 onProbe={refreshDiagnostics}
+                onRefreshAuth={refreshAuthState}
                 onTestMpv={testMpv}
                 onUpdatePlayer={updatePlayerSettings}
                 player={settings.player}
                 probing={probing}
+                sessionBusy={sessionBusy}
               />
             )}
           </section>
 
-          <DetailPanel
-            playing={playing}
-            selectedQuality={selectedQuality}
-            sortedFormats={sortedFormats}
-            video={selectedVideo}
-            onPlay={playVideo}
-            onQualityChange={setSelectedQuality}
-          />
+          {showDetailPanel && selectedVideo && (
+            <DetailPanel
+              playing={playing}
+              selectedQuality={selectedQuality}
+              sortedFormats={sortedFormats}
+              video={selectedVideo}
+              onPlay={playVideo}
+              onQualityChange={setSelectedQuality}
+            />
+          )}
         </div>
       </section>
     </main>
@@ -568,21 +580,10 @@ function DetailPanel({
   playing: boolean;
   selectedQuality?: string;
   sortedFormats: VideoDetail["formats"];
-  video?: VideoDetail;
+  video: VideoDetail;
   onPlay: (mode: PlayerMode) => void;
   onQualityChange: (quality: string) => void;
 }) {
-  if (!video) {
-    return (
-      <aside className="detail-panel">
-        <div className="empty-detail">
-          <Play size={34} />
-          <h2>选择视频</h2>
-        </div>
-      </aside>
-    );
-  }
-
   return (
     <aside className="detail-panel">
       <div className="detail-art">
@@ -711,36 +712,32 @@ function SettingsView({
   auth,
   diagnostics,
   hasBridge,
-  loginBusy,
-  loginForm,
   mpvTest,
   onChooseExternal,
   onChooseMpv,
-  onLogin,
-  onLogout,
-  onLoginFormChange,
+  onOpenIwaraSession,
   onProbe,
+  onRefreshAuth,
   onTestMpv,
   onUpdatePlayer,
   player,
-  probing
+  probing,
+  sessionBusy
 }: {
   auth: AuthState;
   diagnostics?: PlayerDiagnostics;
   hasBridge: boolean;
-  loginBusy: boolean;
-  loginForm: { email: string; password: string };
   mpvTest?: PlayerProbe;
   onChooseExternal: () => void;
   onChooseMpv: () => void;
-  onLogin: (event: FormEvent) => void;
-  onLogout: () => void;
-  onLoginFormChange: (value: { email: string; password: string }) => void;
+  onOpenIwaraSession: () => void;
   onProbe: () => void;
+  onRefreshAuth: () => void;
   onTestMpv: () => void;
   onUpdatePlayer: (partial: Partial<AppSettings["player"]>) => void;
   player: AppSettings["player"];
   probing: boolean;
+  sessionBusy: boolean;
 }) {
   return (
     <>
@@ -817,36 +814,28 @@ function SettingsView({
         </section>
 
         <section className="settings-block">
-          <h3>登录</h3>
-          {auth.loggedIn ? (
-            <div className="login-state">
-              <span>{auth.email}</span>
-              <button className="secondary-button" disabled={!hasBridge} onClick={onLogout} type="button">
-                <LogOut size={18} />
-                退出
-              </button>
-            </div>
-          ) : (
-            <form className="login-form" onSubmit={onLogin}>
-              <input
-                autoComplete="username"
-                value={loginForm.email}
-                onChange={(event) => onLoginFormChange({ ...loginForm, email: event.target.value })}
-                placeholder="邮箱"
-              />
-              <input
-                autoComplete="current-password"
-                type="password"
-                value={loginForm.password}
-                onChange={(event) => onLoginFormChange({ ...loginForm, password: event.target.value })}
-                placeholder="密码"
-              />
-              <button className="primary-button" disabled={!hasBridge || loginBusy} type="submit">
-                {loginBusy ? <Loader2 className="spin" size={18} /> : <LogIn size={18} />}
-                登录
-              </button>
-            </form>
-          )}
+          <h3>Iwara 会话</h3>
+          <div className={auth.siteSessionReady ? "probe-line ok" : "probe-line bad"}>
+            {auth.siteSessionReady ? <CheckCircle2 size={17} /> : <AlertTriangle size={17} />}
+            <span>
+              {auth.siteSessionReady
+                ? `已检测到 Iwara cookie（${auth.siteCookieCount ?? 0} 个）。`
+                : "尚未完成应用内 Iwara 验证。"}
+            </span>
+          </div>
+          <div className="settings-actions">
+            <button className="primary-button" disabled={!hasBridge || sessionBusy} onClick={onOpenIwaraSession} type="button">
+              {sessionBusy ? <Loader2 className="spin" size={18} /> : <LogIn size={18} />}
+              打开 Iwara 验证窗口
+            </button>
+            <button className="secondary-button" disabled={!hasBridge || sessionBusy} onClick={onRefreshAuth} type="button">
+              <RefreshCw size={18} />
+              刷新会话
+            </button>
+          </div>
+          <p className="subtle">
+            在弹出的应用内窗口完成 Cloudflare 验证或登录后，回到这里刷新会话；应用请求会复用这个窗口的 cookie。
+          </p>
           {auth.warning && <p className="subtle">{auth.warning}</p>}
         </section>
       </div>

@@ -31,7 +31,8 @@ const api = {
   auth: {
     state: () => ipcRenderer.invoke("auth:state") as Promise<AuthState>,
     login: (request: LoginRequest) => ipcRenderer.invoke("auth:login", request) as Promise<AuthState>,
-    logout: () => ipcRenderer.invoke("auth:logout") as Promise<AuthState>
+    logout: () => ipcRenderer.invoke("auth:logout") as Promise<AuthState>,
+    openIwaraSession: () => ipcRenderer.invoke("auth:openIwaraSession") as Promise<AuthState>
   },
   system: {
     selectExecutable: (request: SelectExecutableRequest) =>

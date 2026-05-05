@@ -43,7 +43,7 @@ export function classifyIssue(input: unknown): UiIssue {
       title: "需要站点验证",
       detail,
       action: "open-iwara",
-      actionLabel: "打开 Iwara"
+      actionLabel: "应用内验证"
     };
   }
 
@@ -54,4 +54,3 @@ export function classifyIssue(input: unknown): UiIssue {
     actionLabel: "重试"
   };
 }
-

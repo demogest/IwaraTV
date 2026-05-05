@@ -253,9 +253,13 @@ button:disabled {
 
 .content-grid {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(300px, 380px);
+  grid-template-columns: minmax(0, 1fr);
   gap: 16px;
   align-items: start;
+}
+
+.content-grid.with-detail {
+  grid-template-columns: minmax(0, 1fr) minmax(300px, 380px);
 }
 
 .primary-panel,
@@ -563,10 +567,12 @@ button:disabled {
 
 .settings-grid {
   grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+  align-items: start;
 }
 
 .settings-block {
   display: grid;
+  align-content: start;
   gap: 14px;
   border: 1px solid rgba(255, 255, 255, 0.08);
   border-radius: 8px;
@@ -583,6 +589,16 @@ button:disabled {
   align-items: center;
   justify-content: space-between;
   gap: 12px;
+}
+
+.settings-actions {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.settings-actions button {
+  flex: 1 1 220px;
 }
 
 .probe-line {
@@ -660,7 +676,8 @@ button:disabled {
     width: auto;
   }
 
-  .content-grid {
+  .content-grid,
+  .content-grid.with-detail {
     grid-template-columns: 1fr;
   }
 

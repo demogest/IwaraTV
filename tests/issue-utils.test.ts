@@ -9,7 +9,8 @@ describe("issue classification", () => {
 
   it("routes auth and browser verification errors", () => {
     expect(classifyIssue("这是私有视频，需要登录。").action).toBe("login");
-    expect(classifyIssue("Cloudflare browser challenge").action).toBe("open-iwara");
+    const cloudflare = classifyIssue("Cloudflare browser challenge");
+    expect(cloudflare.action).toBe("open-iwara");
+    expect(cloudflare.actionLabel).toBe("应用内验证");
   });
 });
-

@@ -32,7 +32,10 @@ export class IwaraApiError extends Error {
 }
 
 export class IwaraClient {
-  constructor(private readonly authStore: AuthStore) {}
+  constructor(
+    private readonly authStore: AuthStore,
+    private readonly browserHeaders: (url: string) => Promise<Record<string, string>> = async () => ({})
+  ) {}
 
   authState(): AuthState {
     return this.authStore.state();
@@ -239,6 +242,7 @@ export class IwaraClient {
         Accept: "application/json",
         Referer: "https://www.iwara.tv/",
         Origin: "https://www.iwara.tv",
+        ...(await this.browserHeaders(url)),
         ...init.headers
       }
     });
@@ -281,4 +285,3 @@ function isJwtExpired(token: string, skewSeconds: number): boolean {
     return false;
   }
 }
-

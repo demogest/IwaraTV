@@ -1,6 +1,7 @@
 # IwaraTV
 
 ![IwaraTV logo](src/assets/iwara-tv-mark.svg)
+[![FOSSA Status](https://app.fossa.com/api/projects/git%2Bgithub.com%2Fdemogest%2FIwaraTV.svg?type=shield)](https://app.fossa.com/projects/git%2Bgithub.com%2Fdemogest%2FIwaraTV?ref=badge_shield)
 
 IwaraTV is a local desktop browser and player launcher for Iwara.tv. It keeps the React UI lightweight while using a native Tauri backend for settings, session handling, diagnostics, and launching MPV or another external player.
 
@@ -59,3 +60,7 @@ npm run dist:win
 ## Releases
 
 The `Build` workflow compiles Windows, macOS, and Linux artifacts on pushes, pull requests, manual runs, and version tags. Pushing a tag like `v0.2.0` publishes a GitHub Release with the generated bundles.
+
+
+## License
+[![FOSSA Status](https://app.fossa.com/api/projects/git%2Bgithub.com%2Fdemogest%2FIwaraTV.svg?type=large)](https://app.fossa.com/projects/git%2Bgithub.com%2Fdemogest%2FIwaraTV?ref=badge_large)

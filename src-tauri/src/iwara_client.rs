@@ -31,6 +31,7 @@ use crate::session::IwaraSessionService;
 use crate::settings::SettingsStore;
 
 const API_BASE: &str = "https://api.iwara.tv";
+const APIQ_BASE: &str = "https://apiq.iwara.tv";
 const WEB_BASE: &str = "https://www.iwara.tv";
 const FILES_BASE: &str = "https://files.iwara.tv";
 const AVATAR_BASE: &str = "https://i.iwara.tv/image/avatar";
@@ -220,14 +221,14 @@ impl IwaraClient {
             return Err(message("缺少作者 ID。"));
         }
 
-        let mut url = Url::parse(API_BASE)?;
+        let mut url = Url::parse(APIQ_BASE)?;
         url.path_segments_mut()
             .map_err(|_| message("无法构造 Iwara 关注接口。"))?
             .extend(["user", author_id, "followers"]);
         self.request_json_with_status::<Value>(
             &url.to_string(),
             if request.following { "POST" } else { "DELETE" },
-            self.user_headers().await?,
+            self.authenticated_api_headers().await?,
             None,
             None,
         )
@@ -1521,6 +1522,36 @@ impl IwaraClient {
         }
 
         Err(message("查看订阅视频需要先登录 Iwara。"))
+    }
+
+    async fn authenticated_api_headers(&self) -> AppResult<Vec<(String, String)>> {
+        if let Some(token) = self.auth.get_media_token() {
+            if !is_jwt_expired(&token, 120) {
+                return Ok(vec![(
+                    "Authorization".to_string(),
+                    format!("Bearer {token}"),
+                )]);
+            }
+        }
+
+        if let Some(token) = self.session.token().await? {
+            if !is_jwt_expired(&token, 120) {
+                return Ok(vec![(
+                    "Authorization".to_string(),
+                    format!("Bearer {token}"),
+                )]);
+            }
+        }
+
+        if let Some(token) = self.auth.get_user_token() {
+            let refreshed = self.refresh_media_token(&token).await?;
+            return Ok(vec![(
+                "Authorization".to_string(),
+                format!("Bearer {refreshed}"),
+            )]);
+        }
+
+        Err(message("关注作者需要先登录 Iwara。"))
     }
 
     async fn optional_user_headers(&self) -> AppResult<Vec<(String, String)>> {

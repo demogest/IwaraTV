@@ -545,11 +545,11 @@ fn find_token(storage: StorageDump) -> Option<CapturedToken> {
     }
     let storage_username = find_storage_username(&entries);
     let preferred = [
-        "token",
         "accessToken",
         "access_token",
         "authToken",
         "userToken",
+        "token",
     ];
 
     for preferred_key in preferred {
@@ -870,5 +870,25 @@ mod tests {
         };
         let token = find_token(storage).expect("token should be captured");
         assert_eq!(token.username.as_deref(), Some("Demo Name"));
+    }
+
+    #[test]
+    fn prefers_access_token_over_refresh_token() {
+        let storage = StorageDump {
+            local_storage: std::collections::HashMap::from([
+                (
+                    "token".to_string(),
+                    Some("refresh.payload.signature".to_string()),
+                ),
+                (
+                    "accessToken".to_string(),
+                    Some("access.payload.signature".to_string()),
+                ),
+            ]),
+            session_storage: std::collections::HashMap::new(),
+        };
+        let token = find_token(storage).expect("token should be captured");
+        assert_eq!(token.key, "localStorage.accessToken");
+        assert_eq!(token.value, "access.payload.signature");
     }
 }

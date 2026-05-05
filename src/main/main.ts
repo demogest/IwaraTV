@@ -42,7 +42,11 @@ app.whenReady().then(() => {
   const settingsStore = new SettingsStore(app.getPath("userData"));
   const authStore = new AuthStore(app.getPath("userData"));
   const iwaraSessionService = new IwaraSessionService();
-  const iwaraClient = new IwaraClient(authStore, (url) => iwaraSessionService.headersFor(url));
+  const iwaraClient = new IwaraClient(
+    authStore,
+    (url) => iwaraSessionService.headersFor(url),
+    () => iwaraSessionService.token()
+  );
   const playerService = new PlayerService(iwaraClient, settingsStore);
 
   registerIpc(iwaraClient, playerService, settingsStore, iwaraSessionService);

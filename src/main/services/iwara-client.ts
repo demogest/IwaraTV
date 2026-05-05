@@ -34,7 +34,8 @@ export class IwaraApiError extends Error {
 export class IwaraClient {
   constructor(
     private readonly authStore: AuthStore,
-    private readonly browserHeaders: (url: string) => Promise<Record<string, string>> = async () => ({})
+    private readonly browserHeaders: (url: string) => Promise<Record<string, string>> = async () => ({}),
+    private readonly browserToken: () => Promise<string | undefined> = async () => undefined
   ) {}
 
   authState(): AuthState {
@@ -213,7 +214,8 @@ export class IwaraClient {
   }
 
   private async mediaHeaders(): Promise<Record<string, string>> {
-    const userToken = this.authStore.getUserToken();
+    const sessionToken = await this.browserToken();
+    const userToken = this.authStore.getUserToken() ?? sessionToken;
     if (!userToken) {
       return {};
     }
@@ -223,8 +225,15 @@ export class IwaraClient {
       return { Authorization: `Bearer ${mediaToken}` };
     }
 
-    const refreshed = await this.refreshMediaToken(userToken);
-    return { Authorization: `Bearer ${refreshed}` };
+    try {
+      const refreshed = await this.refreshMediaToken(userToken);
+      return { Authorization: `Bearer ${refreshed}` };
+    } catch (err) {
+      if (sessionToken) {
+        return { Authorization: `Bearer ${sessionToken}` };
+      }
+      throw err;
+    }
   }
 
   private async refreshMediaToken(userToken: string): Promise<string> {

@@ -381,8 +381,8 @@ export function App() {
           </form>
 
           <button className="auth-pill" onClick={() => setActiveSection("settings")} type="button">
-            {auth.siteSessionReady || auth.loggedIn ? <Star size={16} /> : <LogIn size={16} />}
-            {auth.siteSessionReady ? "会话就绪" : auth.loggedIn ? "已登录" : "未验证"}
+            {auth.siteTokenReady || auth.loggedIn ? <Star size={16} /> : <LogIn size={16} />}
+            {auth.siteTokenReady ? "登录就绪" : auth.siteSessionReady ? "已验证" : auth.loggedIn ? "已登录" : "未验证"}
           </button>
         </header>
 
@@ -446,7 +446,7 @@ export function App() {
 
           {showDetailPanel && selectedVideo && (
             <DetailPanel
-              siteSessionReady={Boolean(auth.siteSessionReady)}
+              siteSessionReady={Boolean(auth.siteTokenReady)}
               playing={playing}
               selectedQuality={selectedQuality}
               sortedFormats={sortedFormats}
@@ -766,12 +766,14 @@ function SettingsView({
       <div className="settings-grid">
         <section className="settings-block">
           <h3>Iwara 会话</h3>
-          <div className={auth.siteSessionReady ? "probe-line ok" : "probe-line bad"}>
-            {auth.siteSessionReady ? <CheckCircle2 size={17} /> : <AlertTriangle size={17} />}
+          <div className={auth.siteTokenReady ? "probe-line ok" : "probe-line bad"}>
+            {auth.siteTokenReady ? <CheckCircle2 size={17} /> : <AlertTriangle size={17} />}
             <span>
-              {auth.siteSessionReady
-                ? `已检测到 Iwara cookie（${auth.siteCookieCount ?? 0} 个）。`
-                : "尚未完成应用内 Iwara 验证。"}
+              {auth.siteTokenReady
+                ? `已检测到网页登录 token（${auth.siteTokenKey ?? "storage"}）。`
+                : auth.siteSessionReady
+                  ? `只有 Iwara cookie（${auth.siteCookieCount ?? 0} 个），还没有网页登录 token。`
+                  : "尚未完成应用内 Iwara 验证。"}
             </span>
           </div>
           <div className="settings-actions">
@@ -785,7 +787,7 @@ function SettingsView({
             </button>
           </div>
           <p className="subtle">
-            在弹出的应用内窗口完成 Cloudflare 验证或登录后，回到这里刷新会话；应用请求会复用这个窗口的 cookie。
+            在弹出的应用内窗口完成 Cloudflare 验证并登录后，回到这里刷新会话；应用请求会复用这个窗口的 token 和 cookie。
           </p>
           {auth.warning && <p className="subtle">{auth.warning}</p>}
         </section>

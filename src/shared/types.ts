@@ -68,6 +68,8 @@ export interface AuthState {
   encryptionAvailable: boolean;
   siteSessionReady?: boolean;
   siteCookieCount?: number;
+  siteTokenReady?: boolean;
+  siteTokenKey?: string;
   browserUserAgent?: string;
   warning?: string;
 }

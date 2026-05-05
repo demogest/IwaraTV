@@ -12,7 +12,7 @@ export class IwaraSessionService {
     session.defaultSession.setUserAgent(browserUserAgent, "zh-CN,zh;q=0.9,en;q=0.8");
   }
 
-  async openVerificationWindow(parent?: BrowserWindow): Promise<Pick<AuthState, "siteSessionReady" | "siteCookieCount" | "browserUserAgent">> {
+  async openVerificationWindow(parent?: BrowserWindow): Promise<Pick<AuthState, "siteSessionReady" | "siteCookieCount" | "siteTokenReady" | "siteTokenKey" | "browserUserAgent">> {
     if (this.verificationWindow && !this.verificationWindow.isDestroyed()) {
       this.verificationWindow.focus();
       return this.state();
@@ -52,22 +52,31 @@ export class IwaraSessionService {
     return this.state();
   }
 
-  async state(): Promise<Pick<AuthState, "siteSessionReady" | "siteCookieCount" | "browserUserAgent">> {
+  async state(): Promise<Pick<AuthState, "siteSessionReady" | "siteCookieCount" | "siteTokenReady" | "siteTokenKey" | "browserUserAgent">> {
     const cookies = await this.iwaraCookies();
+    const token = await this.readStorageToken();
     return {
       siteSessionReady: cookies.length > 0,
       siteCookieCount: cookies.length,
+      siteTokenReady: Boolean(token?.value),
+      siteTokenKey: token?.key,
       browserUserAgent: session.defaultSession.getUserAgent()
     };
   }
 
   async headersFor(url: string): Promise<Record<string, string>> {
     const cookieHeader = await this.cookieHeaderFor(url);
+    const token = await this.readStorageToken();
     return {
       "User-Agent": session.defaultSession.getUserAgent(),
       "Accept-Language": "zh-CN,zh;q=0.9,en;q=0.8",
+      ...(token?.value ? { Authorization: `Bearer ${token.value}` } : {}),
       ...(cookieHeader ? { Cookie: cookieHeader } : {})
     };
+  }
+
+  async token(): Promise<string | undefined> {
+    return (await this.readStorageToken())?.value;
   }
 
   private async cookieHeaderFor(url: string): Promise<string | undefined> {
@@ -87,6 +96,44 @@ export class IwaraSessionService {
   private async iwaraCookies() {
     return (await Promise.all(IWARA_ORIGINS.map((url) => session.defaultSession.cookies.get({ url })))).flat();
   }
+
+  private async readStorageToken(): Promise<{ key: string; value: string } | undefined> {
+    const target = this.verificationWindow && !this.verificationWindow.isDestroyed()
+      ? this.verificationWindow
+      : undefined;
+
+    if (!target) {
+      return undefined;
+    }
+
+    try {
+      const storage = await target.webContents.executeJavaScript(`
+        (() => {
+          const dump = (storage) => {
+            const entries = {};
+            for (let index = 0; index < storage.length; index += 1) {
+              const key = storage.key(index);
+              if (key) entries[key] = storage.getItem(key);
+            }
+            return entries;
+          };
+          return {
+            localStorage: dump(window.localStorage),
+            sessionStorage: dump(window.sessionStorage)
+          };
+        })()
+      `, true) as StorageDump;
+
+      return findToken(storage);
+    } catch {
+      return undefined;
+    }
+  }
+}
+
+interface StorageDump {
+  localStorage?: Record<string, string | null>;
+  sessionStorage?: Record<string, string | null>;
 }
 
 function isIwaraUrl(url: string): boolean {
@@ -100,4 +147,45 @@ function isIwaraUrl(url: string): boolean {
 
 function unique(values: string[]): string[] {
   return [...new Set(values)];
+}
+
+function findToken(storage: StorageDump): { key: string; value: string } | undefined {
+  const entries = [
+    ...Object.entries(storage.localStorage ?? {}).map(([key, value]) => [`localStorage.${key}`, value] as const),
+    ...Object.entries(storage.sessionStorage ?? {}).map(([key, value]) => [`sessionStorage.${key}`, value] as const)
+  ];
+  const preferredKeys = ["token", "accessToken", "access_token", "authToken", "userToken"];
+
+  for (const keyName of preferredKeys) {
+    const found = entries.find(([key, value]) => key.toLowerCase().endsWith(`.${keyName.toLowerCase()}`) && findJwt(value));
+    if (found) {
+      return { key: found[0], value: findJwt(found[1])! };
+    }
+  }
+
+  for (const [key, value] of entries) {
+    const token = findJwt(value);
+    if (token) {
+      return { key, value: token };
+    }
+  }
+
+  return undefined;
+}
+
+function findJwt(value: string | null | undefined): string | undefined {
+  if (!value) {
+    return undefined;
+  }
+
+  const direct = value.match(/[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+/);
+  if (direct) {
+    return direct[0];
+  }
+
+  try {
+    return findJwt(JSON.stringify(JSON.parse(value)));
+  } catch {
+    return undefined;
+  }
 }

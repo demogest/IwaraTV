@@ -31,7 +31,7 @@ import {
   X
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
-import { FormEvent, useEffect, useMemo, useState } from "react";
+import { FormEvent, useEffect, useMemo, useRef, useState } from "react";
 import type {
   AppSettings,
   AuthState,
@@ -138,6 +138,7 @@ export function App() {
   const [status, setStatus] = useState<string>("");
   const [issue, setIssue] = useState<UiIssue | undefined>();
   const [loadingFeed, setLoadingFeed] = useState(false);
+  const loadingFeedRef = useRef(false);
   const [loadingComments, setLoadingComments] = useState(false);
   const [loadingVideoId, setLoadingVideoId] = useState<string | undefined>();
   const [quickPlayingId, setQuickPlayingId] = useState<string | undefined>();
@@ -173,12 +174,12 @@ export function App() {
   }, [bridge]);
 
   useEffect(() => {
-    if (!bridge || activeSection !== "browse" || feeds[activeFeedTab]) {
+    if (!bridge || activeSection !== "browse" || loadingFeed || feeds[activeFeedTab]) {
       return;
     }
 
     void loadFeed(activeFeedTab);
-  }, [activeSection, activeFeedTab, feeds, bridge]);
+  }, [activeSection, activeFeedTab, feeds, bridge, loadingFeed]);
 
   useEffect(() => {
     if (!bridge || !selectedVideo) {
@@ -189,11 +190,12 @@ export function App() {
   }, [bridge, selectedVideo?.id]);
 
   async function loadFeed(tab: FeedTabKey, page = feeds[tab]?.page ?? 0, nextFilters = filters) {
-    if (!bridge) {
+    if (!bridge || loadingFeedRef.current) {
       return;
     }
 
     const sort: VideoSort = tab === "followed" ? "date" : tab;
+    loadingFeedRef.current = true;
     setLoadingFeed(true);
     clearMessages();
     try {
@@ -209,6 +211,7 @@ export function App() {
     } catch (err) {
       handleError(err);
     } finally {
+      loadingFeedRef.current = false;
       setLoadingFeed(false);
     }
   }

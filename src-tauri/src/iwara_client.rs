@@ -36,6 +36,7 @@ pub struct IwaraClient {
     auth: Arc<AuthStore>,
     session: Arc<IwaraSessionService>,
     settings: Arc<SettingsStore>,
+    list_gate: tokio::sync::Mutex<()>,
     format_cache: tokio::sync::Mutex<HashMap<String, (Vec<VideoFormat>, Instant)>>,
 }
 
@@ -46,6 +47,7 @@ impl IwaraClient {
             auth,
             session,
             settings,
+            list_gate: tokio::sync::Mutex::new(()),
             format_cache: tokio::sync::Mutex::new(HashMap::new()),
         }
     }
@@ -87,6 +89,8 @@ impl IwaraClient {
     }
 
     pub async fn list_videos(&self, request: ListVideosRequest, tag_preferences: TagPreferences) -> AppResult<VideoListResult> {
+        let _list_guard = self.list_gate.lock().await;
+
         if request.followed_only.unwrap_or(false) {
             return self.list_followed_videos(request, tag_preferences).await;
         }

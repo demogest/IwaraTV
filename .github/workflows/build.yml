@@ -111,12 +111,19 @@ jobs:
           path: artifacts
           merge-multiple: true
 
+      - name: Collect release assets
+        run: |
+          mkdir -p release-assets
+          find artifacts -type f -exec cp '{}' release-assets/ \;
+          (cd release-assets && sha256sum * > SHA256SUMS.txt)
+          ls -lah release-assets
+
       - name: Publish release
         env:
           GH_TOKEN: ${{ github.token }}
           TAG_NAME: ${{ github.ref_name }}
         run: |
-          gh release create "$TAG_NAME" artifacts/* \
+          gh release create "$TAG_NAME" release-assets/* \
             --repo "$GITHUB_REPOSITORY" \
             --title "$TAG_NAME" \
             --notes "Cross-platform IwaraTV build artifacts."

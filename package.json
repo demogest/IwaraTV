@@ -10,9 +10,10 @@
     "build:main": "tsc -p tsconfig.node.json",
     "build:renderer": "vite build",
     "build": "npm run build:main && npm run build:renderer",
+    "icons:build": "node scripts/generate-icons.mjs",
     "mpv:update": "node scripts/install-mpv.mjs",
-    "dist:win": "npm run mpv:update && npm run build && electron-builder --win portable --x64",
-    "pack:win": "npm run mpv:update && npm run build && electron-builder --win dir --x64",
+    "dist:win": "npm run mpv:update && npm run icons:build && npm run build && electron-builder --win portable --x64",
+    "pack:win": "npm run mpv:update && npm run icons:build && npm run build && electron-builder --win dir --x64",
     "preview": "vite preview --host 127.0.0.1",
     "test": "vitest run",
     "typecheck": "tsc --noEmit && tsc -p tsconfig.node.json --noEmit"
@@ -31,6 +32,14 @@
     ],
     "extraResources": [
       {
+        "from": "build/icons",
+        "to": "icons",
+        "filter": [
+          "icon.ico",
+          "icon.png"
+        ]
+      },
+      {
         "from": "vendor/mpv",
         "to": "mpv",
         "filter": [
@@ -39,6 +48,7 @@
       }
     ],
     "win": {
+      "icon": "build/icons/icon.ico",
       "target": [
         {
           "target": "portable",

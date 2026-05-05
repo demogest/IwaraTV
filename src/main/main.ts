@@ -9,6 +9,14 @@ import { SettingsStore } from "./services/settings-store";
 
 let mainWindow: BrowserWindow | undefined;
 
+function getAppIconPath(): string {
+  if (app.isPackaged) {
+    return path.join(process.resourcesPath, "icons", "icon.ico");
+  }
+
+  return path.join(__dirname, "../../build/icons/icon.ico");
+}
+
 function createWindow(): void {
   mainWindow = new BrowserWindow({
     width: 1280,
@@ -16,6 +24,7 @@ function createWindow(): void {
     minWidth: 960,
     minHeight: 640,
     title: "IwaraTV",
+    icon: getAppIconPath(),
     backgroundColor: "#111317",
     webPreferences: {
       preload: path.join(__dirname, "preload.js"),

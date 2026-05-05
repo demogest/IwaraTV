@@ -61,9 +61,15 @@ button:disabled {
   height: 42px;
   place-items: center;
   border-radius: 8px;
-  background: #e3b557;
-  color: #15120b;
-  font-weight: 800;
+  overflow: hidden;
+  background: #15181c;
+  box-shadow: 0 8px 22px rgba(0, 0, 0, 0.22);
+}
+
+.brand-logo {
+  display: block;
+  width: 100%;
+  height: 100%;
 }
 
 .brand h1,

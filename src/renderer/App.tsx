@@ -30,6 +30,7 @@ import type {
   VideoSort,
   VideoSummary
 } from "../shared/types";
+import logoMarkUrl from "./assets/iwara-tv-mark.svg";
 import { classifyIssue, type UiIssue } from "./issue-utils";
 
 type AppSection = "browse" | "history" | "settings";
@@ -343,7 +344,9 @@ export function App() {
     <main className="app-shell">
       <aside className="sidebar">
         <div className="brand">
-          <div className="brand-mark">IT</div>
+          <div className="brand-mark">
+            <img alt="" className="brand-logo" src={logoMarkUrl} />
+          </div>
           <div>
             <h1>IwaraTV</h1>
             <span>{auth.loggedIn ? auth.email : "匿名"}</span>

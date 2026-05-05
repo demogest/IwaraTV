@@ -1,6 +1,10 @@
 import { BrowserWindow, dialog, ipcMain, shell } from "electron";
+import { mediaUrlHost } from "../shared/media-speed-utils";
 import type {
   AppSettings,
+  MediaSpeedTestReport,
+  VideoDetail,
+  VideoFormat,
   ListVideosRequest,
   LoginRequest,
   PlayRequest,
@@ -18,11 +22,29 @@ export function registerIpc(
   settingsStore: SettingsStore,
   iwaraSessionService: IwaraSessionService
 ): void {
+  const rememberMediaHosts = (formats: VideoFormat[]) => {
+    settingsStore.addMediaHosts(formats.map((format) => mediaUrlHost(format.url)).filter((host): host is string => Boolean(host)));
+  };
+  const withRememberedHosts = (video: VideoDetail) => {
+    rememberMediaHosts(video.formats);
+    return iwaraClient.routeVideoFormats(video, settingsStore.get().mediaSpeed);
+  };
+  const rememberSpeedReportHosts = (report: MediaSpeedTestReport) => {
+    settingsStore.updateMediaHostRanking(report.results, report.testedAt);
+    return report;
+  };
+
   ipcMain.handle("iwara:listVideos", (_event, request: ListVideosRequest) => iwaraClient.listVideos(request));
-  ipcMain.handle("iwara:getVideo", (_event, payload: { idOrUrl: string }) => iwaraClient.getVideo(payload.idOrUrl));
+  ipcMain.handle("iwara:getVideo", async (_event, payload: { idOrUrl: string }) => withRememberedHosts(await iwaraClient.getVideo(payload.idOrUrl)));
   ipcMain.handle("iwara:diagnoseVideo", async (event, payload: { idOrUrl: string }) => {
     const owner = BrowserWindow.fromWebContents(event.sender) ?? undefined;
-    return iwaraClient.diagnoseVideo(payload.idOrUrl, () => iwaraSessionService.captureVideoNetwork(payload.idOrUrl, owner));
+    const report = await iwaraClient.diagnoseVideo(payload.idOrUrl, () => iwaraSessionService.captureVideoNetwork(payload.idOrUrl, owner));
+    rememberMediaHosts(report.network?.entries.flatMap((entry) => entry.formats ?? []) ?? []);
+    return report;
+  });
+  ipcMain.handle("iwara:speedTestVideo", async (_event, payload: { idOrUrl: string }) => {
+    const settings = settingsStore.get();
+    return rememberSpeedReportHosts(await iwaraClient.speedTestVideo(payload.idOrUrl, settings.mediaSpeed));
   });
   ipcMain.handle("player:play", (_event, request: PlayRequest) => playerService.play(request));
   ipcMain.handle("player:probe", () => playerService.probe());

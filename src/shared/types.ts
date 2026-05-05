@@ -33,6 +33,38 @@ export interface VideoDetail extends VideoSummary {
   embedUrl?: string;
 }
 
+export interface MediaSpeedSettings {
+  autoTest: boolean;
+  replaceLinks: boolean;
+  candidateHosts: string[];
+  rankedHosts: string[];
+  lastTestedAt?: string;
+  testBytes: number;
+  timeoutMs: number;
+}
+
+export interface MediaSpeedCandidateResult {
+  host: string;
+  url: string;
+  ok: boolean;
+  elapsedMs?: number;
+  bytesRead?: number;
+  bytesPerSecond?: number;
+  error?: string;
+}
+
+export interface MediaSpeedTestReport {
+  videoId: string;
+  title?: string;
+  sampleFormatId?: string;
+  sampleFormatLabel?: string;
+  sampleHost?: string;
+  testedAt: string;
+  replaceLinks: boolean;
+  fastestHost?: string;
+  results: MediaSpeedCandidateResult[];
+}
+
 export interface IwaraFileProbe {
   label: string;
   url: string;
@@ -95,6 +127,7 @@ export interface PlaybackHistoryItem {
 
 export interface AppSettings {
   player: PlayerSettings;
+  mediaSpeed: MediaSpeedSettings;
   history: PlaybackHistoryItem[];
 }
 

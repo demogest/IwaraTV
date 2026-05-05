@@ -5,8 +5,12 @@ import {
   parseIwaraVideoId,
   qualityRank
 } from "../../shared/iwara-utils";
+import { buildMediaHostCandidates, mediaUrlHost, replaceMediaUrlHost } from "../../shared/media-speed-utils";
 import type {
   AuthState,
+  MediaSpeedCandidateResult,
+  MediaSpeedSettings,
+  MediaSpeedTestReport,
   ListVideosRequest,
   LoginRequest,
   RatingFilter,
@@ -185,6 +189,22 @@ export class IwaraClient {
     };
   }
 
+  async speedTestVideo(idOrUrl: string, speedSettings: MediaSpeedSettings): Promise<MediaSpeedTestReport> {
+    const video = await this.getVideo(idOrUrl);
+    return this.speedTestHosts(video, speedSettings);
+  }
+
+  routeVideoFormats(video: VideoDetail, speedSettings: MediaSpeedSettings): VideoDetail {
+    if (!speedSettings.replaceLinks || !speedSettings.rankedHosts.length) {
+      return video;
+    }
+
+    return {
+      ...video,
+      formats: routeFormatsByHostRank(video.formats, speedSettings.rankedHosts)
+    };
+  }
+
   private async extractFormats(videoId: string, fileUrl: string): Promise<VideoFormat[]> {
     const xVersion = buildXVersion(fileUrl);
     const mediaHeaders = await this.mediaHeaders();
@@ -201,6 +221,80 @@ export class IwaraClient {
       .map((item) => this.mapVideoFormat(item))
       .filter((format): format is VideoFormat => Boolean(format?.url))
       .sort((a, b) => a.qualityRank - b.qualityRank);
+  }
+
+  private async speedTestHosts(video: VideoDetail, speedSettings: MediaSpeedSettings): Promise<MediaSpeedTestReport> {
+    const sample = video.formats.slice().sort((a, b) => b.qualityRank - a.qualityRank)[0];
+    const sampleHost = sample ? mediaUrlHost(sample.url) : undefined;
+    const discoveredHosts = video.formats
+      .map((format) => mediaUrlHost(format.url))
+      .filter((host): host is string => Boolean(host));
+    const candidateHosts = [...new Set([...discoveredHosts, ...speedSettings.candidateHosts])];
+    const candidates = sample ? buildMediaHostCandidates(sample.url, candidateHosts) : [];
+    const results = await Promise.all(candidates.map((candidate) => this.testMediaUrl(candidate, speedSettings)));
+    const fastest = results
+      .filter((candidate) => candidate.ok && candidate.bytesPerSecond)
+      .sort((a, b) => (b.bytesPerSecond ?? 0) - (a.bytesPerSecond ?? 0))[0];
+
+    return {
+      videoId: video.id,
+      title: video.title,
+      sampleFormatId: sample?.id,
+      sampleFormatLabel: sample?.label,
+      sampleHost,
+      testedAt: new Date().toISOString(),
+      replaceLinks: speedSettings.replaceLinks,
+      fastestHost: fastest?.host,
+      results
+    };
+  }
+
+  private async testMediaUrl(
+    candidate: { host: string; url: string },
+    speedSettings: MediaSpeedSettings
+  ): Promise<MediaSpeedCandidateResult> {
+    const controller = new AbortController();
+    const started = performance.now();
+    const timeout = setTimeout(() => controller.abort(), speedSettings.timeoutMs);
+
+    try {
+      const response = await fetch(candidate.url, {
+        headers: {
+          ...(await this.browserHeaders(candidate.url)),
+          Referer: "https://www.iwara.tv/",
+          Range: `bytes=0-${Math.max(speedSettings.testBytes - 1, 0)}`
+        },
+        signal: controller.signal
+      });
+
+      if (!response.ok && response.status !== 206) {
+        throw new Error(`HTTP ${response.status}`);
+      }
+
+      const bytesRead = await readResponseBytes(response, speedSettings.testBytes);
+      const elapsedMs = Math.max(performance.now() - started, 1);
+      if (bytesRead <= 0) {
+        throw new Error("没有读取到数据");
+      }
+
+      return {
+        host: candidate.host,
+        url: candidate.url,
+        ok: true,
+        elapsedMs,
+        bytesRead,
+        bytesPerSecond: Math.round((bytesRead / elapsedMs) * 1000)
+      };
+    } catch (err) {
+      return {
+        host: candidate.host,
+        url: candidate.url,
+        ok: false,
+        error: err instanceof Error ? err.message : String(err)
+      };
+    } finally {
+      clearTimeout(timeout);
+    }
   }
 
   private preferCachedFormats(videoId: string, directFormats: VideoFormat[]): VideoFormat[] {
@@ -452,6 +546,46 @@ function labelsFor(formats: VideoFormat[]): string[] {
     .slice()
     .sort((a, b) => b.qualityRank - a.qualityRank)
     .map((format) => format.label);
+}
+
+async function readResponseBytes(response: Response, maxBytes: number): Promise<number> {
+  const reader = response.body?.getReader();
+  if (!reader) {
+    const bytes = await response.arrayBuffer();
+    return Math.min(bytes.byteLength, maxBytes);
+  }
+
+  let bytesRead = 0;
+  try {
+    while (bytesRead < maxBytes) {
+      const chunk = await reader.read();
+      if (chunk.done) {
+        break;
+      }
+      bytesRead += chunk.value.byteLength;
+    }
+  } finally {
+    await reader.cancel().catch(() => undefined);
+  }
+
+  return bytesRead;
+}
+
+function routeFormatsByHostRank(formats: VideoFormat[], rankedHosts: string[]): VideoFormat[] {
+  return formats.map((format) => {
+    const currentHost = mediaUrlHost(format.url);
+    const targetHost = rankedHosts.find((host) => host !== currentHost);
+    const routedUrl = targetHost ? replaceMediaUrlHost(format.url, targetHost) : undefined;
+
+    if (!routedUrl) {
+      return format;
+    }
+
+    return {
+      ...format,
+      url: routedUrl
+    };
+  });
 }
 
 function safeUrl(url: string): string {

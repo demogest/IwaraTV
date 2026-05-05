@@ -5,6 +5,7 @@ import type {
   ListVideosRequest,
   LoginRequest,
   IwaraVideoDiagnostics,
+  MediaSpeedTestReport,
   PlayerDiagnostics,
   PlayerProbe,
   PlayRequest,
@@ -19,7 +20,8 @@ const api = {
   iwara: {
     listVideos: (request: ListVideosRequest) => ipcRenderer.invoke("iwara:listVideos", request) as Promise<VideoListResult>,
     getVideo: (idOrUrl: string) => ipcRenderer.invoke("iwara:getVideo", { idOrUrl }) as Promise<VideoDetail>,
-    diagnoseVideo: (idOrUrl: string) => ipcRenderer.invoke("iwara:diagnoseVideo", { idOrUrl }) as Promise<IwaraVideoDiagnostics>
+    diagnoseVideo: (idOrUrl: string) => ipcRenderer.invoke("iwara:diagnoseVideo", { idOrUrl }) as Promise<IwaraVideoDiagnostics>,
+    speedTestVideo: (idOrUrl: string) => ipcRenderer.invoke("iwara:speedTestVideo", { idOrUrl }) as Promise<MediaSpeedTestReport>
   },
   player: {
     play: (request: PlayRequest) => ipcRenderer.invoke("player:play", request) as Promise<PlayResult>,

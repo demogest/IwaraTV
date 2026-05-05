@@ -2,6 +2,7 @@ import { existsSync } from "node:fs";
 import path from "node:path";
 import { spawn, spawnSync } from "node:child_process";
 import { chooseVideoFormat } from "../../shared/iwara-utils";
+import { mediaUrlHost } from "../../shared/media-speed-utils";
 import { buildExternalPlayerArgs, templateIncludesUrl } from "../../shared/player-utils";
 import type {
   PlayRequest,
@@ -102,8 +103,17 @@ export class PlayerService {
   }
 
   async play(request: PlayRequest): Promise<PlayResult> {
-    const settings = this.settingsStore.get();
-    const video = await this.iwaraClient.getVideo(request.videoId);
+    let settings = this.settingsStore.get();
+    let video = await this.iwaraClient.getVideo(request.videoId);
+    settings = this.settingsStore.addMediaHosts(video.formats.map((format) => mediaUrlHost(format.url)).filter((host): host is string => Boolean(host)));
+    if (settings.mediaSpeed.autoTest && !settings.mediaSpeed.rankedHosts.length) {
+      const report = await this.iwaraClient.speedTestVideo(video.id, settings.mediaSpeed);
+      settings = this.settingsStore.updateMediaHostRanking(report.results, report.testedAt);
+    }
+    if (settings.mediaSpeed.replaceLinks) {
+      video = this.iwaraClient.routeVideoFormats(video, settings.mediaSpeed);
+      settings = this.settingsStore.addMediaHosts(video.formats.map((format) => mediaUrlHost(format.url)).filter((host): host is string => Boolean(host)));
+    }
     const format = chooseVideoFormat(video.formats, request.quality ?? settings.player.preferredQuality);
 
     if (!format) {

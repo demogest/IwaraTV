@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { buildXVersion, chooseVideoFormat, parseIwaraVideoId, qualityRank } from "../src/shared/iwara-utils";
+import { buildMediaHostCandidates, normalizeMediaHostList, replaceMediaUrlHost } from "../src/shared/media-speed-utils";
 import type { VideoFormat } from "../src/shared/types";
 
 describe("iwara utilities", () => {
@@ -24,5 +25,19 @@ describe("iwara utilities", () => {
 
     expect(chooseVideoFormat(formats)?.id).toBe("Source");
     expect(chooseVideoFormat(formats, "540")?.id).toBe("540");
+  });
+
+  it("builds safe media host replacement candidates", () => {
+    expect(normalizeMediaHostList(["https://jade.iwara.tv/view", " kafka.iwara.tv ", "example.com"])).toEqual([
+      "jade.iwara.tv",
+      "kafka.iwara.tv"
+    ]);
+    expect(replaceMediaUrlHost("//jade.iwara.tv/view?hash=abc&path=2026", "kafka.iwara.tv")).toBe(
+      "https://kafka.iwara.tv/view?hash=abc&path=2026"
+    );
+    expect(buildMediaHostCandidates("//jade.iwara.tv/view?hash=abc", ["kafka.iwara.tv"])).toEqual([
+      { host: "jade.iwara.tv", url: "https://jade.iwara.tv/view?hash=abc" },
+      { host: "kafka.iwara.tv", url: "https://kafka.iwara.tv/view?hash=abc" }
+    ]);
   });
 });

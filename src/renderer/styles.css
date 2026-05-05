@@ -677,6 +677,54 @@ button:disabled {
   overflow-wrap: anywhere;
 }
 
+.speed-report-panel {
+  display: grid;
+  gap: 8px;
+  border: 1px solid rgba(227, 181, 87, 0.22);
+  border-radius: 8px;
+  padding: 11px;
+  background: rgba(227, 181, 87, 0.08);
+  color: #f4dfad;
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.speed-report-panel strong {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.speed-report-list {
+  display: grid;
+  gap: 6px;
+}
+
+.speed-report-list span {
+  overflow-wrap: anywhere;
+}
+
+.toggle-row {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  color: #cfc9bf;
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.toggle-row input {
+  width: 17px;
+  height: 17px;
+  accent-color: #e3b557;
+}
+
+.speed-options {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+
 .spin {
   animation: spin 0.9s linear infinite;
 }

@@ -5,7 +5,9 @@ import {
   ExternalLink,
   Flame,
   FolderOpen,
+  Gauge,
   History,
+  Link2,
   Loader2,
   LogIn,
   MonitorPlay,
@@ -23,6 +25,7 @@ import type {
   AppSettings,
   AuthState,
   IwaraVideoDiagnostics,
+  MediaSpeedTestReport,
   PlayerDiagnostics,
   PlayerMode,
   PlayerProbe,
@@ -31,6 +34,7 @@ import type {
   VideoSort,
   VideoSummary
 } from "../shared/types";
+import { replaceMediaUrlHost } from "../shared/media-speed-utils";
 import logoMarkUrl from "./assets/iwara-tv-mark.svg";
 import { classifyIssue, type UiIssue } from "./issue-utils";
 
@@ -54,6 +58,19 @@ const defaultSettings: AppSettings = {
     externalPlayerArgs: "{url}",
     preferredQuality: "Source"
   },
+  mediaSpeed: {
+    autoTest: false,
+    replaceLinks: true,
+    candidateHosts: [
+      "jade.iwara.tv",
+      "kafka.iwara.tv",
+      "bronya.iwara.tv",
+      "camellya.iwara.tv"
+    ],
+    rankedHosts: [],
+    testBytes: 524288,
+    timeoutMs: 4500
+  },
   history: []
 };
 
@@ -73,6 +90,7 @@ export function App() {
   const [diagnostics, setDiagnostics] = useState<PlayerDiagnostics | undefined>();
   const [mpvTest, setMpvTest] = useState<PlayerProbe | undefined>();
   const [videoDiagnostics, setVideoDiagnostics] = useState<IwaraVideoDiagnostics | undefined>();
+  const [speedReport, setSpeedReport] = useState<MediaSpeedTestReport | undefined>();
   const [selectedVideo, setSelectedVideo] = useState<VideoDetail | undefined>();
   const [selectedQuality, setSelectedQuality] = useState<string | undefined>();
   const [urlInput, setUrlInput] = useState("");
@@ -85,6 +103,7 @@ export function App() {
   const [probing, setProbing] = useState(false);
   const [sessionBusy, setSessionBusy] = useState(false);
   const [diagnosingVideo, setDiagnosingVideo] = useState(false);
+  const [speedTesting, setSpeedTesting] = useState(false);
 
   const activeFeed = feeds[activeSort];
   const hasBridge = Boolean(bridge);
@@ -142,17 +161,30 @@ export function App() {
     clearMessages();
     try {
       const video = await bridge.iwara.getVideo(idOrUrl);
+      setSettings(await bridge.settings.get());
       setSelectedVideo(video);
       setVideoDiagnostics(undefined);
+      setSpeedReport(undefined);
       let formats = video.formats;
       if (auth.siteTokenReady && bestQualityRank(formats) <= 360) {
         const report = await bridge.iwara.diagnoseVideo(video.id);
+        setSettings(await bridge.settings.get());
         const capturedFormats = report.network?.entries.flatMap((entry) => entry.formats ?? []) ?? [];
         setVideoDiagnostics(report);
         if (bestQualityRank(capturedFormats) > bestQualityRank(formats)) {
           formats = capturedFormats;
           setSelectedVideo({ ...video, formats });
           setStatus(`已通过网页抓包补全：${formatLabelsText(formats.map((format) => format.label))}。`);
+        }
+      }
+      if (settings.mediaSpeed.autoTest && !settings.mediaSpeed.rankedHosts.length && formats.length) {
+        const report = await bridge.iwara.speedTestVideo(video.id);
+        setSettings(await bridge.settings.get());
+        setSpeedReport(report);
+        if (report.fastestHost && settings.mediaSpeed.replaceLinks) {
+          formats = routeFormatsByHost(formats, report.fastestHost);
+          setSelectedVideo({ ...video, formats });
+          setStatus(`已完成全局线路测速，最快线路：${report.fastestHost}。`);
         }
       }
       const preferred = formats.find((format) => format.id === settings.player.preferredQuality);
@@ -228,6 +260,42 @@ export function App() {
     return next;
   }
 
+  async function updateMediaSpeedSettings(partial: Partial<AppSettings["mediaSpeed"]>): Promise<AppSettings | undefined> {
+    if (!bridge) {
+      return undefined;
+    }
+
+    const next = await bridge.settings.update({ mediaSpeed: { ...settings.mediaSpeed, ...partial } });
+    setSettings(next);
+    return next;
+  }
+
+  async function speedTestSelectedVideo() {
+    if (!bridge || !selectedVideo) {
+      return;
+    }
+
+    setSpeedTesting(true);
+    clearMessages();
+    try {
+      const report = await bridge.iwara.speedTestVideo(selectedVideo.id);
+      setSettings(await bridge.settings.get());
+      setSpeedReport(report);
+      if (report.fastestHost && settings.mediaSpeed.replaceLinks) {
+        const formats = routeFormatsByHost(selectedVideo.formats, report.fastestHost);
+        setSelectedVideo({ ...selectedVideo, formats });
+        setSelectedQuality((current) => current ?? bestFormat(formats)?.id);
+      }
+      setStatus(report.fastestHost
+        ? `全局测速完成，最快线路：${report.fastestHost}。`
+        : "全局测速完成，没有可用线路。");
+    } catch (err) {
+      handleError(err);
+    } finally {
+      setSpeedTesting(false);
+    }
+  }
+
   async function chooseExecutable(kind: "mpv" | "external") {
     if (!bridge) {
       return;
@@ -288,6 +356,7 @@ export function App() {
     clearMessages();
     try {
       const report = await bridge.iwara.diagnoseVideo(selectedVideo.id);
+      setSettings(await bridge.settings.get());
       const capturedFormats = report.network?.entries.flatMap((entry) => entry.formats ?? []) ?? [];
       if (capturedFormats.length) {
         const best = bestFormat(capturedFormats);
@@ -481,11 +550,17 @@ export function App() {
                 onOpenIwaraSession={openIwaraSession}
                 onProbe={refreshDiagnostics}
                 onRefreshAuth={refreshAuthState}
+                onSpeedTest={speedTestSelectedVideo}
                 onTestMpv={testMpv}
+                onUpdateMediaSpeed={updateMediaSpeedSettings}
                 onUpdatePlayer={updatePlayerSettings}
                 player={settings.player}
                 probing={probing}
+                selectedVideo={selectedVideo}
                 sessionBusy={sessionBusy}
+                speedReport={speedReport}
+                speedSettings={settings.mediaSpeed}
+                speedTesting={speedTesting}
               />
             )}
           </section>
@@ -734,6 +809,29 @@ function VideoDiagnosticsPanel({ diagnostics }: { diagnostics: IwaraVideoDiagnos
   );
 }
 
+function SpeedReportPanel({ report }: { report: MediaSpeedTestReport }) {
+  const sorted = report.results
+    .slice()
+    .sort((a, b) => (b.bytesPerSecond ?? 0) - (a.bytesPerSecond ?? 0));
+
+  return (
+    <div className="speed-report-panel">
+      <strong>
+        <Link2 size={15} />
+        {report.fastestHost ? `最快线路：${report.fastestHost}` : "没有可用线路"}
+      </strong>
+      <div className="speed-report-list">
+        <span>样本：{report.sampleFormatLabel ?? "未知清晰度"} · {report.sampleHost ?? "未知来源"}</span>
+        {sorted.map((result) => (
+          <span key={result.host}>
+            {result.host}：{result.ok ? formatSpeed(result.bytesPerSecond) : result.error ?? "不可用"}
+          </span>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 function VideoCard({
   video,
   loading,
@@ -820,11 +918,17 @@ function SettingsView({
   onOpenIwaraSession,
   onProbe,
   onRefreshAuth,
+  onSpeedTest,
   onTestMpv,
+  onUpdateMediaSpeed,
   onUpdatePlayer,
   player,
   probing,
-  sessionBusy
+  selectedVideo,
+  sessionBusy,
+  speedReport,
+  speedSettings,
+  speedTesting
 }: {
   auth: AuthState;
   diagnostics?: PlayerDiagnostics;
@@ -835,11 +939,17 @@ function SettingsView({
   onOpenIwaraSession: () => void;
   onProbe: () => void;
   onRefreshAuth: () => void;
+  onSpeedTest: () => void;
   onTestMpv: () => void;
+  onUpdateMediaSpeed: (partial: Partial<AppSettings["mediaSpeed"]>) => void;
   onUpdatePlayer: (partial: Partial<AppSettings["player"]>) => void;
   player: AppSettings["player"];
   probing: boolean;
+  selectedVideo?: VideoDetail;
   sessionBusy: boolean;
+  speedReport?: MediaSpeedTestReport;
+  speedSettings: AppSettings["mediaSpeed"];
+  speedTesting: boolean;
 }) {
   return (
     <>
@@ -895,6 +1005,80 @@ function SettingsView({
               <option value="external">外部播放器</option>
             </select>
           </label>
+        </section>
+
+        <section className="settings-block">
+          <h3>Iwara 视频线路</h3>
+          <label className="toggle-row">
+            <input
+              checked={speedSettings.autoTest}
+              onChange={(event) => onUpdateMediaSpeed({ autoTest: event.target.checked })}
+              type="checkbox"
+            />
+            <span>域名池未测速时自动测速一次</span>
+          </label>
+          <label className="toggle-row">
+            <input
+              checked={speedSettings.replaceLinks}
+              onChange={(event) => onUpdateMediaSpeed({ replaceLinks: event.target.checked })}
+              type="checkbox"
+            />
+            <span>测速后替换为最快可用链接</span>
+          </label>
+          <label className="field-label">
+            域名池
+            <input
+              value={speedSettings.candidateHosts.join(", ")}
+              onChange={(event) => onUpdateMediaSpeed({ candidateHosts: event.target.value.split(",").map((host) => host.trim()).filter(Boolean) })}
+              placeholder="自动发现，也可手动追加：jade.iwara.tv, kafka.iwara.tv"
+            />
+          </label>
+          {speedSettings.rankedHosts.length ? (
+            <div className="probe-line ok">
+              <Gauge size={17} />
+              <span>
+                当前排序：{speedSettings.rankedHosts.join(" / ")}
+                {speedSettings.lastTestedAt ? ` · ${formatFullDate(speedSettings.lastTestedAt)}` : ""}
+              </span>
+            </div>
+          ) : (
+            <div className="probe-line bad">
+              <AlertTriangle size={17} />
+              <span>域名池还没有测速排序，需先打开一个视频作为测速样本。</span>
+            </div>
+          )}
+          <div className="speed-options">
+            <label className="field-label">
+              读取量
+              <select
+                value={speedSettings.testBytes}
+                onChange={(event) => onUpdateMediaSpeed({ testBytes: Number(event.target.value) })}
+              >
+                <option value={262144}>256 KB</option>
+                <option value={524288}>512 KB</option>
+                <option value={1048576}>1 MB</option>
+              </select>
+            </label>
+            <label className="field-label">
+              超时
+              <select
+                value={speedSettings.timeoutMs}
+                onChange={(event) => onUpdateMediaSpeed({ timeoutMs: Number(event.target.value) })}
+              >
+                <option value={3000}>3 秒</option>
+                <option value={4500}>4.5 秒</option>
+                <option value={7000}>7 秒</option>
+              </select>
+            </label>
+          </div>
+          <button className="secondary-button" disabled={!hasBridge || !selectedVideo || speedTesting} onClick={onSpeedTest} type="button">
+            {speedTesting ? <Loader2 className="spin" size={18} /> : <Gauge size={18} />}
+            测速当前视频
+          </button>
+          <p className="subtle">
+            当前视频、网页抓包和测速结果里发现的新媒体域名会自动加入这里。全局测速只用当前视频的一条直链作为样本；之后所有视频按全局最快线路替换。
+          </p>
+          {speedReport && <SpeedReportPanel report={speedReport} />}
         </section>
 
         <section className="settings-block">
@@ -1038,6 +1222,15 @@ function formatDate(value?: string): string {
   return new Intl.DateTimeFormat("zh-CN", { month: "short", day: "numeric" }).format(new Date(value));
 }
 
+function formatFullDate(value: string): string {
+  return new Intl.DateTimeFormat("zh-CN", {
+    month: "short",
+    day: "numeric",
+    hour: "2-digit",
+    minute: "2-digit"
+  }).format(new Date(value));
+}
+
 function playStatus(result: { mode: PlayerMode; format: { label: string }; fallbackFrom?: string }): string {
   const player = result.mode === "mpv" ? "MPV" : "外部播放器";
   const fallback = result.fallbackFrom ? `，${result.fallbackFrom} 不可用，已改用 ${result.format.label}` : `：${result.format.label}`;
@@ -1046,6 +1239,25 @@ function playStatus(result: { mode: PlayerMode; format: { label: string }; fallb
 
 function formatLabelsText(labels: string[]): string {
   return labels.length ? labels.join(" / ") : "无清晰度";
+}
+
+function routeFormatsByHost(formats: VideoDetail["formats"], fastestHost: string) {
+  return formats.map((format) => {
+    const routedUrl = replaceMediaUrlHost(format.url, fastestHost);
+    return routedUrl ? { ...format, url: routedUrl } : format;
+  });
+}
+
+function formatSpeed(bytesPerSecond?: number): string {
+  if (!bytesPerSecond) {
+    return "未知速度";
+  }
+
+  if (bytesPerSecond >= 1024 * 1024) {
+    return `${(bytesPerSecond / 1024 / 1024).toFixed(1)} MB/s`;
+  }
+
+  return `${Math.max(Math.round(bytesPerSecond / 1024), 1)} KB/s`;
 }
 
 function bestFormat(formats: VideoDetail["formats"]) {

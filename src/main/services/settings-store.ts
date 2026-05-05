@@ -1,6 +1,21 @@
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
-import type { AppSettings, PlaybackHistoryItem } from "../../shared/types";
+import { normalizeMediaHostList } from "../../shared/media-speed-utils";
+import type { AppSettings, MediaSpeedCandidateResult, PlaybackHistoryItem } from "../../shared/types";
+
+export const DEFAULT_MEDIA_SPEED_SETTINGS = {
+  autoTest: false,
+  replaceLinks: true,
+  candidateHosts: [
+    "jade.iwara.tv",
+    "kafka.iwara.tv",
+    "bronya.iwara.tv",
+    "camellya.iwara.tv"
+  ],
+  rankedHosts: [],
+  testBytes: 524288,
+  timeoutMs: 4500
+} satisfies AppSettings["mediaSpeed"];
 
 const DEFAULT_SETTINGS: AppSettings = {
   player: {
@@ -8,6 +23,7 @@ const DEFAULT_SETTINGS: AppSettings = {
     externalPlayerArgs: "{url}",
     preferredQuality: "Source"
   },
+  mediaSpeed: DEFAULT_MEDIA_SPEED_SETTINGS,
   history: []
 };
 
@@ -32,6 +48,10 @@ export class SettingsStore {
         ...this.settings.player,
         ...partial.player
       },
+      mediaSpeed: {
+        ...this.settings.mediaSpeed,
+        ...partial.mediaSpeed
+      },
       history: partial.history ?? this.settings.history
     };
     this.save();
@@ -41,6 +61,36 @@ export class SettingsStore {
   addHistory(item: PlaybackHistoryItem): AppSettings {
     const withoutDuplicate = this.settings.history.filter((entry) => entry.video.id !== item.video.id);
     this.settings.history = [item, ...withoutDuplicate].slice(0, 100);
+    this.save();
+    return this.get();
+  }
+
+  addMediaHosts(hosts: string[]): AppSettings {
+    const merged = normalizeMediaHostList([...this.settings.mediaSpeed.candidateHosts, ...hosts]);
+    if (merged.join("\n") === this.settings.mediaSpeed.candidateHosts.join("\n")) {
+      return this.get();
+    }
+
+    this.settings.mediaSpeed.candidateHosts = merged;
+    this.save();
+    return this.get();
+  }
+
+  updateMediaHostRanking(results: MediaSpeedCandidateResult[], testedAt: string): AppSettings {
+    const rankedHosts = normalizeMediaHostList(
+      results
+        .filter((result) => result.ok)
+        .sort((a, b) => (b.bytesPerSecond ?? 0) - (a.bytesPerSecond ?? 0))
+        .map((result) => result.host)
+    );
+    const observedHosts = normalizeMediaHostList(results.map((result) => result.host));
+
+    this.settings.mediaSpeed = {
+      ...this.settings.mediaSpeed,
+      candidateHosts: normalizeMediaHostList([...this.settings.mediaSpeed.candidateHosts, ...observedHosts]),
+      rankedHosts,
+      lastTestedAt: testedAt
+    };
     this.save();
     return this.get();
   }
@@ -55,6 +105,10 @@ export class SettingsStore {
           ...DEFAULT_SETTINGS.player,
           ...raw.player
         },
+        mediaSpeed: {
+          ...DEFAULT_SETTINGS.mediaSpeed,
+          ...raw.mediaSpeed
+        },
         history: Array.isArray(raw.history) ? raw.history : []
       };
     } catch {
@@ -67,4 +121,3 @@ export class SettingsStore {
     writeFileSync(this.filePath, `${JSON.stringify(this.settings, null, 2)}\n`, "utf8");
   }
 }
-

@@ -1,8 +1,13 @@
 {
   "name": "iwara-tv-local-player",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "private": true,
   "description": "Local Iwara.tv browser and MPV launcher.",
+  "author": "Demogest",
+  "engines": {
+    "node": ">=24.14.1",
+    "npm": ">=11.11.0"
+  },
   "main": "dist-electron/main/main.js",
   "scripts": {
     "dev": "vite --host 127.0.0.1",
@@ -64,23 +69,23 @@
     }
   },
   "dependencies": {
-    "@vitejs/plugin-react": "^4.3.4",
-    "lucide-react": "^0.468.0",
-    "react": "^18.3.1",
-    "react-dom": "^18.3.1"
+    "@vitejs/plugin-react": "^6.0.1",
+    "lucide-react": "^1.14.0",
+    "react": "^19.2.5",
+    "react-dom": "^19.2.5"
   },
   "devDependencies": {
-    "@types/node": "^22.10.2",
-    "@types/react": "^18.3.12",
-    "@types/react-dom": "^18.3.1",
+    "@types/node": "^25.6.0",
+    "@types/react": "^19.2.14",
+    "@types/react-dom": "^19.2.3",
     "7zip-bin": "^5.2.0",
     "concurrently": "^9.1.0",
-    "cross-env": "^7.0.3",
-    "electron": "^33.2.1",
+    "cross-env": "^10.1.0",
+    "electron": "^41.5.0",
     "electron-builder": "^26.8.1",
-    "typescript": "^5.7.2",
-    "vite": "^6.0.3",
-    "vitest": "^2.1.8",
-    "wait-on": "^8.0.1"
+    "typescript": "^6.0.3",
+    "vite": "^8.0.10",
+    "vitest": "^4.1.5",
+    "wait-on": "^9.0.5"
   }
 }

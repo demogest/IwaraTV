@@ -95,6 +95,10 @@ export class IwaraClient {
     const query = request.query?.trim();
     const tags = normalizeTags(request.tags ?? []);
     const tagPreferences = normalizeListPreferences(options.tagPreferences);
+    if (request.followedOnly) {
+      return this.listFollowedVideos(request, tagPreferences);
+    }
+
     const requiredTags = new Set(tags);
     const blockedTags = new Set(tagPreferences.blockedTags);
     const needsClientScan = tags.length > 1 || blockedTags.size > 0;
@@ -157,6 +161,84 @@ export class IwaraClient {
       blockedCount,
       partialFailures: failures.length ? failures : undefined,
       results: dedupeVideos(results).slice(0, DEFAULT_LIMIT)
+    };
+  }
+
+  private async listFollowedVideos(
+    request: ListVideosRequest,
+    tagPreferences: TagPreferences
+  ): Promise<VideoListResult> {
+    const sort = request.sort;
+    const page = request.page ?? 0;
+    const rating = request.rating ?? "all";
+    const query = request.query?.trim();
+    const followedTags = tagPreferences.followedTags.slice(0, 8);
+    const requiredTags = new Set(normalizeTags(request.tags ?? []));
+    const blockedTags = new Set(tagPreferences.blockedTags);
+    const pagesToScan = tagPreferences.maxScanPages;
+    const startPage = page * pagesToScan;
+    const results: VideoSummary[] = [];
+    let blockedCount = 0;
+    let scannedPages = 0;
+    const failures: string[] = [];
+
+    if (!followedTags.length) {
+      return {
+        sort,
+        page,
+        limit: DEFAULT_LIMIT,
+        query,
+        tags: [],
+        scannedPages: 0,
+        blockedCount: 0,
+        results: []
+      };
+    }
+
+    for (const tag of followedTags) {
+      for (let offset = 0; offset < pagesToScan; offset += 1) {
+        if (scannedPages > 0) {
+          await delay(tagPreferences.requestDelayMs);
+        }
+
+        try {
+          const response = await this.fetchVideoListPage({
+            sort,
+            page: startPage + offset,
+            rating,
+            query,
+            tag,
+            userId: request.userId
+          });
+          scannedPages += 1;
+          for (const video of response.results) {
+            if (matchesAnyTag(video, blockedTags)) {
+              blockedCount += 1;
+              continue;
+            }
+            if (requiredTags.size && !matchesAllTags(video, requiredTags)) {
+              continue;
+            }
+            results.push(video);
+          }
+        } catch (err) {
+          failures.push(`${tag} 第 ${startPage + offset + 1} 页：${err instanceof Error ? err.message : String(err)}`);
+        }
+      }
+    }
+
+    return {
+      sort,
+      page,
+      limit: DEFAULT_LIMIT,
+      query,
+      tags: followedTags,
+      scannedPages,
+      blockedCount,
+      partialFailures: failures.length ? failures : undefined,
+      results: dedupeVideos(results)
+        .sort((a, b) => dateScore(b.createdAt) - dateScore(a.createdAt))
+        .slice(0, DEFAULT_LIMIT)
     };
   }
 
@@ -829,6 +911,15 @@ function dedupeVideos(videos: VideoSummary[]): VideoSummary[] {
     seen.add(video.id);
     return true;
   });
+}
+
+function dateScore(value?: string): number {
+  if (!value) {
+    return 0;
+  }
+
+  const time = new Date(value).getTime();
+  return Number.isFinite(time) ? time : 0;
 }
 
 function clampInteger(value: number | undefined, min: number, max: number, fallback: number): number {

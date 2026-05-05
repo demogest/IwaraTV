@@ -202,6 +202,7 @@ export interface ListVideosRequest {
   rating?: RatingFilter;
   query?: string;
   tags?: string[];
+  followedOnly?: boolean;
   userId?: string;
 }
 

@@ -10,6 +10,7 @@ import {
   Flame,
   FolderOpen,
   Gauge,
+  Heart,
   History,
   Link2,
   Loader2,
@@ -52,6 +53,7 @@ import logoMarkUrl from "./assets/iwara-tv-mark.svg";
 import { classifyIssue, type UiIssue } from "./issue-utils";
 
 type AppSection = "browse" | "history" | "settings";
+type FeedTabKey = VideoSort | "followed";
 interface ActiveAuthor {
   id: string;
   name?: string;
@@ -68,10 +70,11 @@ const sectionTabs: Array<{ section: AppSection; label: string; Icon: LucideIcon 
   { section: "settings", label: "设置", Icon: Settings }
 ];
 
-const feedTabs: Array<{ sort: VideoSort; label: string; Icon: LucideIcon }> = [
-  { sort: "date", label: "最新", Icon: Clock3 },
-  { sort: "trending", label: "当前人气", Icon: Flame },
-  { sort: "popularity", label: "流行视频", Icon: TrendingUp }
+const feedTabs: Array<{ key: FeedTabKey; label: string; Icon: LucideIcon }> = [
+  { key: "date", label: "最新", Icon: Clock3 },
+  { key: "trending", label: "当前人气", Icon: Flame },
+  { key: "popularity", label: "流行视频", Icon: TrendingUp },
+  { key: "followed", label: "关注标签", Icon: Heart }
 ];
 
 const defaultSettings: AppSettings = {
@@ -115,8 +118,8 @@ const defaultAuth: AuthState = {
 export function App() {
   const bridge = window.iwaraTV;
   const [activeSection, setActiveSection] = useState<AppSection>("browse");
-  const [activeSort, setActiveSort] = useState<VideoSort>("date");
-  const [feeds, setFeeds] = useState<Partial<Record<VideoSort, VideoListResult>>>({});
+  const [activeFeedTab, setActiveFeedTab] = useState<FeedTabKey>("date");
+  const [feeds, setFeeds] = useState<Partial<Record<FeedTabKey, VideoListResult>>>({});
   const [authorFeed, setAuthorFeed] = useState<VideoListResult | undefined>();
   const [activeAuthor, setActiveAuthor] = useState<ActiveAuthor | undefined>();
   const [filters, setFilters] = useState<VideoFilters>({ query: "", tags: [] });
@@ -149,7 +152,7 @@ export function App() {
   const [replyingTo, setReplyingTo] = useState<string | undefined>();
   const [submittingComment, setSubmittingComment] = useState(false);
 
-  const activeFeed = feeds[activeSort];
+  const activeFeed = feeds[activeFeedTab];
   const hasBridge = Boolean(bridge);
   const showDetailPanel = activeSection === "browse" && Boolean(selectedVideo);
   const authDisplayName = auth.email
@@ -170,12 +173,12 @@ export function App() {
   }, [bridge]);
 
   useEffect(() => {
-    if (!bridge || activeSection !== "browse" || feeds[activeSort]) {
+    if (!bridge || activeSection !== "browse" || feeds[activeFeedTab]) {
       return;
     }
 
-    void loadFeed(activeSort);
-  }, [activeSection, activeSort, feeds, bridge]);
+    void loadFeed(activeFeedTab);
+  }, [activeSection, activeFeedTab, feeds, bridge]);
 
   useEffect(() => {
     if (!bridge || !selectedVideo) {
@@ -185,11 +188,12 @@ export function App() {
     void loadComments(selectedVideo.id);
   }, [bridge, selectedVideo?.id]);
 
-  async function loadFeed(sort: VideoSort, page = feeds[sort]?.page ?? 0, nextFilters = filters) {
+  async function loadFeed(tab: FeedTabKey, page = feeds[tab]?.page ?? 0, nextFilters = filters) {
     if (!bridge) {
       return;
     }
 
+    const sort: VideoSort = tab === "followed" ? "date" : tab;
     setLoadingFeed(true);
     clearMessages();
     try {
@@ -198,9 +202,10 @@ export function App() {
         page,
         rating: "all",
         query: nextFilters.query,
-        tags: nextFilters.tags
+        tags: nextFilters.tags,
+        followedOnly: tab === "followed"
       });
-      setFeeds((current) => ({ ...current, [sort]: result }));
+      setFeeds((current) => ({ ...current, [tab]: result }));
     } catch (err) {
       handleError(err);
     } finally {
@@ -355,10 +360,10 @@ export function App() {
     });
   }
 
-  function showMainFeed(sort: VideoSort = activeSort) {
+  function showMainFeed(tab: FeedTabKey = activeFeedTab) {
     setActiveAuthor(undefined);
     setAuthorFeed(undefined);
-    setActiveSort(sort);
+    setActiveFeedTab(tab);
   }
 
   async function applyFilters(nextFilters: VideoFilters) {
@@ -367,11 +372,11 @@ export function App() {
       tags: normalizeTagTokens(nextFilters.tags)
     };
     setFilters(normalized);
-    setFeeds((current) => ({ ...current, [activeSort]: undefined }));
+    setFeeds((current) => ({ ...current, [activeFeedTab]: undefined }));
     if (activeAuthor) {
       await loadAuthorFeed(activeAuthor, 0, normalized);
     } else {
-      await loadFeed(activeSort, 0, normalized);
+      await loadFeed(activeFeedTab, 0, normalized);
     }
   }
 
@@ -756,7 +761,7 @@ export function App() {
     if (selectedVideo) {
       await openVideo(selectedVideo.id);
     } else {
-      await loadFeed(activeSort, activeFeed?.page ?? 0);
+      await loadFeed(activeFeedTab, activeFeed?.page ?? 0);
     }
   }
 
@@ -834,7 +839,7 @@ export function App() {
               <BrowseView
                 activeAuthor={activeAuthor}
                 activeFeed={activeAuthor ? authorFeed : activeFeed}
-                activeSort={activeSort}
+                activeFeedTab={activeFeedTab}
                 hasBridge={hasBridge}
                 filters={filters}
                 loadingFeed={loadingFeed}
@@ -845,11 +850,11 @@ export function App() {
                 onClearFilters={clearFilters}
                 onFilterChange={(partial) => setFilters((current) => ({ ...current, ...partial }))}
                 onFilterSubmit={() => applyFilters(filters)}
-                onPage={(page) => activeAuthor ? loadAuthorFeed(activeAuthor, page) : loadFeed(activeSort, page)}
+                onPage={(page) => activeAuthor ? loadAuthorFeed(activeAuthor, page) : loadFeed(activeFeedTab, page)}
                 onQuickPlay={quickPlay}
-                onRefresh={() => activeAuthor ? loadAuthorFeed(activeAuthor, authorFeed?.page ?? 0) : loadFeed(activeSort, activeFeed?.page ?? 0)}
+                onRefresh={() => activeAuthor ? loadAuthorFeed(activeAuthor, authorFeed?.page ?? 0) : loadFeed(activeFeedTab, activeFeed?.page ?? 0)}
                 onRemoveTag={removeTagFilter}
-                onSortChange={showMainFeed}
+                onFeedTabChange={showMainFeed}
                 quickPlayingId={quickPlayingId}
                 tagInput={tagInput}
                 onTagInputChange={setTagInput}
@@ -941,7 +946,7 @@ export function App() {
 function BrowseView({
   activeAuthor,
   activeFeed,
-  activeSort,
+  activeFeedTab,
   filters,
   hasBridge,
   loadingFeed,
@@ -956,14 +961,14 @@ function BrowseView({
   onQuickPlay,
   onRefresh,
   onRemoveTag,
-  onSortChange,
+  onFeedTabChange,
   onTagInputChange,
   quickPlayingId,
   tagInput
 }: {
   activeAuthor?: ActiveAuthor;
   activeFeed?: VideoListResult;
-  activeSort: VideoSort;
+  activeFeedTab: FeedTabKey;
   filters: VideoFilters;
   hasBridge: boolean;
   loadingFeed: boolean;
@@ -978,7 +983,7 @@ function BrowseView({
   onQuickPlay: (video: VideoSummary) => void;
   onRefresh: () => void;
   onRemoveTag: (tag: string) => void;
-  onSortChange: (sort: VideoSort) => void;
+  onFeedTabChange: (tab: FeedTabKey) => void;
   onTagInputChange: (value: string) => void;
   quickPlayingId?: string;
   tagInput: string;
@@ -991,7 +996,7 @@ function BrowseView({
       <div className="section-header">
         <div>
           <p>{activeAuthor ? "作者主页" : "视频源"}</p>
-          <h2>{activeAuthor ? (activeAuthor.name ?? activeAuthor.username ?? "作者视频") : feedTitle(activeSort)}</h2>
+          <h2>{activeAuthor ? (activeAuthor.name ?? activeAuthor.username ?? "作者视频") : feedTitle(activeFeedTab)}</h2>
           {activeAuthor?.username && <span className="section-subtitle">@{activeAuthor.username}</span>}
         </div>
         {activeAuthor && (
@@ -1013,12 +1018,12 @@ function BrowseView({
 
       {!activeAuthor && (
         <div className="feed-tabs" role="tablist">
-          {feedTabs.map(({ sort, label, Icon }) => (
+          {feedTabs.map(({ key, label, Icon }) => (
             <button
-              aria-selected={activeSort === sort}
-              className={activeSort === sort ? "feed-tab active" : "feed-tab"}
-              key={sort}
-              onClick={() => onSortChange(sort)}
+              aria-selected={activeFeedTab === key}
+              className={activeFeedTab === key ? "feed-tab active" : "feed-tab"}
+              key={key}
+              onClick={() => onFeedTabChange(key)}
               role="tab"
               type="button"
             >
@@ -1998,8 +2003,12 @@ function SkeletonGrid() {
   );
 }
 
-function feedTitle(sort: VideoSort): string {
-  return sort === "date" ? "刚刚发布" : sort === "trending" ? "正在升温" : "长期热门";
+function feedTitle(tab: FeedTabKey): string {
+  if (tab === "followed") {
+    return "关注标签";
+  }
+
+  return tab === "date" ? "刚刚发布" : tab === "trending" ? "正在升温" : "长期热门";
 }
 
 function compactNumber(value: number): string {

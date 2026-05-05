@@ -26,8 +26,8 @@ fs.mkdirSync(iconDir, { recursive: true });
 
 const svg = `<?xml version="1.0" encoding="UTF-8"?>
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" role="img" aria-labelledby="title desc">
-  <title id="title">IwaraTV mark</title>
-  <desc id="desc">A dark rounded app icon with a teal video frame, warm play mark, and small coral signal dot.</desc>
+  <title id="title">IwaraTV original mark</title>
+  <desc id="desc">An original Iwara-inspired dark rounded app icon with a teal video frame, warm play mark, soft coral accent, and compact media signal dot.</desc>
   <defs>
     <linearGradient id="bg" x1="128" y1="80" x2="896" y2="944" gradientUnits="userSpaceOnUse">
       <stop offset="0" stop-color="#22282d"/>

@@ -1,4 +1,4 @@
-import type { IwaraTVBridge } from "../main/preload";
+import type { IwaraTVBridge } from "./tauri-bridge";
 
 declare global {
   interface Window {
@@ -7,4 +7,3 @@ declare global {
 }
 
 export {};
-

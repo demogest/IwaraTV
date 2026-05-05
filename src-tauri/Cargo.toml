@@ -1,0 +1,36 @@
+[package]
+name = "iwaratv"
+version = "0.2.0"
+description = "Local Iwara.tv browser and MPV launcher."
+authors = ["Demogest"]
+edition = "2021"
+rust-version = "1.77.2"
+
+[lib]
+name = "iwaratv_lib"
+crate-type = ["staticlib", "cdylib", "rlib"]
+
+[build-dependencies]
+tauri-build = { version = "=2.6.0", features = [] }
+
+[dependencies]
+base64 = "0.22.1"
+dirs = "6.0.0"
+futures-util = "0.3.31"
+keyring = "3.6.3"
+regex = "1.12.2"
+reqwest = { version = "0.12.24", features = ["json", "stream", "rustls-tls"], default-features = false }
+serde = { version = "1.0.228", features = ["derive"] }
+serde_json = "1.0.145"
+sha1 = "0.10.6"
+tauri = { version = "=2.11.0", features = ["devtools"] }
+tauri-plugin-clipboard-manager = "2.3.2"
+tauri-plugin-dialog = "2.7.1"
+tauri-plugin-opener = "2.5.3"
+thiserror = "2.0.17"
+time = { version = "0.3.44", features = ["formatting"] }
+tokio = { version = "1.48.0", features = ["process", "sync", "time"] }
+url = "2.5.7"
+
+[target.'cfg(windows)'.dependencies]
+windows = { version = "0.62.2", features = ["Win32_Foundation"] }

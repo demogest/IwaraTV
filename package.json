@@ -8,108 +8,34 @@
     "node": ">=24.14.1",
     "npm": ">=11.11.0"
   },
-  "main": "dist-electron/main/main.js",
   "scripts": {
     "dev": "vite --host 127.0.0.1",
-    "dev:desktop": "concurrently -k \"vite --host 127.0.0.1\" \"wait-on http://127.0.0.1:5174 && npm run build:main && cross-env ELECTRON_RENDERER_URL=http://127.0.0.1:5174 electron dist-electron/main/main.js\"",
-    "build:main": "tsc -p tsconfig.node.json",
+    "dev:tauri": "tauri dev",
     "build:renderer": "vite build",
-    "build": "npm run build:main && npm run build:renderer",
-    "icons:build": "node scripts/generate-icons.mjs",
+    "build": "npm run build:renderer",
+    "build:tauri": "tauri build",
+    "icons:build": "node scripts/generate-icons.mjs && tauri icon build/icons/icon.png --output build/icons",
     "mpv:update": "node scripts/install-mpv.mjs",
-    "dist:win": "npm run mpv:update && npm run icons:build && npm run build && electron-builder --win portable nsis zip --x64",
-    "pack:win": "npm run mpv:update && npm run icons:build && npm run build && electron-builder --win dir --x64",
+    "dist:win": "npm run mpv:update && npm run icons:build && npm run build:tauri -- --bundles nsis",
+    "pack:win": "npm run mpv:update && npm run icons:build && tauri build --no-bundle",
     "preview": "vite preview --host 127.0.0.1",
     "test": "vitest run",
-    "typecheck": "tsc --noEmit && tsc -p tsconfig.node.json --noEmit"
-  },
-  "build": {
-    "appId": "local.iwaratv.player",
-    "productName": "IwaraTV",
-    "artifactName": "${productName}-${version}-win-${arch}.${ext}",
-    "asar": true,
-    "directories": {
-      "output": "release"
-    },
-    "files": [
-      "dist/**/*",
-      "dist-electron/**/*",
-      "package.json"
-    ],
-    "extraResources": [
-      {
-        "from": "build/icons",
-        "to": "icons",
-        "filter": [
-          "icon.ico",
-          "icon.png"
-        ]
-      },
-      {
-        "from": "vendor/mpv",
-        "to": "mpv",
-        "filter": [
-          "mpv.exe",
-          "mpv.com",
-          "*.dll",
-          "mpv/**",
-          "mpv-manifest.json"
-        ]
-      }
-    ],
-    "win": {
-      "icon": "build/icon.ico",
-      "target": [
-        {
-          "target": "portable",
-          "arch": [
-            "x64"
-          ]
-        },
-        {
-          "target": "nsis",
-          "arch": [
-            "x64"
-          ]
-        },
-        {
-          "target": "zip",
-          "arch": [
-            "x64"
-          ]
-        }
-      ],
-      "artifactName": "${productName}-${version}-portable-${arch}.${ext}"
-    },
-    "portable": {
-      "artifactName": "${productName}-${version}-portable-${arch}.${ext}"
-    },
-    "nsis": {
-      "artifactName": "${productName}-${version}-setup-${arch}.${ext}",
-      "oneClick": false,
-      "perMachine": false,
-      "allowToChangeInstallationDirectory": true,
-      "deleteAppDataOnUninstall": false
-    }
+    "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "@vitejs/plugin-react": "^6.0.1",
     "lucide-react": "^1.14.0",
     "react": "^19.2.5",
     "react-dom": "^19.2.5"
   },
   "devDependencies": {
+    "@tauri-apps/cli": "2.11.0",
     "@types/node": "^25.6.0",
     "@types/react": "^19.2.14",
     "@types/react-dom": "^19.2.3",
+    "@vitejs/plugin-react": "^6.0.1",
     "7zip-bin": "^5.2.0",
-    "concurrently": "^9.1.0",
-    "cross-env": "^10.1.0",
-    "electron": "^41.5.0",
-    "electron-builder": "^26.8.1",
     "typescript": "^6.0.3",
     "vite": "^8.0.10",
-    "vitest": "^4.1.5",
-    "wait-on": "^9.0.5"
+    "vitest": "^4.1.5"
   }
 }

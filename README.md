@@ -1,6 +1,6 @@
 # IwaraTV
 
-![IwaraTV logo](src/renderer/assets/iwara-tv-mark.svg)
+![IwaraTV logo](src/assets/iwara-tv-mark.svg)
 
 IwaraTV is a local desktop browser and player launcher for Iwara.tv. It keeps the React UI lightweight while using a native Tauri backend for settings, session handling, diagnostics, and launching MPV or another external player.
 
@@ -34,7 +34,20 @@ npm run typecheck
 npm test
 cargo test --manifest-path src-tauri/Cargo.toml
 npm run dev:tauri
+npm run build
 ```
+
+## Mainline
+
+The `main` branch is now the Tauri/Rust desktop app. The former Electron desktop implementation is deprecated and no longer maintained; keep any legacy Electron work on historical branches only.
+
+## Architecture Boundaries
+
+- `main` is the Tauri/Rust desktop branch.
+- `src-tauri/src` owns all native app work: Iwara API, session, auth, settings, player launch, X-Version, diagnostics, and OS integration.
+- `src` is the Vite web UI entrypoint.
+- `src/lib` contains browser-safe UI types and helpers only.
+- `src/tauri` contains the small web-to-Rust command API.
 
 Windows packaging with bundled MPV:
 

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { classifyIssue } from "../src/renderer/issue-utils";
+import { classifyIssue } from "../src/lib/issue-utils";
 
 describe("issue classification", () => {
   it("routes player setup errors to settings", () => {

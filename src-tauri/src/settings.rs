@@ -21,7 +21,7 @@ impl SettingsStore {
         let file_path = user_data_path.join("settings.json");
         let settings = if let Some(settings) = load_settings(&file_path) {
             settings
-        } else if let Some(settings) = migrate_electron_settings(&file_path) {
+        } else if let Some(settings) = migrate_legacy_settings(&file_path) {
             let _ = persist_settings(&file_path, &settings);
             settings
         } else {
@@ -166,7 +166,7 @@ fn load_settings(path: &Path) -> Option<AppSettings> {
     Some(settings)
 }
 
-fn migrate_electron_settings(new_path: &Path) -> Option<AppSettings> {
+fn migrate_legacy_settings(new_path: &Path) -> Option<AppSettings> {
     if new_path.exists() {
         return None;
     }

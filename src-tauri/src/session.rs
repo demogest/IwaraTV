@@ -501,16 +501,34 @@ fn find_token(storage: StorageDump) -> Option<CapturedToken> {
 
 fn find_jwt(value: Option<&str>) -> Option<String> {
     let value = value?;
-    let direct = regex::Regex::new(r"[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+")
+    find_jwt_in_text(value).or_else(|| {
+        serde_json::from_str::<Value>(value)
+            .ok()
+            .and_then(|json| find_jwt_in_json(&json, 0))
+    })
+}
+
+fn find_jwt_in_text(value: &str) -> Option<String> {
+    regex::Regex::new(r"[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+")
         .ok()?
         .find(value)
-        .map(|found| found.as_str().to_string());
-    if direct.is_some() {
-        return direct;
+        .map(|found| found.as_str().to_string())
+}
+
+fn find_jwt_in_json(value: &Value, depth: usize) -> Option<String> {
+    if depth > 24 {
+        return None;
     }
-    serde_json::from_str::<Value>(value)
-        .ok()
-        .and_then(|json| find_jwt(Some(&json.to_string())))
+    match value {
+        Value::String(text) => find_jwt_in_text(text).or_else(|| {
+            serde_json::from_str::<Value>(text)
+                .ok()
+                .and_then(|nested| find_jwt_in_json(&nested, depth + 1))
+        }),
+        Value::Array(values) => values.iter().find_map(|value| find_jwt_in_json(value, depth + 1)),
+        Value::Object(map) => map.values().find_map(|value| find_jwt_in_json(value, depth + 1)),
+        _ => None,
+    }
 }
 
 fn diagnostics_script() -> String {
@@ -608,4 +626,27 @@ fn safe_url(url: &str) -> String {
             parsed.to_string()
         })
         .unwrap_or_else(|_| url.to_string())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn ignores_json_storage_values_without_jwt() {
+        let value = r#"{"theme":"dark","settings":{"flags":[true,false],"version":1}}"#;
+        assert_eq!(find_jwt(Some(value)), None);
+    }
+
+    #[test]
+    fn finds_jwt_inside_nested_json_storage_values() {
+        let value = r#"{"auth":{"accessToken":"header.payload.signature"}}"#;
+        assert_eq!(find_jwt(Some(value)).as_deref(), Some("header.payload.signature"));
+    }
+
+    #[test]
+    fn finds_jwt_inside_stringified_json_storage_values() {
+        let value = r#"{"persisted":"{\"token\":\"header.payload.signature\"}"}"#;
+        assert_eq!(find_jwt(Some(value)).as_deref(), Some("header.payload.signature"));
+    }
 }

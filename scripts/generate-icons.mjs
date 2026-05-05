@@ -3,9 +3,9 @@ import path from "node:path";
 import zlib from "node:zlib";
 
 const root = process.cwd();
-const rendererAssetDir = path.join(root, "src", "renderer", "assets");
+const webAssetDir = path.join(root, "src", "assets");
 const iconDir = path.join(root, "build", "icons");
-const rendererSvgPath = path.join(rendererAssetDir, "iwara-tv-mark.svg");
+const webSvgPath = path.join(webAssetDir, "iwara-tv-mark.svg");
 const iconSvgPath = path.join(iconDir, "icon.svg");
 const iconPngPath = path.join(iconDir, "icon.png");
 const iconIcoPath = path.join(iconDir, "icon.ico");
@@ -21,7 +21,7 @@ const crcTable = Array.from({ length: 256 }, (_, index) => {
   return value >>> 0;
 });
 
-fs.mkdirSync(rendererAssetDir, { recursive: true });
+fs.mkdirSync(webAssetDir, { recursive: true });
 fs.mkdirSync(iconDir, { recursive: true });
 
 const svg = `<?xml version="1.0" encoding="UTF-8"?>
@@ -51,7 +51,7 @@ const svg = `<?xml version="1.0" encoding="UTF-8"?>
 </svg>
 `;
 
-fs.writeFileSync(rendererSvgPath, svg);
+fs.writeFileSync(webSvgPath, svg);
 fs.writeFileSync(iconSvgPath, svg);
 
 const pngs = sizes.map((size) => ({ size, data: renderPng(size) }));
@@ -60,7 +60,7 @@ fs.writeFileSync(iconIcoPath, makeIco(pngs));
 fs.copyFileSync(iconPngPath, builderIconPngPath);
 fs.copyFileSync(iconIcoPath, builderIconIcoPath);
 
-console.log(`Generated ${path.relative(root, rendererSvgPath)}`);
+console.log(`Generated ${path.relative(root, webSvgPath)}`);
 console.log(`Generated ${path.relative(root, iconPngPath)}`);
 console.log(`Generated ${path.relative(root, iconIcoPath)}`);
 console.log(`Generated ${path.relative(root, builderIconIcoPath)}`);

@@ -1,8 +1,8 @@
 import { describe, expect, it } from "vitest";
-import { commandMap } from "../src/renderer/tauri-bridge";
+import { commandMap } from "../src/tauri/api";
 
-describe("tauri bridge command mapping", () => {
-  it("keeps renderer API calls routed through internal Tauri commands", () => {
+describe("Tauri command API mapping", () => {
+  it("keeps web API calls routed through internal Tauri commands", () => {
     expect(commandMap).toMatchObject({
       listVideos: "iwara_list_videos",
       getVideo: "iwara_get_video",

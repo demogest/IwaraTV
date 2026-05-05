@@ -18,7 +18,7 @@ import type {
   VideoDetail,
   VideoListResult,
   XVersionSaltReport
-} from "../shared/types";
+} from "../lib/types";
 
 type Invoke = <T>(command: string, args?: Record<string, unknown>) => Promise<T>;
 
@@ -59,13 +59,13 @@ const commandMap = {
 function tauriInvoke<T>(command: string, args?: Record<string, unknown>): Promise<T> {
   const invoke = window.__TAURI__?.core?.invoke;
   if (!invoke) {
-    return Promise.reject(new Error("Tauri bridge is not available."));
+    return Promise.reject(new Error("Tauri API is not available."));
   }
 
   return invoke<T>(command, args);
 }
 
-export const tauriBridge = {
+export const tauriApi = {
   iwara: {
     listVideos: (request: ListVideosRequest) => tauriInvoke<VideoListResult>(commandMap.listVideos, { request }),
     getVideo: (idOrUrl: string) => tauriInvoke<VideoDetail>(commandMap.getVideo, { idOrUrl }),
@@ -99,11 +99,11 @@ export const tauriBridge = {
   }
 };
 
-export function installTauriBridge(): void {
+export function installTauriApi(): void {
   if (!window.iwaraTV && window.__TAURI__?.core?.invoke) {
-    window.iwaraTV = tauriBridge;
+    window.iwaraTV = tauriApi;
   }
 }
 
-export type IwaraTVBridge = typeof tauriBridge;
+export type IwaraTVApi = typeof tauriApi;
 export { commandMap };

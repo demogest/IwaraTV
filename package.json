@@ -11,8 +11,8 @@
   "scripts": {
     "dev": "vite --host 127.0.0.1",
     "dev:tauri": "tauri dev",
-    "build:renderer": "vite build",
-    "build": "npm run build:renderer",
+    "build:web": "vite build",
+    "build": "npm run build:tauri --",
     "build:tauri": "tauri build",
     "icons:build": "node scripts/generate-icons.mjs && tauri icon build/icons/icon.png --output build/icons",
     "mpv:update": "node scripts/install-mpv.mjs",

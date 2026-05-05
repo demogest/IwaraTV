@@ -11,7 +11,9 @@ mod session;
 mod settings;
 mod state;
 
-use tauri::Manager;
+use tauri::{Manager, Runtime, WindowEvent};
+
+const MAIN_WINDOW_LABEL: &str = "main";
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
@@ -23,6 +25,13 @@ pub fn run() {
             let state = state::AppState::new(app.handle().clone())?;
             app.manage(state);
             Ok(())
+        })
+        .on_window_event(|window, event| {
+            if window.label() == MAIN_WINDOW_LABEL
+                && matches!(event, WindowEvent::CloseRequested { .. })
+            {
+                close_auxiliary_webview_windows(window.app_handle());
+            }
         })
         .invoke_handler(tauri::generate_handler![
             commands::iwara_list_videos,
@@ -47,4 +56,12 @@ pub fn run() {
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
+}
+
+fn close_auxiliary_webview_windows<R: Runtime>(app: &tauri::AppHandle<R>) {
+    for (label, window) in app.webview_windows() {
+        if label != MAIN_WINDOW_LABEL {
+            let _ = window.close();
+        }
+    }
 }

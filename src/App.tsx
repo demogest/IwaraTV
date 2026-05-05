@@ -47,10 +47,10 @@ import type {
   VideoSort,
   VideoSummary,
   XVersionSaltReport
-} from "../shared/types";
-import { normalizeMediaHostList } from "../shared/media-speed-utils";
+} from "./lib/types";
+import { normalizeMediaHostList } from "./lib/media-speed-utils";
 import logoMarkUrl from "./assets/iwara-tv-mark.svg";
-import { classifyIssue, type UiIssue } from "./issue-utils";
+import { classifyIssue, type UiIssue } from "./lib/issue-utils";
 
 type AppSection = "browse" | "history" | "settings";
 type FeedTabKey = VideoSort | "followed";
@@ -116,7 +116,7 @@ const defaultAuth: AuthState = {
 };
 
 export function App() {
-  const bridge = window.iwaraTV;
+  const api = window.iwaraTV;
   const [activeSection, setActiveSection] = useState<AppSection>("browse");
   const [activeFeedTab, setActiveFeedTab] = useState<FeedTabKey>("date");
   const [feeds, setFeeds] = useState<Partial<Record<FeedTabKey, VideoListResult>>>({});
@@ -154,7 +154,7 @@ export function App() {
   const [submittingComment, setSubmittingComment] = useState(false);
 
   const activeFeed = feeds[activeFeedTab];
-  const hasBridge = Boolean(bridge);
+  const hasApi = Boolean(api);
   const showDetailPanel = activeSection === "browse" && Boolean(selectedVideo);
   const authDisplayName = auth.email
     ?? (auth.siteTokenReady ? "网页登录" : auth.siteSessionReady ? "已验证会话" : "匿名");
@@ -164,33 +164,33 @@ export function App() {
   );
 
   useEffect(() => {
-    if (!bridge) {
+    if (!api) {
       return;
     }
 
-    void bridge.settings.get().then(setSettings).catch(handleError);
-    void bridge.player.probe().then(setDiagnostics).catch(handleError);
-    void bridge.auth.state().then(setAuth).catch(handleError);
-  }, [bridge]);
+    void api.settings.get().then(setSettings).catch(handleError);
+    void api.player.probe().then(setDiagnostics).catch(handleError);
+    void api.auth.state().then(setAuth).catch(handleError);
+  }, [api]);
 
   useEffect(() => {
-    if (!bridge || activeSection !== "browse" || loadingFeed || feeds[activeFeedTab]) {
+    if (!api || activeSection !== "browse" || loadingFeed || feeds[activeFeedTab]) {
       return;
     }
 
     void loadFeed(activeFeedTab);
-  }, [activeSection, activeFeedTab, feeds, bridge, loadingFeed]);
+  }, [activeSection, activeFeedTab, feeds, api, loadingFeed]);
 
   useEffect(() => {
-    if (!bridge || !selectedVideo) {
+    if (!api || !selectedVideo) {
       return;
     }
 
     void loadComments(selectedVideo.id);
-  }, [bridge, selectedVideo?.id]);
+  }, [api, selectedVideo?.id]);
 
   async function loadFeed(tab: FeedTabKey, page = feeds[tab]?.page ?? 0, nextFilters = filters) {
-    if (!bridge || loadingFeedRef.current) {
+    if (!api || loadingFeedRef.current) {
       return;
     }
 
@@ -199,7 +199,7 @@ export function App() {
     setLoadingFeed(true);
     clearMessages();
     try {
-      const result = await bridge.iwara.listVideos({
+      const result = await api.iwara.listVideos({
         sort,
         page,
         rating: "all",
@@ -217,7 +217,7 @@ export function App() {
   }
 
   async function loadAuthorFeed(author: ActiveAuthor, page = 0, nextFilters = filters) {
-    if (!bridge) {
+    if (!api) {
       return;
     }
 
@@ -226,7 +226,7 @@ export function App() {
     setLoadingFeed(true);
     clearMessages();
     try {
-      const result = await bridge.iwara.listVideos({
+      const result = await api.iwara.listVideos({
         sort: "date",
         page,
         rating: "all",
@@ -243,16 +243,16 @@ export function App() {
   }
 
   async function openVideo(idOrUrl: string) {
-    if (!bridge || !idOrUrl.trim()) {
+    if (!api || !idOrUrl.trim()) {
       return;
     }
 
     setLoadingVideoId(idOrUrl);
     clearMessages();
     try {
-      const video = await bridge.iwara.getVideo(idOrUrl);
-      const loadedSettings = await bridge.settings.get();
-      const currentAuth = await bridge.auth.state().catch(() => auth);
+      const video = await api.iwara.getVideo(idOrUrl);
+      const loadedSettings = await api.settings.get();
+      const currentAuth = await api.auth.state().catch(() => auth);
       setSettings(loadedSettings);
       setAuth(currentAuth);
       setSelectedVideo(video);
@@ -264,8 +264,8 @@ export function App() {
       setSpeedReport(undefined);
       let formats = video.formats;
       if (currentAuth.siteTokenReady && bestQualityRank(formats) <= 360) {
-        const report = await bridge.iwara.diagnoseVideo(video.id);
-        setSettings(await bridge.settings.get());
+        const report = await api.iwara.diagnoseVideo(video.id);
+        setSettings(await api.settings.get());
         const capturedFormats = report.network?.entries.flatMap((entry) => entry.formats ?? []) ?? [];
         setVideoDiagnostics(report);
         if (bestQualityRank(capturedFormats) > bestQualityRank(formats)) {
@@ -276,8 +276,8 @@ export function App() {
       }
       if (loadedSettings.mediaSpeed.autoTest && !loadedSettings.mediaSpeed.rankedHosts.length && formats.length) {
         try {
-          const report = await bridge.iwara.speedTestVideo(video.id);
-          setSettings(await bridge.settings.get());
+          const report = await api.iwara.speedTestVideo(video.id);
+          setSettings(await api.settings.get());
           setSpeedReport(report);
           setStatus(report.fastestHost ? `已完成全局线路测速，最快线路：${report.fastestHost}。` : "全局线路测速完成，没有可用线路。");
         } catch (err) {
@@ -295,19 +295,19 @@ export function App() {
   }
 
   async function quickPlay(video: VideoSummary) {
-    if (!bridge) {
+    if (!api) {
       return;
     }
 
     setQuickPlayingId(video.id);
     clearMessages();
     try {
-      const result = await bridge.player.play({
+      const result = await api.player.play({
         videoId: video.id,
         mode: settings.player.preferredMode
       });
       setStatus(playStatus(result));
-      setSettings(await bridge.settings.get());
+      setSettings(await api.settings.get());
       await refreshDiagnostics();
     } catch (err) {
       handleError(err);
@@ -317,20 +317,20 @@ export function App() {
   }
 
   async function playVideo(mode: PlayerMode = settings.player.preferredMode) {
-    if (!bridge || !selectedVideo) {
+    if (!api || !selectedVideo) {
       return;
     }
 
     setPlaying(true);
     clearMessages();
     try {
-      const result = await bridge.player.play({
+      const result = await api.player.play({
         videoId: selectedVideo.id,
         quality: selectedQuality,
         mode
       });
       setStatus(playStatus(result));
-      setSettings(await bridge.settings.get());
+      setSettings(await api.settings.get());
       await refreshDiagnostics();
     } catch (err) {
       handleError(err);
@@ -404,13 +404,13 @@ export function App() {
   }
 
   async function loadComments(videoId: string) {
-    if (!bridge) {
+    if (!api) {
       return;
     }
 
     setLoadingComments(true);
     try {
-      setCommentsResult(await bridge.iwara.listComments({ videoId }));
+      setCommentsResult(await api.iwara.listComments({ videoId }));
     } catch (err) {
       setCommentsResult({
         videoId,
@@ -425,7 +425,7 @@ export function App() {
   }
 
   async function submitComment(parentId?: string) {
-    if (!bridge || !selectedVideo || submittingComment) {
+    if (!api || !selectedVideo || submittingComment) {
       return;
     }
 
@@ -437,7 +437,7 @@ export function App() {
     setSubmittingComment(true);
     clearMessages();
     try {
-      await bridge.iwara.sendComment({ videoId: selectedVideo.id, body, parentId });
+      await api.iwara.sendComment({ videoId: selectedVideo.id, body, parentId });
       if (parentId) {
         setReplyDrafts((current) => ({ ...current, [parentId]: "" }));
         setReplyingTo(undefined);
@@ -460,31 +460,31 @@ export function App() {
   }
 
   async function updatePlayerSettings(partial: Partial<AppSettings["player"]>): Promise<AppSettings | undefined> {
-    if (!bridge) {
+    if (!api) {
       return undefined;
     }
 
-    const next = await bridge.settings.update({ player: { ...settings.player, ...partial } });
+    const next = await api.settings.update({ player: { ...settings.player, ...partial } });
     setSettings(next);
     return next;
   }
 
   async function updateIwaraSettings(partial: Partial<AppSettings["iwara"]>): Promise<AppSettings | undefined> {
-    if (!bridge) {
+    if (!api) {
       return undefined;
     }
 
-    const next = await bridge.settings.update({ iwara: { ...settings.iwara, ...partial } });
+    const next = await api.settings.update({ iwara: { ...settings.iwara, ...partial } });
     setSettings(next);
     return next;
   }
 
   async function updateMediaSpeedSettings(partial: Partial<AppSettings["mediaSpeed"]>): Promise<AppSettings | undefined> {
-    if (!bridge) {
+    if (!api) {
       return undefined;
     }
 
-    const next = await bridge.settings.update({
+    const next = await api.settings.update({
       mediaSpeed: {
         ...settings.mediaSpeed,
         ...partial,
@@ -498,11 +498,11 @@ export function App() {
   }
 
   async function updateTagPreferences(partial: Partial<AppSettings["tagPreferences"]>): Promise<AppSettings | undefined> {
-    if (!bridge) {
+    if (!api) {
       return undefined;
     }
 
-    const next = await bridge.settings.update({
+    const next = await api.settings.update({
       tagPreferences: {
         ...settings.tagPreferences,
         ...partial,
@@ -545,16 +545,16 @@ export function App() {
   }
 
   async function sniffXVersionSalt() {
-    if (!bridge) {
+    if (!api) {
       return;
     }
 
     setSaltSniffing(true);
     clearMessages();
     try {
-      const report = await bridge.iwara.sniffXVersionSalt();
+      const report = await api.iwara.sniffXVersionSalt();
       setSaltReport(report);
-      setSettings(await bridge.settings.get());
+      setSettings(await api.settings.get());
       setStatus(`已嗅探到 X-Version 盐值：${report.salt}。`);
     } catch (err) {
       handleError(err);
@@ -564,26 +564,26 @@ export function App() {
   }
 
   async function exportMediaHosts() {
-    if (!bridge) {
+    if (!api) {
       return;
     }
 
     clearMessages();
     const hosts = normalizeMediaHostList(settings.mediaSpeed.candidateHosts);
-    await bridge.system.writeClipboard(hosts.join("\n"));
+    await api.system.writeClipboard(hosts.join("\n"));
     setStatus(`已导出 ${hosts.length} 个 CDN 域名到剪贴板。`);
   }
 
   async function speedTestSelectedVideo() {
-    if (!bridge || !selectedVideo) {
+    if (!api || !selectedVideo) {
       return;
     }
 
     setSpeedTesting(true);
     clearMessages();
     try {
-      const report = await bridge.iwara.speedTestVideo(selectedVideo.id);
-      const nextSettings = await bridge.settings.get();
+      const report = await api.iwara.speedTestVideo(selectedVideo.id);
+      const nextSettings = await api.settings.get();
       setSettings(nextSettings);
       setSpeedReport(report);
       setStatus(report.fastestHost
@@ -597,11 +597,11 @@ export function App() {
   }
 
   async function chooseExecutable(kind: "mpv" | "external") {
-    if (!bridge) {
+    if (!api) {
       return;
     }
 
-    const selected = await bridge.system.selectExecutable({
+    const selected = await api.system.selectExecutable({
       title: kind === "mpv" ? "选择 mpv.exe" : "选择外部播放器",
       currentPath: kind === "mpv" ? settings.player.mpvPath : settings.player.externalPlayerPath
     });
@@ -615,13 +615,13 @@ export function App() {
   }
 
   async function refreshDiagnostics() {
-    if (!bridge) {
+    if (!api) {
       return;
     }
 
     setProbing(true);
     try {
-      setDiagnostics(await bridge.player.probe());
+      setDiagnostics(await api.player.probe());
     } catch (err) {
       handleError(err);
     } finally {
@@ -630,14 +630,14 @@ export function App() {
   }
 
   async function testMpv() {
-    if (!bridge) {
+    if (!api) {
       return;
     }
 
     setProbing(true);
     clearMessages();
     try {
-      const result = await bridge.player.testMpv();
+      const result = await api.player.testMpv();
       setMpvTest(result);
       setStatus(result.message);
     } catch (err) {
@@ -648,15 +648,15 @@ export function App() {
   }
 
   async function diagnoseSelectedVideo() {
-    if (!bridge || !selectedVideo) {
+    if (!api || !selectedVideo) {
       return;
     }
 
     setDiagnosingVideo(true);
     clearMessages();
     try {
-      const report = await bridge.iwara.diagnoseVideo(selectedVideo.id);
-      setSettings(await bridge.settings.get());
+      const report = await api.iwara.diagnoseVideo(selectedVideo.id);
+      setSettings(await api.settings.get());
       const capturedFormats = report.network?.entries.flatMap((entry) => entry.formats ?? []) ?? [];
       if (capturedFormats.length) {
         const best = bestFormat(capturedFormats);
@@ -677,23 +677,23 @@ export function App() {
   }
 
   async function clearHistory() {
-    if (!bridge) {
+    if (!api) {
       return;
     }
 
-    const next = await bridge.settings.update({ history: [] });
+    const next = await api.settings.update({ history: [] });
     setSettings(next);
   }
 
   async function refreshAuthState() {
-    if (!bridge) {
+    if (!api) {
       return;
     }
 
     setSessionBusy(true);
     clearMessages();
     try {
-      setAuth(await bridge.auth.state());
+      setAuth(await api.auth.state());
       setStatus("会话状态已刷新。");
     } catch (err) {
       handleError(err);
@@ -703,14 +703,14 @@ export function App() {
   }
 
   async function openIwaraSession() {
-    if (!bridge) {
+    if (!api) {
       return;
     }
 
     setSessionBusy(true);
     clearMessages();
     try {
-      const initialAuth = await bridge.auth.openIwaraSession();
+      const initialAuth = await api.auth.openIwaraSession();
       setAuth(initialAuth);
       if (initialAuth.siteTokenReady) {
         setStatus("网页登录就绪。");
@@ -728,14 +728,14 @@ export function App() {
   }
 
   async function waitForSessionReady(timeoutMs: number): Promise<boolean> {
-    if (!bridge) {
+    if (!api) {
       return false;
     }
 
     const deadline = Date.now() + timeoutMs;
     while (Date.now() < deadline) {
       await delay(1200);
-      const nextAuth = await bridge.auth.state();
+      const nextAuth = await api.auth.state();
       setAuth(nextAuth);
       if (nextAuth.siteTokenReady) {
         return true;
@@ -815,7 +815,7 @@ export function App() {
               onChange={(event) => setUrlInput(event.target.value)}
               placeholder="Iwara 视频链接或 ID"
             />
-            <button disabled={!hasBridge || !urlInput.trim() || Boolean(loadingVideoId)} type="submit">
+            <button disabled={!hasApi || !urlInput.trim() || Boolean(loadingVideoId)} type="submit">
               {loadingVideoId === urlInput ? <Loader2 className="spin" size={18} /> : <ExternalLink size={18} />}
               打开
             </button>
@@ -827,9 +827,9 @@ export function App() {
           </button>
         </header>
 
-        {!hasBridge && (
+        {!hasApi && (
           <div className="notice warning">
-            当前是浏览器预览。运行桌面版后可以连接 Electron IPC、启动 MPV 和保存设置。
+            当前是浏览器预览。运行桌面版后可以连接 Tauri 命令、启动 MPV 和保存设置。
           </div>
         )}
 
@@ -843,7 +843,7 @@ export function App() {
                 activeAuthor={activeAuthor}
                 activeFeed={activeAuthor ? authorFeed : activeFeed}
                 activeFeedTab={activeFeedTab}
-                hasBridge={hasBridge}
+                hasApi={hasApi}
                 filters={filters}
                 loadingFeed={loadingFeed}
                 loadingVideoId={loadingVideoId}
@@ -879,7 +879,7 @@ export function App() {
               <SettingsView
                 auth={auth}
                 diagnostics={diagnostics}
-                hasBridge={hasBridge}
+                hasApi={hasApi}
                 mpvTest={mpvTest}
                 onChooseExternal={() => chooseExecutable("external")}
                 onChooseMpv={() => chooseExecutable("mpv")}
@@ -951,7 +951,7 @@ function BrowseView({
   activeFeed,
   activeFeedTab,
   filters,
-  hasBridge,
+  hasApi,
   loadingFeed,
   loadingVideoId,
   onAddTag,
@@ -973,7 +973,7 @@ function BrowseView({
   activeFeed?: VideoListResult;
   activeFeedTab: FeedTabKey;
   filters: VideoFilters;
-  hasBridge: boolean;
+  hasApi: boolean;
   loadingFeed: boolean;
   loadingVideoId?: string;
   onAddTag: (tag: string) => void;
@@ -1010,7 +1010,7 @@ function BrowseView({
         )}
         <button
           className="icon-text-button"
-          disabled={!hasBridge || loadingFeed}
+          disabled={!hasApi || loadingFeed}
           onClick={onRefresh}
           type="button"
         >
@@ -1068,7 +1068,7 @@ function BrowseView({
             添加
           </button>
         </label>
-        <button className="primary-button" disabled={!hasBridge || loadingFeed} type="submit">
+        <button className="primary-button" disabled={!hasApi || loadingFeed} type="submit">
           搜索
         </button>
         <button className="secondary-button" disabled={!hasFilters || loadingFeed} onClick={onClearFilters} type="button">
@@ -1107,7 +1107,7 @@ function BrowseView({
 
           <div className="pager">
             <button
-              disabled={!hasBridge || loadingFeed || (activeFeed?.page ?? 0) <= 0}
+              disabled={!hasApi || loadingFeed || (activeFeed?.page ?? 0) <= 0}
               onClick={() => onPage(Math.max((activeFeed?.page ?? 0) - 1, 0))}
               type="button"
             >
@@ -1115,7 +1115,7 @@ function BrowseView({
             </button>
             <span>第 {(activeFeed?.page ?? 0) + 1} 页</span>
             <button
-              disabled={!hasBridge || loadingFeed}
+              disabled={!hasApi || loadingFeed}
               onClick={() => onPage((activeFeed?.page ?? 0) + 1)}
               type="button"
             >
@@ -1128,7 +1128,7 @@ function BrowseView({
           Icon={Search}
           title="这里还没有视频"
           actionLabel="重新加载"
-          disabled={!hasBridge || loadingFeed}
+          disabled={!hasApi || loadingFeed}
           onAction={onRefresh}
         />
       )}
@@ -1597,7 +1597,7 @@ function HistoryView({
 function SettingsView({
   auth,
   diagnostics,
-  hasBridge,
+  hasApi,
   mpvTest,
   onChooseExternal,
   onChooseMpv,
@@ -1626,7 +1626,7 @@ function SettingsView({
 }: {
   auth: AuthState;
   diagnostics?: PlayerDiagnostics;
-  hasBridge: boolean;
+  hasApi: boolean;
   mpvTest?: PlayerProbe;
   onChooseExternal: () => void;
   onChooseMpv: () => void;
@@ -1660,7 +1660,7 @@ function SettingsView({
           <p>本地播放</p>
           <h2>设置</h2>
         </div>
-        <button className="icon-text-button" disabled={!hasBridge || probing} onClick={onProbe} type="button">
+        <button className="icon-text-button" disabled={!hasApi || probing} onClick={onProbe} type="button">
           {probing ? <Loader2 className="spin" size={18} /> : <RefreshCw size={18} />}
           检测
         </button>
@@ -1680,11 +1680,11 @@ function SettingsView({
             </span>
           </div>
           <div className="settings-actions">
-            <button className="primary-button" disabled={!hasBridge || sessionBusy} onClick={onOpenIwaraSession} type="button">
+            <button className="primary-button" disabled={!hasApi || sessionBusy} onClick={onOpenIwaraSession} type="button">
               {sessionBusy ? <Loader2 className="spin" size={18} /> : <LogIn size={18} />}
               打开 Iwara 验证窗口
             </button>
-            <button className="secondary-button" disabled={!hasBridge || sessionBusy} onClick={onRefreshAuth} type="button">
+            <button className="secondary-button" disabled={!hasApi || sessionBusy} onClick={onRefreshAuth} type="button">
               <RefreshCw size={18} />
               刷新会话
             </button>
@@ -1728,7 +1728,7 @@ function SettingsView({
             />
           </label>
           <div className="settings-actions">
-            <button className="secondary-button" disabled={!hasBridge || saltSniffing} onClick={onSniffXVersionSalt} type="button">
+            <button className="secondary-button" disabled={!hasApi || saltSniffing} onClick={onSniffXVersionSalt} type="button">
               {saltSniffing ? <Loader2 className="spin" size={18} /> : <Search size={18} />}
               嗅探盐值
             </button>
@@ -1815,11 +1815,11 @@ function SettingsView({
               </select>
             </label>
           </div>
-          <button className="secondary-button" disabled={!hasBridge || !selectedVideo || speedTesting} onClick={onSpeedTest} type="button">
+          <button className="secondary-button" disabled={!hasApi || !selectedVideo || speedTesting} onClick={onSpeedTest} type="button">
             {speedTesting ? <Loader2 className="spin" size={18} /> : <Gauge size={18} />}
             用当前视频全局测速
           </button>
-          <button className="secondary-button" disabled={!hasBridge || !speedSettings.candidateHosts.length} onClick={onExportMediaHosts} type="button">
+          <button className="secondary-button" disabled={!hasApi || !speedSettings.candidateHosts.length} onClick={onExportMediaHosts} type="button">
             <ClipboardCopy size={18} />
             导出域名池
           </button>
@@ -1891,7 +1891,7 @@ function SettingsView({
                 onChange={(event) => onUpdatePlayer({ mpvPath: event.target.value || undefined })}
                 placeholder="自动使用打包内置 MPV，也可手动指定 mpv.exe"
               />
-              <button className="secondary-button compact" disabled={!hasBridge} onClick={onChooseMpv} type="button">
+              <button className="secondary-button compact" disabled={!hasApi} onClick={onChooseMpv} type="button">
                 <FolderOpen size={17} />
                 选择
               </button>
@@ -1899,7 +1899,7 @@ function SettingsView({
           </label>
           <ProbeLine probe={diagnostics?.mpv} />
           {mpvTest && <ProbeLine probe={mpvTest} />}
-          <button className="secondary-button" disabled={!hasBridge || probing} onClick={onTestMpv} type="button">
+          <button className="secondary-button" disabled={!hasApi || probing} onClick={onTestMpv} type="button">
             <MonitorPlay size={18} />
             测试 MPV
           </button>
@@ -1915,7 +1915,7 @@ function SettingsView({
                 onChange={(event) => onUpdatePlayer({ externalPlayerPath: event.target.value || undefined })}
                 placeholder="例如 PotPlayerMini64.exe"
               />
-              <button className="secondary-button compact" disabled={!hasBridge} onClick={onChooseExternal} type="button">
+              <button className="secondary-button compact" disabled={!hasApi} onClick={onChooseExternal} type="button">
                 <FolderOpen size={17} />
                 选择
               </button>

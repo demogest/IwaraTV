@@ -1,10 +1,10 @@
 import React from "react";
 import ReactDOM from "react-dom/client";
 import { App } from "./App";
-import { installTauriBridge } from "./tauri-bridge";
+import { installTauriApi } from "./tauri/api";
 import "./styles.css";
 
-installTauriBridge();
+installTauriApi();
 
 ReactDOM.createRoot(document.getElementById("root") as HTMLElement).render(
   <React.StrictMode>

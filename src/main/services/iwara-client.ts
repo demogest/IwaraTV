@@ -20,6 +20,7 @@ import type {
   IwaraVideoDiagnostics,
   IwaraFileProbe,
   VideoDetail,
+  VideoComment,
   VideoFormat,
   VideoListResult,
   VideoSort,
@@ -32,6 +33,7 @@ const API_BASE = "https://api.iwara.tv";
 const WEB_BASE = "https://www.iwara.tv";
 const FILES_BASE = "https://files.iwara.tv";
 const DEFAULT_LIMIT = 32;
+const COMMENT_LIMIT = 8;
 const SALT_SCRIPT_PATTERN = /<script[^>]+src=["']([^"']+\.js(?:\?[^"']*)?)["']/gi;
 type IwaraFetch = (url: string, init?: RequestInit) => Promise<Response>;
 
@@ -108,7 +110,7 @@ export class IwaraClient {
     };
   }
 
-  async getVideo(idOrUrl: string): Promise<VideoDetail> {
+  async getVideo(idOrUrl: string, options: { includeComments?: boolean } = {}): Promise<VideoDetail> {
     const id = parseIwaraVideoId(idOrUrl);
     const data = await this.requestJson<Record<string, unknown>>(`${API_BASE}/video/${id}`, {
       headers: await this.mediaHeaders()
@@ -130,10 +132,24 @@ export class IwaraClient {
     const summary = this.mapVideoSummary(data);
     const fileUrl = typeof data.fileUrl === "string" ? data.fileUrl : undefined;
     const embedUrl = typeof data.embedUrl === "string" ? data.embedUrl : undefined;
+    const comments = options.includeComments === false
+      ? { results: [], total: undefined, error: undefined }
+      : await this.fetchVideoComments(id).catch((err) => ({
+        results: [],
+        total: undefined,
+        error: err instanceof Error ? err.message : String(err)
+      }));
 
     if (!fileUrl) {
       if (embedUrl) {
-        return { ...summary, embedUrl, formats: [] };
+        return {
+          ...summary,
+          embedUrl,
+          formats: [],
+          comments: comments.results,
+          commentsTotal: comments.total,
+          commentsError: comments.error
+        };
       }
       throw new IwaraApiError("这个视频当前没有可播放的文件。", "unplayable");
     }
@@ -142,7 +158,10 @@ export class IwaraClient {
     return {
       ...summary,
       embedUrl,
-      formats: this.preferCachedFormats(id, directFormats)
+      formats: this.preferCachedFormats(id, directFormats),
+      comments: comments.results,
+      commentsTotal: comments.total,
+      commentsError: comments.error
     };
   }
 
@@ -198,7 +217,7 @@ export class IwaraClient {
   }
 
   async speedTestVideo(idOrUrl: string, speedSettings: MediaSpeedSettings): Promise<MediaSpeedTestReport> {
-    const video = await this.getVideo(idOrUrl);
+    const video = await this.getVideo(idOrUrl, { includeComments: false });
     return this.speedTestHosts(video, speedSettings);
   }
 
@@ -238,6 +257,25 @@ export class IwaraClient {
     }
 
     throw new IwaraApiError("没有在 Iwara 前端脚本里找到 X-Version 盐值。", "api");
+  }
+
+  private async fetchVideoComments(videoId: string): Promise<{ results: VideoComment[]; total?: number; error?: string }> {
+    const url = new URL(`${API_BASE}/video/${videoId}/comments`);
+    url.searchParams.set("page", "0");
+    url.searchParams.set("limit", String(COMMENT_LIMIT));
+
+    const data = await this.requestJson<{
+      count?: number;
+      total?: number;
+      results?: unknown[];
+    }>(url.toString(), {
+      headers: await this.mediaHeaders()
+    });
+
+    return {
+      total: data.total ?? data.count,
+      results: (data.results ?? []).map((item) => this.mapVideoComment(item)).filter((comment): comment is VideoComment => Boolean(comment))
+    };
   }
 
   private async extractFormats(videoId: string, fileUrl: string, title: string): Promise<VideoFormat[]> {
@@ -385,7 +423,8 @@ export class IwaraClient {
     return {
       id: String(value.id ?? ""),
       title: String(value.title ?? "Untitled"),
-      description: typeof value.body === "string" ? value.body : undefined,
+      description: plainText(value.body),
+      uploaderId: stringOrUndefined(user.id),
       uploaderName: stringOrUndefined(user.name),
       uploaderUsername: stringOrUndefined(user.username),
       thumbnailUrl: this.thumbnailUrl(file),
@@ -399,6 +438,29 @@ export class IwaraClient {
       durationSeconds: firstDurationSeconds(value.duration, file.duration, value.length, file.length),
       createdAt: stringOrUndefined(value.createdAt),
       updatedAt: stringOrUndefined(value.updatedAt)
+    };
+  }
+
+  private mapVideoComment(raw: unknown): VideoComment | undefined {
+    if (!raw || typeof raw !== "object") {
+      return undefined;
+    }
+
+    const value = raw as Record<string, unknown>;
+    const user = (value.user ?? {}) as Record<string, unknown>;
+    const body = plainText(value.body ?? value.comment ?? value.text);
+    if (!body) {
+      return undefined;
+    }
+
+    return {
+      id: String(value.id ?? `${stringOrUndefined(user.username) ?? "comment"}-${stringOrUndefined(value.createdAt) ?? ""}`),
+      body,
+      authorName: stringOrUndefined(user.name),
+      authorUsername: stringOrUndefined(user.username),
+      createdAt: stringOrUndefined(value.createdAt),
+      numLikes: numberOrZero(value.numLikes),
+      numReplies: numberOrZero(value.numReplies)
     };
   }
 
@@ -575,6 +637,27 @@ function numberOrZero(value: unknown): number {
 
 function stringOrUndefined(value: unknown): string | undefined {
   return typeof value === "string" && value.length ? value : undefined;
+}
+
+function plainText(value: unknown): string | undefined {
+  if (typeof value !== "string" || !value.trim()) {
+    return undefined;
+  }
+
+  const stripped = value
+    .replace(/<br\s*\/?>/gi, "\n")
+    .replace(/<\/p>/gi, "\n")
+    .replace(/<[^>]+>/g, "")
+    .replace(/&nbsp;/g, " ")
+    .replace(/&amp;/g, "&")
+    .replace(/&lt;/g, "<")
+    .replace(/&gt;/g, ">")
+    .replace(/&quot;/g, "\"")
+    .replace(/&#39;/g, "'")
+    .replace(/\n{3,}/g, "\n\n")
+    .trim();
+
+  return stripped || undefined;
 }
 
 function firstDurationSeconds(...values: unknown[]): number | undefined {

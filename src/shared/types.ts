@@ -6,6 +6,7 @@ export interface VideoSummary {
   id: string;
   title: string;
   description?: string;
+  uploaderId?: string;
   uploaderName?: string;
   uploaderUsername?: string;
   thumbnailUrl?: string;
@@ -29,9 +30,22 @@ export interface VideoFormat {
   qualityRank: number;
 }
 
+export interface VideoComment {
+  id: string;
+  body: string;
+  authorName?: string;
+  authorUsername?: string;
+  createdAt?: string;
+  numLikes: number;
+  numReplies: number;
+}
+
 export interface VideoDetail extends VideoSummary {
   formats: VideoFormat[];
   embedUrl?: string;
+  comments: VideoComment[];
+  commentsTotal?: number;
+  commentsError?: string;
 }
 
 export interface IwaraRuntimeSettings {

@@ -11,14 +11,17 @@ import {
   Link2,
   Loader2,
   LogIn,
+  MessageCircle,
   MonitorPlay,
   Play,
   RefreshCw,
   Search,
   Settings,
   Star,
+  Tag,
   Trash2,
   TrendingUp,
+  UserRound,
   X
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
@@ -219,8 +222,6 @@ export function App() {
         videoId: video.id,
         mode: settings.player.preferredMode
       });
-      setSelectedVideo(result.video);
-      setSelectedQuality(result.format.id);
       setStatus(playStatus(result));
       setSettings(await bridge.settings.get());
       await refreshDiagnostics();
@@ -259,6 +260,14 @@ export function App() {
     setSelectedQuality(undefined);
     setVideoDiagnostics(undefined);
     setSpeedReport(undefined);
+  }
+
+  async function openAuthorProfile(video: VideoDetail) {
+    if (!bridge || !video.uploaderUsername) {
+      return;
+    }
+
+    await bridge.system.openExternal(authorProfileUrl(video.uploaderUsername));
   }
 
   async function handleSubmit(event: FormEvent) {
@@ -669,6 +678,7 @@ export function App() {
               video={selectedVideo}
               onDiagnose={diagnoseSelectedVideo}
               onClose={closeDetailPanel}
+              onOpenAuthor={openAuthorProfile}
               onPlay={playVideo}
               onQualityChange={setSelectedQuality}
             />
@@ -798,6 +808,7 @@ function DetailPanel({
   video,
   onDiagnose,
   onClose,
+  onOpenAuthor,
   onPlay,
   onQualityChange
 }: {
@@ -810,9 +821,13 @@ function DetailPanel({
   video: VideoDetail;
   onDiagnose: () => void;
   onClose: () => void;
+  onOpenAuthor: (video: VideoDetail) => void;
   onPlay: (mode: PlayerMode) => void;
   onQualityChange: (quality: string) => void;
 }) {
+  const authorName = video.uploaderName ?? video.uploaderUsername ?? "Unknown";
+  const displayedComments = video.comments ?? [];
+
   return (
     <aside className="detail-panel">
       <div className="detail-art">
@@ -826,13 +841,49 @@ function DetailPanel({
         )}
       </div>
       <div className="detail-body">
-        <p className="eyebrow">{video.uploaderName ?? video.uploaderUsername ?? "Unknown"}</p>
+        <div className="detail-author-row">
+          <div>
+            <p className="eyebrow">作者</p>
+            <strong>{authorName}</strong>
+            {video.uploaderUsername && <span>@{video.uploaderUsername}</span>}
+          </div>
+          <button
+            className="secondary-button compact"
+            disabled={!video.uploaderUsername}
+            onClick={() => onOpenAuthor(video)}
+            type="button"
+          >
+            <UserRound size={17} />
+            主页
+          </button>
+        </div>
         <h2>{video.title}</h2>
         <div className="metric-row">
           <span>{compactNumber(video.numViews)} 观看</span>
           <span>{compactNumber(video.numLikes)} 喜欢</span>
           {video.durationSeconds ? <span>{formatDuration(video.durationSeconds)}</span> : null}
           <span>{formatDate(video.createdAt)}</span>
+        </div>
+
+        <div className="detail-section">
+          <strong>简介</strong>
+          <p className="detail-description">{video.description ?? "没有简介。"}</p>
+        </div>
+
+        <div className="detail-section">
+          <strong>
+            <Tag size={15} />
+            标签
+          </strong>
+          {video.tags.length ? (
+            <div className="tag-list">
+              {video.tags.map((tag) => (
+                <span key={tag}>{tag}</span>
+              ))}
+            </div>
+          ) : (
+            <p className="subtle">没有标签。</p>
+          )}
         </div>
 
         {sortedFormats.length ? (
@@ -875,6 +926,34 @@ function DetailPanel({
         </button>
 
         {diagnostics && <VideoDiagnosticsPanel diagnostics={diagnostics} />}
+
+        <div className="detail-section">
+          <strong>
+            <MessageCircle size={15} />
+            评论 {compactNumber(video.commentsTotal ?? video.numComments)}
+          </strong>
+          {video.commentsError ? (
+            <div className="inline-warning">{video.commentsError}</div>
+          ) : displayedComments.length ? (
+            <div className="comment-list">
+              {displayedComments.map((comment) => (
+                <article className="comment-item" key={comment.id}>
+                  <div>
+                    <strong>{comment.authorName ?? comment.authorUsername ?? "Unknown"}</strong>
+                    <span>{formatDate(comment.createdAt)}</span>
+                  </div>
+                  <p>{comment.body}</p>
+                  <small>
+                    {compactNumber(comment.numLikes)} 喜欢
+                    {comment.numReplies ? ` · ${compactNumber(comment.numReplies)} 回复` : ""}
+                  </small>
+                </article>
+              ))}
+            </div>
+          ) : (
+            <p className="subtle">还没有评论。</p>
+          )}
+        </div>
       </div>
     </aside>
   );
@@ -1423,6 +1502,10 @@ function formatSpeed(bytesPerSecond?: number): string {
   }
 
   return `${Math.max(Math.round(bytesPerSecond / 1024), 1)} KB/s`;
+}
+
+function authorProfileUrl(username: string): string {
+  return `https://www.iwara.tv/profile/${encodeURIComponent(username)}/videos`;
 }
 
 function bestFormat(formats: VideoDetail["formats"]) {

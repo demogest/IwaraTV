@@ -4,6 +4,7 @@ import type {
   AuthState,
   ListVideosRequest,
   LoginRequest,
+  IwaraVideoDiagnostics,
   PlayerDiagnostics,
   PlayerProbe,
   PlayRequest,
@@ -17,7 +18,8 @@ import type {
 const api = {
   iwara: {
     listVideos: (request: ListVideosRequest) => ipcRenderer.invoke("iwara:listVideos", request) as Promise<VideoListResult>,
-    getVideo: (idOrUrl: string) => ipcRenderer.invoke("iwara:getVideo", { idOrUrl }) as Promise<VideoDetail>
+    getVideo: (idOrUrl: string) => ipcRenderer.invoke("iwara:getVideo", { idOrUrl }) as Promise<VideoDetail>,
+    diagnoseVideo: (idOrUrl: string) => ipcRenderer.invoke("iwara:diagnoseVideo", { idOrUrl }) as Promise<IwaraVideoDiagnostics>
   },
   player: {
     play: (request: PlayRequest) => ipcRenderer.invoke("player:play", request) as Promise<PlayResult>,

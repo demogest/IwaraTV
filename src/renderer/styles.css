@@ -656,6 +656,27 @@ button:disabled {
   gap: 8px;
 }
 
+.diagnostics-panel {
+  display: grid;
+  gap: 8px;
+  border: 1px solid rgba(82, 189, 168, 0.24);
+  border-radius: 8px;
+  padding: 11px;
+  background: rgba(82, 189, 168, 0.08);
+  color: #d8f4ec;
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.diagnostics-list {
+  display: grid;
+  gap: 6px;
+}
+
+.diagnostics-list span {
+  overflow-wrap: anywhere;
+}
+
 .spin {
   animation: spin 0.9s linear infinite;
 }

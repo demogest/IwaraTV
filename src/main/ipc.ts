@@ -20,6 +20,10 @@ export function registerIpc(
 ): void {
   ipcMain.handle("iwara:listVideos", (_event, request: ListVideosRequest) => iwaraClient.listVideos(request));
   ipcMain.handle("iwara:getVideo", (_event, payload: { idOrUrl: string }) => iwaraClient.getVideo(payload.idOrUrl));
+  ipcMain.handle("iwara:diagnoseVideo", async (event, payload: { idOrUrl: string }) => {
+    const owner = BrowserWindow.fromWebContents(event.sender) ?? undefined;
+    return iwaraClient.diagnoseVideo(payload.idOrUrl, () => iwaraSessionService.captureVideoNetwork(payload.idOrUrl, owner));
+  });
   ipcMain.handle("player:play", (_event, request: PlayRequest) => playerService.play(request));
   ipcMain.handle("player:probe", () => playerService.probe());
   ipcMain.handle("player:testMpv", () => playerService.testMpv());

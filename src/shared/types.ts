@@ -33,6 +33,43 @@ export interface VideoDetail extends VideoSummary {
   embedUrl?: string;
 }
 
+export interface IwaraFileProbe {
+  label: string;
+  url: string;
+  ok: boolean;
+  status?: number;
+  formatLabels: string[];
+  error?: string;
+}
+
+export interface IwaraNetworkEntry {
+  url: string;
+  method: string;
+  status?: number;
+  resourceType?: string;
+  formatLabels: string[];
+  formats?: VideoFormat[];
+  xVersion?: string;
+  hasAuthorization?: boolean;
+  responseShape?: string;
+  error?: string;
+}
+
+export interface IwaraNetworkCapture {
+  pageUrl: string;
+  entries: IwaraNetworkEntry[];
+  timedOut: boolean;
+}
+
+export interface IwaraVideoDiagnostics {
+  videoId: string;
+  title?: string;
+  fileUrl?: string;
+  appFormatLabels: string[];
+  probes: IwaraFileProbe[];
+  network?: IwaraNetworkCapture;
+}
+
 export interface VideoListResult {
   sort: VideoSort;
   page: number;

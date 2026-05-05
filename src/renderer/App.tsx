@@ -22,6 +22,7 @@ import { FormEvent, useEffect, useMemo, useState } from "react";
 import type {
   AppSettings,
   AuthState,
+  IwaraVideoDiagnostics,
   PlayerDiagnostics,
   PlayerMode,
   PlayerProbe,
@@ -71,6 +72,7 @@ export function App() {
   const [auth, setAuth] = useState<AuthState>(defaultAuth);
   const [diagnostics, setDiagnostics] = useState<PlayerDiagnostics | undefined>();
   const [mpvTest, setMpvTest] = useState<PlayerProbe | undefined>();
+  const [videoDiagnostics, setVideoDiagnostics] = useState<IwaraVideoDiagnostics | undefined>();
   const [selectedVideo, setSelectedVideo] = useState<VideoDetail | undefined>();
   const [selectedQuality, setSelectedQuality] = useState<string | undefined>();
   const [urlInput, setUrlInput] = useState("");
@@ -82,6 +84,7 @@ export function App() {
   const [playing, setPlaying] = useState(false);
   const [probing, setProbing] = useState(false);
   const [sessionBusy, setSessionBusy] = useState(false);
+  const [diagnosingVideo, setDiagnosingVideo] = useState(false);
 
   const activeFeed = feeds[activeSort];
   const hasBridge = Boolean(bridge);
@@ -140,8 +143,20 @@ export function App() {
     try {
       const video = await bridge.iwara.getVideo(idOrUrl);
       setSelectedVideo(video);
-      const preferred = video.formats.find((format) => format.id === settings.player.preferredQuality);
-      const best = [...video.formats].sort((a, b) => b.qualityRank - a.qualityRank)[0];
+      setVideoDiagnostics(undefined);
+      let formats = video.formats;
+      if (auth.siteTokenReady && bestQualityRank(formats) <= 360) {
+        const report = await bridge.iwara.diagnoseVideo(video.id);
+        const capturedFormats = report.network?.entries.flatMap((entry) => entry.formats ?? []) ?? [];
+        setVideoDiagnostics(report);
+        if (bestQualityRank(capturedFormats) > bestQualityRank(formats)) {
+          formats = capturedFormats;
+          setSelectedVideo({ ...video, formats });
+          setStatus(`已通过网页抓包补全：${formatLabelsText(formats.map((format) => format.label))}。`);
+        }
+      }
+      const preferred = formats.find((format) => format.id === settings.player.preferredQuality);
+      const best = bestFormat(formats);
       setSelectedQuality(preferred?.id ?? best?.id);
     } catch (err) {
       handleError(err);
@@ -261,6 +276,34 @@ export function App() {
       handleError(err);
     } finally {
       setProbing(false);
+    }
+  }
+
+  async function diagnoseSelectedVideo() {
+    if (!bridge || !selectedVideo) {
+      return;
+    }
+
+    setDiagnosingVideo(true);
+    clearMessages();
+    try {
+      const report = await bridge.iwara.diagnoseVideo(selectedVideo.id);
+      const capturedFormats = report.network?.entries.flatMap((entry) => entry.formats ?? []) ?? [];
+      if (capturedFormats.length) {
+        const best = bestFormat(capturedFormats);
+        setSelectedVideo({ ...selectedVideo, formats: capturedFormats });
+        setSelectedQuality(best?.id);
+      }
+      setVideoDiagnostics(report);
+      setStatus(
+        capturedFormats.length
+          ? `抓包诊断完成，已用网页响应补全：${formatLabelsText(capturedFormats.map((format) => format.label))}。`
+          : `抓包诊断完成：应用 API ${formatLabelsText(report.appFormatLabels)}。`
+      );
+    } catch (err) {
+      handleError(err);
+    } finally {
+      setDiagnosingVideo(false);
     }
   }
 
@@ -453,7 +496,10 @@ export function App() {
               playing={playing}
               selectedQuality={selectedQuality}
               sortedFormats={sortedFormats}
+              diagnostics={videoDiagnostics}
+              diagnosing={diagnosingVideo}
               video={selectedVideo}
+              onDiagnose={diagnoseSelectedVideo}
               onPlay={playVideo}
               onQualityChange={setSelectedQuality}
             />
@@ -578,7 +624,10 @@ function DetailPanel({
   playing,
   selectedQuality,
   sortedFormats,
+  diagnostics,
+  diagnosing,
   video,
+  onDiagnose,
   onPlay,
   onQualityChange
 }: {
@@ -586,7 +635,10 @@ function DetailPanel({
   playing: boolean;
   selectedQuality?: string;
   sortedFormats: VideoDetail["formats"];
+  diagnostics?: IwaraVideoDiagnostics;
+  diagnosing: boolean;
   video: VideoDetail;
+  onDiagnose: () => void;
   onPlay: (mode: PlayerMode) => void;
   onQualityChange: (quality: string) => void;
 }) {
@@ -641,8 +693,44 @@ function DetailPanel({
             外部
           </button>
         </div>
+
+        <button className="secondary-button" disabled={diagnosing} onClick={onDiagnose} type="button">
+          {diagnosing ? <Loader2 className="spin" size={18} /> : <Search size={18} />}
+          抓包诊断
+        </button>
+
+        {diagnostics && <VideoDiagnosticsPanel diagnostics={diagnostics} />}
       </div>
     </aside>
+  );
+}
+
+function VideoDiagnosticsPanel({ diagnostics }: { diagnostics: IwaraVideoDiagnostics }) {
+  const networkFormats = diagnostics.network?.entries.filter((entry) => entry.formatLabels.length) ?? [];
+
+  return (
+    <div className="diagnostics-panel">
+      <strong>API 对比</strong>
+      <div className="diagnostics-list">
+        <span>应用解析：{formatLabelsText(diagnostics.appFormatLabels)}</span>
+        {diagnostics.probes.map((probe) => (
+          <span key={probe.label}>
+            {probe.label}：{probe.ok ? `${probe.status ?? "-"} · ${formatLabelsText(probe.formatLabels)}` : probe.error}
+          </span>
+        ))}
+        {networkFormats.length ? (
+          networkFormats.map((entry) => (
+            <span key={`${entry.method}-${entry.url}-${entry.status}`}>
+              网页抓包：{entry.status ?? "-"} · {entry.xVersion ? `X ${entry.xVersion.slice(0, 8)}` : "X -"} · {entry.hasAuthorization ? "Bearer" : "无授权"} · {entry.responseShape ?? entry.resourceType ?? "response"} · {formatLabelsText(entry.formatLabels)}
+            </span>
+          ))
+        ) : (
+          <span>
+            网页抓包：{diagnostics.network?.timedOut ? "未在 18 秒内捕获文件列表。" : "未捕获到文件列表响应。"}
+          </span>
+        )}
+      </div>
+    </div>
   );
 }
 
@@ -954,4 +1042,16 @@ function playStatus(result: { mode: PlayerMode; format: { label: string }; fallb
   const player = result.mode === "mpv" ? "MPV" : "外部播放器";
   const fallback = result.fallbackFrom ? `，${result.fallbackFrom} 不可用，已改用 ${result.format.label}` : `：${result.format.label}`;
   return `已启动 ${player}${fallback}`;
+}
+
+function formatLabelsText(labels: string[]): string {
+  return labels.length ? labels.join(" / ") : "无清晰度";
+}
+
+function bestFormat(formats: VideoDetail["formats"]) {
+  return formats.slice().sort((a, b) => b.qualityRank - a.qualityRank)[0];
+}
+
+function bestQualityRank(formats: VideoDetail["formats"]) {
+  return formats.reduce((best, format) => Math.max(best, format.qualityRank), 0);
 }

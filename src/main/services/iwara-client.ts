@@ -10,6 +10,9 @@ import type {
   ListVideosRequest,
   LoginRequest,
   RatingFilter,
+  IwaraNetworkCapture,
+  IwaraVideoDiagnostics,
+  IwaraFileProbe,
   VideoDetail,
   VideoFormat,
   VideoListResult,
@@ -32,6 +35,8 @@ export class IwaraApiError extends Error {
 }
 
 export class IwaraClient {
+  private readonly formatCache = new Map<string, { formats: VideoFormat[]; capturedAt: number }>();
+
   constructor(
     private readonly authStore: AuthStore,
     private readonly browserHeaders: (url: string) => Promise<Record<string, string>> = async () => ({}),
@@ -121,27 +126,126 @@ export class IwaraClient {
       throw new IwaraApiError("这个视频当前没有可播放的文件。", "unplayable");
     }
 
+    const directFormats = await this.extractFormats(id, fileUrl);
     return {
       ...summary,
       embedUrl,
-      formats: await this.extractFormats(id, fileUrl)
+      formats: this.preferCachedFormats(id, directFormats)
+    };
+  }
+
+  async diagnoseVideo(
+    idOrUrl: string,
+    captureNetwork?: () => Promise<IwaraNetworkCapture>
+  ): Promise<IwaraVideoDiagnostics> {
+    const id = parseIwaraVideoId(idOrUrl);
+    const videoHeaders = await this.mediaHeaders();
+    const data = await this.requestJson<Record<string, unknown>>(`${API_BASE}/video/${id}`, {
+      headers: videoHeaders
+    });
+    const fileUrl = typeof data.fileUrl === "string" ? data.fileUrl : undefined;
+    const title = stringOrUndefined(data.title);
+    const probes: IwaraFileProbe[] = [];
+    let appFormatLabels: string[] = [];
+
+    if (fileUrl) {
+      const xVersion = buildXVersion(fileUrl);
+      const sessionProbe = await this.probeFileList("网页会话 headers", fileUrl, {
+        "X-Version": xVersion,
+        Accept: "application/json"
+      });
+      probes.push(sessionProbe);
+
+      const mediaProbe = await this.probeFileList("media token headers", fileUrl, {
+        ...videoHeaders,
+        "X-Version": xVersion,
+        Accept: "application/json"
+      });
+      probes.push(mediaProbe);
+
+      appFormatLabels = mediaProbe.ok && mediaProbe.formatLabels.length
+        ? mediaProbe.formatLabels
+        : sessionProbe.formatLabels;
+    }
+
+    const network = captureNetwork ? await captureNetwork() : undefined;
+    const networkFormats = bestNetworkFormats(network);
+    if (networkFormats.length) {
+      this.formatCache.set(id, { formats: networkFormats, capturedAt: Date.now() });
+      appFormatLabels = labelsFor(networkFormats);
+    }
+
+    return {
+      videoId: id,
+      title,
+      fileUrl: fileUrl ? safeUrl(fileUrl) : undefined,
+      appFormatLabels,
+      probes,
+      network
     };
   }
 
   private async extractFormats(videoId: string, fileUrl: string): Promise<VideoFormat[]> {
     const xVersion = buildXVersion(fileUrl);
-    const files = await this.requestJson<unknown[]>(fileUrl, {
+    const mediaHeaders = await this.mediaHeaders();
+    const files = await this.requestJson<unknown>(fileUrl, {
       headers: {
+        ...mediaHeaders,
         "X-Version": xVersion,
         Accept: "application/json"
       },
       contextId: videoId
     });
 
-    return files
+    return normalizeFileList(files)
       .map((item) => this.mapVideoFormat(item))
       .filter((format): format is VideoFormat => Boolean(format?.url))
       .sort((a, b) => a.qualityRank - b.qualityRank);
+  }
+
+  private preferCachedFormats(videoId: string, directFormats: VideoFormat[]): VideoFormat[] {
+    const cached = this.formatCache.get(videoId);
+    if (!cached || Date.now() - cached.capturedAt > 15 * 60 * 1000) {
+      this.formatCache.delete(videoId);
+      return directFormats;
+    }
+
+    const directBest = bestQualityRank(directFormats);
+    const cachedBest = bestQualityRank(cached.formats);
+    if (cachedBest > directBest || cached.formats.length > directFormats.length) {
+      return cached.formats;
+    }
+
+    return directFormats;
+  }
+
+  private async probeFileList(
+    label: string,
+    fileUrl: string,
+    headers: Record<string, string>
+  ): Promise<IwaraFileProbe> {
+    try {
+      const { status, json } = await this.requestJsonWithStatus<unknown>(fileUrl, { headers });
+      const formatLabels = normalizeFileList(json)
+        .map((item) => this.mapVideoFormat(item)?.label)
+        .filter((value): value is string => Boolean(value));
+
+      return {
+        label,
+        url: safeUrl(fileUrl),
+        ok: true,
+        status,
+        formatLabels
+      };
+    } catch (err) {
+      return {
+        label,
+        url: safeUrl(fileUrl),
+        ok: false,
+        formatLabels: [],
+        error: err instanceof Error ? err.message : String(err)
+      };
+    }
   }
 
   private mapVideoSummary(raw: unknown): VideoSummary {
@@ -170,7 +274,7 @@ export class IwaraClient {
 
   private mapVideoFormat(raw: unknown): VideoFormat | undefined {
     const value = raw as Record<string, unknown>;
-    const label = String(value.name ?? "unknown");
+    const label = String(value.name ?? value.label ?? value.quality ?? value.height ?? "unknown");
     const url = this.formatUrl(value);
 
     if (!url) {
@@ -263,6 +367,13 @@ export class IwaraClient {
     url: string,
     init: RequestInit & { contextId?: string } = {}
   ): Promise<T> {
+    return (await this.requestJsonWithStatus<T>(url, init)).json;
+  }
+
+  private async requestJsonWithStatus<T>(
+    url: string,
+    init: RequestInit & { contextId?: string } = {}
+  ): Promise<{ status: number; json: T }> {
     const response = await fetch(url, {
       ...init,
       headers: {
@@ -290,7 +401,7 @@ export class IwaraClient {
       throw new IwaraApiError(`Iwara API 请求失败：HTTP ${response.status}`, "api");
     }
 
-    return json;
+    return { status: response.status, json };
   }
 }
 
@@ -301,6 +412,56 @@ function numberOrZero(value: unknown): number {
 
 function stringOrUndefined(value: unknown): string | undefined {
   return typeof value === "string" && value.length ? value : undefined;
+}
+
+function normalizeFileList(value: unknown): unknown[] {
+  if (Array.isArray(value)) {
+    return value;
+  }
+
+  if (value && typeof value === "object") {
+    const record = value as Record<string, unknown>;
+    if (Array.isArray(record.files)) {
+      return record.files;
+    }
+    if (Array.isArray(record.results)) {
+      return record.results;
+    }
+    if (Array.isArray(record.data)) {
+      return record.data;
+    }
+  }
+
+  return [];
+}
+
+function bestNetworkFormats(network: IwaraNetworkCapture | undefined): VideoFormat[] {
+  const formatSets = network?.entries
+    .map((entry) => entry.formats ?? [])
+    .filter((formats) => formats.length) ?? [];
+
+  return formatSets.sort((a, b) => bestQualityRank(b) - bestQualityRank(a))[0] ?? [];
+}
+
+function bestQualityRank(formats: VideoFormat[]): number {
+  return formats.reduce((best, format) => Math.max(best, format.qualityRank), 0);
+}
+
+function labelsFor(formats: VideoFormat[]): string[] {
+  return formats
+    .slice()
+    .sort((a, b) => b.qualityRank - a.qualityRank)
+    .map((format) => format.label);
+}
+
+function safeUrl(url: string): string {
+  try {
+    const parsed = new URL(url);
+    parsed.search = parsed.search ? "?..." : "";
+    return parsed.toString();
+  } catch {
+    return url;
+  }
 }
 
 function isJwtExpired(token: string, skewSeconds: number): boolean {

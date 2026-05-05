@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { buildExternalPlayerArgs, splitTemplateArgs } from "../src/shared/player-utils";
+import { buildExternalPlayerArgs, splitTemplateArgs, templateIncludesUrl } from "../src/shared/player-utils";
 
 describe("player template utilities", () => {
   it("splits quoted command templates", () => {
@@ -22,5 +22,9 @@ describe("player template utilities", () => {
       "Referer: https://www.iwara.tv/"
     ]);
   });
-});
 
+  it("validates url placeholders", () => {
+    expect(templateIncludesUrl("--play {url}")).toBe(true);
+    expect(templateIncludesUrl("--empty")).toBe(false);
+  });
+});

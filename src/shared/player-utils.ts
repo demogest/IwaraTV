@@ -74,3 +74,6 @@ export function buildExternalPlayerArgs(template: string, values: PlayerTemplate
   return splitTemplateArgs(template).map((arg) => expandPlayerTemplateArg(arg, values));
 }
 
+export function templateIncludesUrl(template: string): boolean {
+  return splitTemplateArgs(template).some((arg) => arg.includes("{url}"));
+}

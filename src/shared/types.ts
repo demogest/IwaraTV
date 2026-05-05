@@ -92,5 +92,30 @@ export interface PlayResult {
   playerPath: string;
   format: VideoFormat;
   video: VideoDetail;
+  fallbackFrom?: string;
 }
 
+export interface PlayerProbe {
+  ok: boolean;
+  label: string;
+  configuredPath?: string;
+  resolvedPath?: string;
+  message: string;
+}
+
+export interface PlayerDiagnostics {
+  mpv: PlayerProbe;
+  external: PlayerProbe;
+  externalArgsPreview: string[];
+  externalTemplateHasUrl: boolean;
+}
+
+export interface SelectExecutableRequest {
+  title: string;
+  currentPath?: string;
+}
+
+export interface SelectExecutableResult {
+  canceled: boolean;
+  path?: string;
+}

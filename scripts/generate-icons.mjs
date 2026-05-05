@@ -9,6 +9,8 @@ const rendererSvgPath = path.join(rendererAssetDir, "iwara-tv-mark.svg");
 const iconSvgPath = path.join(iconDir, "icon.svg");
 const iconPngPath = path.join(iconDir, "icon.png");
 const iconIcoPath = path.join(iconDir, "icon.ico");
+const builderIconPngPath = path.join(root, "build", "icon.png");
+const builderIconIcoPath = path.join(root, "build", "icon.ico");
 
 const sizes = [16, 24, 32, 48, 64, 128, 256];
 const crcTable = Array.from({ length: 256 }, (_, index) => {
@@ -63,10 +65,13 @@ fs.writeFileSync(iconSvgPath, svg);
 const pngs = sizes.map((size) => ({ size, data: renderPng(size) }));
 fs.writeFileSync(iconPngPath, pngs.find((item) => item.size === 256).data);
 fs.writeFileSync(iconIcoPath, makeIco(pngs));
+fs.copyFileSync(iconPngPath, builderIconPngPath);
+fs.copyFileSync(iconIcoPath, builderIconIcoPath);
 
 console.log(`Generated ${path.relative(root, rendererSvgPath)}`);
 console.log(`Generated ${path.relative(root, iconPngPath)}`);
 console.log(`Generated ${path.relative(root, iconIcoPath)}`);
+console.log(`Generated ${path.relative(root, builderIconIcoPath)}`);
 
 function renderPng(size) {
   const ss = size < 48 ? 6 : 4;

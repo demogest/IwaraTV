@@ -1,0 +1,9 @@
+node_modules/
+dist/
+dist-electron/
+.vite/
+coverage/
+*.log
+*.local
+vendor/mpv/
+

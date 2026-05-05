@@ -3,7 +3,8 @@ dist/
 dist-electron/
 .vite/
 coverage/
+release/
 *.log
 *.local
-vendor/mpv/
-
+vendor/mpv/*
+!vendor/mpv/.gitkeep

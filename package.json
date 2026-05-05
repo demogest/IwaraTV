@@ -10,9 +10,48 @@
     "build:main": "tsc -p tsconfig.node.json",
     "build:renderer": "vite build",
     "build": "npm run build:main && npm run build:renderer",
+    "mpv:update": "node scripts/install-mpv.mjs",
+    "dist:win": "npm run mpv:update && npm run build && electron-builder --win portable --x64",
+    "pack:win": "npm run mpv:update && npm run build && electron-builder --win dir --x64",
     "preview": "vite preview --host 127.0.0.1",
     "test": "vitest run",
     "typecheck": "tsc --noEmit && tsc -p tsconfig.node.json --noEmit"
+  },
+  "build": {
+    "appId": "local.iwaratv.player",
+    "productName": "IwaraTV",
+    "asar": true,
+    "directories": {
+      "output": "release"
+    },
+    "files": [
+      "dist/**/*",
+      "dist-electron/**/*",
+      "package.json"
+    ],
+    "extraResources": [
+      {
+        "from": "vendor/mpv",
+        "to": "mpv",
+        "filter": [
+          "**/*"
+        ]
+      }
+    ],
+    "win": {
+      "target": [
+        {
+          "target": "portable",
+          "arch": [
+            "x64"
+          ]
+        }
+      ],
+      "artifactName": "${productName}-${version}-portable-${arch}.${ext}"
+    },
+    "portable": {
+      "artifactName": "${productName}-${version}-portable-${arch}.${ext}"
+    }
   },
   "dependencies": {
     "@vitejs/plugin-react": "^4.3.4",
@@ -24,9 +63,11 @@
     "@types/node": "^22.10.2",
     "@types/react": "^18.3.12",
     "@types/react-dom": "^18.3.1",
+    "7zip-bin": "^5.2.0",
     "concurrently": "^9.1.0",
     "cross-env": "^7.0.3",
     "electron": "^33.2.1",
+    "electron-builder": "^26.8.1",
     "typescript": "^5.7.2",
     "vite": "^6.0.3",
     "vitest": "^2.1.8",

@@ -1,5 +1,5 @@
 import path from "node:path";
-import { app, BrowserWindow, shell } from "electron";
+import { app, BrowserWindow, Menu, shell } from "electron";
 import { registerIpc } from "./ipc";
 import { AuthStore } from "./services/auth-store";
 import { IwaraClient } from "./services/iwara-client";
@@ -27,6 +27,7 @@ function loadMainWindow(window: BrowserWindow): void {
 }
 
 function createWindow(loadNow = true): void {
+  Menu.setApplicationMenu(null);
   mainWindow = new BrowserWindow({
     width: 1280,
     height: 820,
@@ -34,6 +35,7 @@ function createWindow(loadNow = true): void {
     minHeight: 640,
     title: "IwaraTV",
     icon: getAppIconPath(),
+    autoHideMenuBar: true,
     backgroundColor: "#111317",
     webPreferences: {
       preload: path.join(__dirname, "preload.js"),
@@ -47,6 +49,7 @@ function createWindow(loadNow = true): void {
     shell.openExternal(url);
     return { action: "deny" };
   });
+  mainWindow.setMenuBarVisibility(false);
 
   if (loadNow) {
     loadMainWindow(mainWindow);

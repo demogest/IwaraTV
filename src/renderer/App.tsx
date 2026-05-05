@@ -55,6 +55,10 @@ interface ActiveAuthor {
   name?: string;
   username?: string;
 }
+interface VideoFilters {
+  query: string;
+  tags: string[];
+}
 
 const sectionTabs: Array<{ section: AppSection; label: string; Icon: LucideIcon }> = [
   { section: "browse", label: "浏览", Icon: MonitorPlay },
@@ -107,6 +111,8 @@ export function App() {
   const [feeds, setFeeds] = useState<Partial<Record<VideoSort, VideoListResult>>>({});
   const [authorFeed, setAuthorFeed] = useState<VideoListResult | undefined>();
   const [activeAuthor, setActiveAuthor] = useState<ActiveAuthor | undefined>();
+  const [filters, setFilters] = useState<VideoFilters>({ query: "", tags: [] });
+  const [tagInput, setTagInput] = useState("");
   const [settings, setSettings] = useState<AppSettings>(defaultSettings);
   const [auth, setAuth] = useState<AuthState>(defaultAuth);
   const [diagnostics, setDiagnostics] = useState<PlayerDiagnostics | undefined>();
@@ -171,7 +177,7 @@ export function App() {
     void loadComments(selectedVideo.id);
   }, [bridge, selectedVideo?.id]);
 
-  async function loadFeed(sort: VideoSort, page = feeds[sort]?.page ?? 0) {
+  async function loadFeed(sort: VideoSort, page = feeds[sort]?.page ?? 0, nextFilters = filters) {
     if (!bridge) {
       return;
     }
@@ -179,7 +185,13 @@ export function App() {
     setLoadingFeed(true);
     clearMessages();
     try {
-      const result = await bridge.iwara.listVideos({ sort, page, rating: "all" });
+      const result = await bridge.iwara.listVideos({
+        sort,
+        page,
+        rating: "all",
+        query: nextFilters.query,
+        tags: nextFilters.tags
+      });
       setFeeds((current) => ({ ...current, [sort]: result }));
     } catch (err) {
       handleError(err);
@@ -188,7 +200,7 @@ export function App() {
     }
   }
 
-  async function loadAuthorFeed(author: ActiveAuthor, page = 0) {
+  async function loadAuthorFeed(author: ActiveAuthor, page = 0, nextFilters = filters) {
     if (!bridge) {
       return;
     }
@@ -202,6 +214,8 @@ export function App() {
         sort: "date",
         page,
         rating: "all",
+        query: nextFilters.query,
+        tags: nextFilters.tags,
         userId: author.id
       });
       setAuthorFeed(result);
@@ -337,6 +351,40 @@ export function App() {
     setActiveAuthor(undefined);
     setAuthorFeed(undefined);
     setActiveSort(sort);
+  }
+
+  async function applyFilters(nextFilters: VideoFilters) {
+    const normalized = {
+      query: nextFilters.query.trim(),
+      tags: normalizeTagTokens(nextFilters.tags)
+    };
+    setFilters(normalized);
+    setFeeds((current) => ({ ...current, [activeSort]: undefined }));
+    if (activeAuthor) {
+      await loadAuthorFeed(activeAuthor, 0, normalized);
+    } else {
+      await loadFeed(activeSort, 0, normalized);
+    }
+  }
+
+  async function applyTagFromDetail(tag: string) {
+    closeDetailPanel();
+    await addTagFilter(tag);
+  }
+
+  async function addTagFilter(tag: string) {
+    const tags = normalizeTagTokens([...filters.tags, tag]);
+    setTagInput("");
+    await applyFilters({ ...filters, tags });
+  }
+
+  async function removeTagFilter(tag: string) {
+    await applyFilters({ ...filters, tags: filters.tags.filter((current) => current !== tag) });
+  }
+
+  async function clearFilters() {
+    setTagInput("");
+    await applyFilters({ query: "", tags: [] });
   }
 
   async function loadComments(videoId: string) {
@@ -733,15 +781,23 @@ export function App() {
                 activeFeed={activeAuthor ? authorFeed : activeFeed}
                 activeSort={activeSort}
                 hasBridge={hasBridge}
+                filters={filters}
                 loadingFeed={loadingFeed}
                 loadingVideoId={loadingVideoId}
                 onOpen={openVideo}
+                onAddTag={addTagFilter}
                 onBackToFeeds={() => showMainFeed()}
+                onClearFilters={clearFilters}
+                onFilterChange={(partial) => setFilters((current) => ({ ...current, ...partial }))}
+                onFilterSubmit={() => applyFilters(filters)}
                 onPage={(page) => activeAuthor ? loadAuthorFeed(activeAuthor, page) : loadFeed(activeSort, page)}
                 onQuickPlay={quickPlay}
                 onRefresh={() => activeAuthor ? loadAuthorFeed(activeAuthor, authorFeed?.page ?? 0) : loadFeed(activeSort, activeFeed?.page ?? 0)}
+                onRemoveTag={removeTagFilter}
                 onSortChange={showMainFeed}
                 quickPlayingId={quickPlayingId}
+                tagInput={tagInput}
+                onTagInputChange={setTagInput}
               />
             )}
 
@@ -800,6 +856,7 @@ export function App() {
               onDiagnose={diagnoseSelectedVideo}
               onClose={closeDetailPanel}
               onCommentDraftChange={setCommentDraft}
+              onFilterTag={applyTagFromDetail}
               onOpenAuthor={openAuthorProfile}
               onPlay={playVideo}
               onQualityChange={setSelectedQuality}
@@ -825,32 +882,49 @@ function BrowseView({
   activeAuthor,
   activeFeed,
   activeSort,
+  filters,
   hasBridge,
   loadingFeed,
   loadingVideoId,
+  onAddTag,
   onBackToFeeds,
+  onClearFilters,
+  onFilterChange,
+  onFilterSubmit,
   onOpen,
   onPage,
   onQuickPlay,
   onRefresh,
+  onRemoveTag,
   onSortChange,
-  quickPlayingId
+  onTagInputChange,
+  quickPlayingId,
+  tagInput
 }: {
   activeAuthor?: ActiveAuthor;
   activeFeed?: VideoListResult;
   activeSort: VideoSort;
+  filters: VideoFilters;
   hasBridge: boolean;
   loadingFeed: boolean;
   loadingVideoId?: string;
+  onAddTag: (tag: string) => void;
   onBackToFeeds: () => void;
+  onClearFilters: () => void;
+  onFilterChange: (partial: Partial<VideoFilters>) => void;
+  onFilterSubmit: () => void;
   onOpen: (id: string) => void;
   onPage: (page: number) => void;
   onQuickPlay: (video: VideoSummary) => void;
   onRefresh: () => void;
+  onRemoveTag: (tag: string) => void;
   onSortChange: (sort: VideoSort) => void;
+  onTagInputChange: (value: string) => void;
   quickPlayingId?: string;
+  tagInput: string;
 }) {
   const videos = activeFeed?.results ?? [];
+  const hasFilters = Boolean(filters.query.trim() || filters.tags.length);
 
   return (
     <>
@@ -894,6 +968,56 @@ function BrowseView({
           ))}
         </div>
       )}
+
+      <form
+        className="filter-panel"
+        onSubmit={(event) => {
+          event.preventDefault();
+          onFilterSubmit();
+        }}
+      >
+        <label className="filter-field search-filter">
+          <Search size={17} />
+          <input
+            value={filters.query}
+            onChange={(event) => onFilterChange({ query: event.target.value })}
+            placeholder="搜索标题、作者或关键词"
+          />
+        </label>
+        <label className="filter-field tag-filter">
+          <Tag size={17} />
+          <input
+            value={tagInput}
+            onChange={(event) => onTagInputChange(event.target.value)}
+            placeholder="按标签筛选，例如 breeding"
+          />
+          <button
+            className="secondary-button compact"
+            disabled={!tagInput.trim()}
+            onClick={() => onAddTag(tagInput)}
+            type="button"
+          >
+            添加
+          </button>
+        </label>
+        <button className="primary-button" disabled={!hasBridge || loadingFeed} type="submit">
+          搜索
+        </button>
+        <button className="secondary-button" disabled={!hasFilters || loadingFeed} onClick={onClearFilters} type="button">
+          清除
+        </button>
+      </form>
+
+      {filters.tags.length ? (
+        <div className="active-filter-tags">
+          {filters.tags.map((tag) => (
+            <button key={tag} onClick={() => onRemoveTag(tag)} type="button">
+              {tag}
+              <X size={13} />
+            </button>
+          ))}
+        </div>
+      ) : null}
 
       {loadingFeed && !videos.length ? (
         <SkeletonGrid />
@@ -954,6 +1078,7 @@ function DetailPanel({
   onDiagnose,
   onClose,
   onCommentDraftChange,
+  onFilterTag,
   onOpenAuthor,
   onPlay,
   onQualityChange,
@@ -978,6 +1103,7 @@ function DetailPanel({
   onDiagnose: () => void;
   onClose: () => void;
   onCommentDraftChange: (value: string) => void;
+  onFilterTag: (tag: string) => void;
   onOpenAuthor: (video: VideoDetail) => void;
   onPlay: (mode: PlayerMode) => void;
   onQualityChange: (quality: string) => void;
@@ -1045,7 +1171,9 @@ function DetailPanel({
           {video.tags.length ? (
             <div className="tag-list">
               {video.tags.map((tag) => (
-                <span key={tag}>{tag}</span>
+                <button key={tag} onClick={() => onFilterTag(tag)} type="button">
+                  {tag}
+                </button>
               ))}
             </div>
           ) : (
@@ -1769,6 +1897,15 @@ function formatSpeed(bytesPerSecond?: number): string {
   }
 
   return `${Math.max(Math.round(bytesPerSecond / 1024), 1)} KB/s`;
+}
+
+function normalizeTagTokens(tags: string[]): string[] {
+  return [...new Set(
+    tags
+      .flatMap((tag) => tag.split(/[\s,;，；]+/))
+      .map((tag) => tag.trim())
+      .filter(Boolean)
+  )];
 }
 
 function bestFormat(formats: VideoDetail["formats"]) {

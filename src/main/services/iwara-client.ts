@@ -88,12 +88,20 @@ export class IwaraClient {
     const sort = request.sort;
     const page = request.page ?? 0;
     const rating = request.rating ?? "all";
+    const query = request.query?.trim();
+    const tags = normalizeTags(request.tags ?? []);
     const url = new URL(`${API_BASE}/videos`);
     url.searchParams.set("sort", sort);
     url.searchParams.set("rating", rating);
     url.searchParams.set("page", String(page));
     url.searchParams.set("limit", String(DEFAULT_LIMIT));
     url.searchParams.set("subscribed", "false");
+    if (query) {
+      url.searchParams.set("query", query);
+    }
+    if (tags.length) {
+      url.searchParams.set("tags", tags.join(","));
+    }
     if (request.userId) {
       url.searchParams.set("user", request.userId);
     }
@@ -110,6 +118,8 @@ export class IwaraClient {
       sort,
       page,
       limit: DEFAULT_LIMIT,
+      query,
+      tags,
       total: data.total ?? data.count,
       results: (data.results ?? []).map((item) => this.mapVideoSummary(item))
     };
@@ -699,6 +709,10 @@ function numberOrZero(value: unknown): number {
 
 function stringOrUndefined(value: unknown): string | undefined {
   return typeof value === "string" && value.length ? value : undefined;
+}
+
+function normalizeTags(tags: string[]): string[] {
+  return [...new Set(tags.map((tag) => tag.trim()).filter(Boolean))];
 }
 
 function plainText(value: unknown): string | undefined {

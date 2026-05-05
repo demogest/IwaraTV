@@ -139,6 +139,8 @@ export interface VideoListResult {
   sort: VideoSort;
   page: number;
   limit: number;
+  query?: string;
+  tags: string[];
   total?: number;
   results: VideoSummary[];
 }
@@ -187,6 +189,8 @@ export interface ListVideosRequest {
   sort: VideoSort;
   page?: number;
   rating?: RatingFilter;
+  query?: string;
+  tags?: string[];
   userId?: string;
 }
 

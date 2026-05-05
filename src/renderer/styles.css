@@ -6,6 +6,8 @@
     sans-serif;
   font-synthesis: none;
   text-rendering: optimizeLegibility;
+  scrollbar-color: rgba(227, 181, 87, 0.62) rgba(255, 255, 255, 0.06);
+  scrollbar-width: thin;
 }
 
 * {
@@ -42,6 +44,31 @@ button {
 button:disabled {
   cursor: not-allowed;
   opacity: 0.56;
+}
+
+*::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+
+*::-webkit-scrollbar-track {
+  background: rgba(255, 255, 255, 0.04);
+}
+
+*::-webkit-scrollbar-thumb {
+  border: 2px solid rgba(18, 19, 22, 0.88);
+  border-radius: 999px;
+  background: linear-gradient(180deg, #e3b557, #52bda8);
+}
+
+*::-webkit-scrollbar-thumb:hover {
+  background: linear-gradient(180deg, #f2cf77, #64d2bc);
+}
+
+.workspace::-webkit-scrollbar-track,
+.detail-panel::-webkit-scrollbar-track,
+.sidebar::-webkit-scrollbar-track {
+  background: #111317;
 }
 
 .app-shell {
@@ -235,6 +262,57 @@ button:disabled {
   background: #e3b557;
   color: #18120a;
   font-weight: 800;
+}
+
+.filter-panel {
+  display: grid;
+  grid-template-columns: minmax(220px, 1fr) minmax(220px, 0.8fr) auto auto;
+  gap: 10px;
+  margin-bottom: 14px;
+}
+
+.filter-field {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: center;
+  gap: 8px;
+  min-height: 42px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 8px;
+  padding: 0 10px;
+  background: #181a1f;
+  color: #aaa59a;
+}
+
+.filter-field input {
+  min-width: 0;
+  border: 0;
+  background: transparent;
+  color: #f3f1ea;
+  outline: 0;
+}
+
+.tag-filter {
+  grid-template-columns: auto minmax(0, 1fr) auto;
+}
+
+.active-filter-tags {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin: -4px 0 14px;
+}
+
+.active-filter-tags button {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  border: 0;
+  border-radius: 8px;
+  padding: 6px 8px;
+  background: #22272c;
+  color: #f4dfad;
+  font-size: 12px;
 }
 
 .notice {
@@ -563,12 +641,18 @@ button:disabled {
   flex-wrap: wrap;
 }
 
-.tag-list span {
+.tag-list button {
+  border: 0;
   border-radius: 8px;
   padding: 4px 8px;
   background: #22272c;
   color: #d9d2c7;
   font-size: 12px;
+}
+
+.tag-list button:hover {
+  background: #27343a;
+  color: #f4dfad;
 }
 
 .comment-list {
@@ -983,6 +1067,10 @@ button:disabled {
     max-height: none;
     position: static;
   }
+
+  .filter-panel {
+    grid-template-columns: 1fr 1fr;
+  }
 }
 
 @media (max-width: 680px) {
@@ -1007,5 +1095,9 @@ button:disabled {
 
   .url-form button {
     grid-column: 1 / -1;
+  }
+
+  .filter-panel {
+    grid-template-columns: 1fr;
   }
 }

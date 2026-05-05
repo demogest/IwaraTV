@@ -27,7 +27,7 @@ export function registerIpc(
   };
   const withRememberedHosts = (video: VideoDetail) => {
     rememberMediaHosts(video.formats);
-    return iwaraClient.routeVideoFormats(video, settingsStore.get().mediaSpeed);
+    return video;
   };
   const rememberSpeedReportHosts = (report: MediaSpeedTestReport) => {
     settingsStore.updateMediaHostRanking(report.results, report.testedAt);

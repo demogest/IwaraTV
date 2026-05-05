@@ -5,7 +5,7 @@ import {
   parseIwaraVideoId,
   qualityRank
 } from "../../shared/iwara-utils";
-import { buildMediaHostCandidates, mediaUrlHost, replaceMediaUrlHost } from "../../shared/media-speed-utils";
+import { buildMediaHostCandidates, mediaUrlHost } from "../../shared/media-speed-utils";
 import type {
   AuthState,
   MediaSpeedCandidateResult,
@@ -28,6 +28,7 @@ import { AuthStore } from "./auth-store";
 const API_BASE = "https://api.iwara.tv";
 const FILES_BASE = "https://files.iwara.tv";
 const DEFAULT_LIMIT = 32;
+type IwaraFetch = (url: string, init?: RequestInit) => Promise<Response>;
 
 export class IwaraApiError extends Error {
   constructor(
@@ -44,7 +45,8 @@ export class IwaraClient {
   constructor(
     private readonly authStore: AuthStore,
     private readonly browserHeaders: (url: string) => Promise<Record<string, string>> = async () => ({}),
-    private readonly browserToken: () => Promise<string | undefined> = async () => undefined
+    private readonly browserToken: () => Promise<string | undefined> = async () => undefined,
+    private readonly transportFetch: IwaraFetch = (url, init) => fetch(url, init)
   ) {}
 
   authState(): AuthState {
@@ -194,17 +196,6 @@ export class IwaraClient {
     return this.speedTestHosts(video, speedSettings);
   }
 
-  routeVideoFormats(video: VideoDetail, speedSettings: MediaSpeedSettings): VideoDetail {
-    if (!speedSettings.replaceLinks || !speedSettings.rankedHosts.length) {
-      return video;
-    }
-
-    return {
-      ...video,
-      formats: routeFormatsByHostRank(video.formats, speedSettings.rankedHosts)
-    };
-  }
-
   private async extractFormats(videoId: string, fileUrl: string): Promise<VideoFormat[]> {
     const xVersion = buildXVersion(fileUrl);
     const mediaHeaders = await this.mediaHeaders();
@@ -258,7 +249,7 @@ export class IwaraClient {
     const timeout = setTimeout(() => controller.abort(), speedSettings.timeoutMs);
 
     try {
-      const response = await fetch(candidate.url, {
+      const response = await this.fetchUrl(candidate.url, {
         headers: {
           ...(await this.browserHeaders(candidate.url)),
           Referer: "https://www.iwara.tv/",
@@ -468,7 +459,7 @@ export class IwaraClient {
     url: string,
     init: RequestInit & { contextId?: string } = {}
   ): Promise<{ status: number; json: T }> {
-    const response = await fetch(url, {
+    const response = await this.fetchUrl(url, {
       ...init,
       headers: {
         Accept: "application/json",
@@ -496,6 +487,14 @@ export class IwaraClient {
     }
 
     return { status: response.status, json };
+  }
+
+  private async fetchUrl(
+    url: string,
+    init: RequestInit & { contextId?: string } = {}
+  ): Promise<Response> {
+    const { contextId: _contextId, ...requestInit } = init;
+    return this.transportFetch(url, requestInit);
   }
 }
 
@@ -569,23 +568,6 @@ async function readResponseBytes(response: Response, maxBytes: number): Promise<
   }
 
   return bytesRead;
-}
-
-function routeFormatsByHostRank(formats: VideoFormat[], rankedHosts: string[]): VideoFormat[] {
-  return formats.map((format) => {
-    const currentHost = mediaUrlHost(format.url);
-    const targetHost = rankedHosts.find((host) => host !== currentHost);
-    const routedUrl = targetHost ? replaceMediaUrlHost(format.url, targetHost) : undefined;
-
-    if (!routedUrl) {
-      return format;
-    }
-
-    return {
-      ...format,
-      url: routedUrl
-    };
-  });
 }
 
 function safeUrl(url: string): string {

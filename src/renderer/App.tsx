@@ -34,7 +34,6 @@ import type {
   VideoSort,
   VideoSummary
 } from "../shared/types";
-import { replaceMediaUrlHost } from "../shared/media-speed-utils";
 import logoMarkUrl from "./assets/iwara-tv-mark.svg";
 import { classifyIssue, type UiIssue } from "./issue-utils";
 
@@ -60,7 +59,7 @@ const defaultSettings: AppSettings = {
   },
   mediaSpeed: {
     autoTest: false,
-    replaceLinks: true,
+    replaceLinks: false,
     candidateHosts: [
       "jade.iwara.tv",
       "kafka.iwara.tv",
@@ -161,7 +160,8 @@ export function App() {
     clearMessages();
     try {
       const video = await bridge.iwara.getVideo(idOrUrl);
-      setSettings(await bridge.settings.get());
+      const loadedSettings = await bridge.settings.get();
+      setSettings(loadedSettings);
       setSelectedVideo(video);
       setVideoDiagnostics(undefined);
       setSpeedReport(undefined);
@@ -177,17 +177,17 @@ export function App() {
           setStatus(`已通过网页抓包补全：${formatLabelsText(formats.map((format) => format.label))}。`);
         }
       }
-      if (settings.mediaSpeed.autoTest && !settings.mediaSpeed.rankedHosts.length && formats.length) {
-        const report = await bridge.iwara.speedTestVideo(video.id);
-        setSettings(await bridge.settings.get());
-        setSpeedReport(report);
-        if (report.fastestHost && settings.mediaSpeed.replaceLinks) {
-          formats = routeFormatsByHost(formats, report.fastestHost);
-          setSelectedVideo({ ...video, formats });
-          setStatus(`已完成全局线路测速，最快线路：${report.fastestHost}。`);
+      if (loadedSettings.mediaSpeed.autoTest && !loadedSettings.mediaSpeed.rankedHosts.length && formats.length) {
+        try {
+          const report = await bridge.iwara.speedTestVideo(video.id);
+          setSettings(await bridge.settings.get());
+          setSpeedReport(report);
+          setStatus(report.fastestHost ? `已完成全局线路测速，最快线路：${report.fastestHost}。` : "全局线路测速完成，没有可用线路。");
+        } catch (err) {
+          setStatus(`全局线路测速失败，不影响播放：${errorText(err)}。`);
         }
       }
-      const preferred = formats.find((format) => format.id === settings.player.preferredQuality);
+      const preferred = formats.find((format) => format.id === loadedSettings.player.preferredQuality);
       const best = bestFormat(formats);
       setSelectedQuality(preferred?.id ?? best?.id);
     } catch (err) {
@@ -281,13 +281,8 @@ export function App() {
       const report = await bridge.iwara.speedTestVideo(selectedVideo.id);
       setSettings(await bridge.settings.get());
       setSpeedReport(report);
-      if (report.fastestHost && settings.mediaSpeed.replaceLinks) {
-        const formats = routeFormatsByHost(selectedVideo.formats, report.fastestHost);
-        setSelectedVideo({ ...selectedVideo, formats });
-        setSelectedQuality((current) => current ?? bestFormat(formats)?.id);
-      }
       setStatus(report.fastestHost
-        ? `全局测速完成，最快线路：${report.fastestHost}。`
+        ? `全局测速完成，最快线路：${report.fastestHost}。播放仍使用 Iwara 返回的原始签名直链。`
         : "全局测速完成，没有可用线路。");
     } catch (err) {
       handleError(err);
@@ -1020,10 +1015,11 @@ function SettingsView({
           <label className="toggle-row">
             <input
               checked={speedSettings.replaceLinks}
+              disabled
               onChange={(event) => onUpdateMediaSpeed({ replaceLinks: event.target.checked })}
               type="checkbox"
             />
-            <span>测速后替换为最快可用链接</span>
+            <span>替换播放链接（已禁用，Iwara 签名直链不能安全跨 CDN 改写）</span>
           </label>
           <label className="field-label">
             域名池
@@ -1076,7 +1072,7 @@ function SettingsView({
             测速当前视频
           </button>
           <p className="subtle">
-            当前视频、网页抓包和测速结果里发现的新媒体域名会自动加入这里。全局测速只用当前视频的一条直链作为样本；之后所有视频按全局最快线路替换。
+            当前视频、网页抓包和测速结果里发现的新媒体域名会自动加入这里。全局测速只做线路诊断；播放使用 Iwara 返回的原始签名直链，避免跨 CDN 改写触发验证或失效。
           </p>
           {speedReport && <SpeedReportPanel report={speedReport} />}
         </section>
@@ -1241,13 +1237,6 @@ function formatLabelsText(labels: string[]): string {
   return labels.length ? labels.join(" / ") : "无清晰度";
 }
 
-function routeFormatsByHost(formats: VideoDetail["formats"], fastestHost: string) {
-  return formats.map((format) => {
-    const routedUrl = replaceMediaUrlHost(format.url, fastestHost);
-    return routedUrl ? { ...format, url: routedUrl } : format;
-  });
-}
-
 function formatSpeed(bytesPerSecond?: number): string {
   if (!bytesPerSecond) {
     return "未知速度";
@@ -1266,4 +1255,8 @@ function bestFormat(formats: VideoDetail["formats"]) {
 
 function bestQualityRank(formats: VideoDetail["formats"]) {
   return formats.reduce((best, format) => Math.max(best, format.qualityRank), 0);
+}
+
+function errorText(err: unknown): string {
+  return err instanceof Error ? err.message : String(err);
 }

@@ -5,7 +5,7 @@ import type { AppSettings, MediaSpeedCandidateResult, PlaybackHistoryItem } from
 
 export const DEFAULT_MEDIA_SPEED_SETTINGS = {
   autoTest: false,
-  replaceLinks: true,
+  replaceLinks: false,
   candidateHosts: [
     "jade.iwara.tv",
     "kafka.iwara.tv",
@@ -50,7 +50,8 @@ export class SettingsStore {
       },
       mediaSpeed: {
         ...this.settings.mediaSpeed,
-        ...partial.mediaSpeed
+        ...partial.mediaSpeed,
+        replaceLinks: false
       },
       history: partial.history ?? this.settings.history
     };
@@ -107,7 +108,8 @@ export class SettingsStore {
         },
         mediaSpeed: {
           ...DEFAULT_SETTINGS.mediaSpeed,
-          ...raw.mediaSpeed
+          ...raw.mediaSpeed,
+          replaceLinks: false
         },
         history: Array.isArray(raw.history) ? raw.history : []
       };

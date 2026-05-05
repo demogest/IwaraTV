@@ -3,10 +3,12 @@ import { formatToExtension, normalizeMediaUrl, parseIwaraVideoId, qualityRank } 
 import type { AuthState, IwaraNetworkCapture, IwaraNetworkEntry, VideoFormat } from "../../shared/types";
 
 const IWARA_HOME = "https://www.iwara.tv/";
-const IWARA_ORIGINS = ["https://www.iwara.tv/", "https://api.iwara.tv/", "https://files.iwara.tv/"];
+const IWARA_ORIGINS = ["https://www.iwara.tv/", "https://api.iwara.tv/", "https://files.iwara.tv/", "https://filesq.iwara.tv/"];
+const FORBIDDEN_BROWSER_FETCH_HEADERS = ["cookie", "host", "origin", "referer", "user-agent", "content-length"];
 
 export class IwaraSessionService {
   private verificationWindow?: BrowserWindow;
+  private pageFetchWindow?: BrowserWindow;
   private capturedToken?: { key: string; value: string };
   private captureTimer?: NodeJS.Timeout;
 
@@ -78,6 +80,38 @@ export class IwaraSessionService {
       ...(token?.value ? { Authorization: `Bearer ${token.value}` } : {}),
       ...(cookieHeader ? { Cookie: cookieHeader } : {})
     };
+  }
+
+  async fetch(url: string, init: RequestInit = {}): Promise<Response> {
+    const headers = new Headers(init.headers);
+    for (const name of FORBIDDEN_BROWSER_FETCH_HEADERS) {
+      headers.delete(name);
+    }
+    if (!headers.has("Accept-Language")) {
+      headers.set("Accept-Language", "zh-CN,zh;q=0.9,en;q=0.8");
+    }
+
+    const browserInit = {
+      ...init,
+      credentials: "include",
+      headers,
+      referrer: IWARA_HOME
+    } satisfies RequestInit;
+
+    try {
+      const response = await session.defaultSession.fetch(url, browserInit);
+      if (await this.shouldRetryInsideIwaraPage(url, headers, response)) {
+        return await this.fetchInsideIwaraPage(url, browserInit).catch(() => response);
+      }
+
+      return response;
+    } catch (err) {
+      if (this.canUseIwaraPageFetch(url, headers)) {
+        return await this.fetchInsideIwaraPage(url, browserInit);
+      }
+
+      throw err;
+    }
   }
 
   async token(): Promise<string | undefined> {
@@ -234,6 +268,8 @@ export class IwaraSessionService {
   private async captureToken(): Promise<{ key: string; value: string } | undefined> {
     const target = this.verificationWindow && !this.verificationWindow.isDestroyed()
       ? this.verificationWindow
+      : this.pageFetchWindow && !this.pageFetchWindow.isDestroyed()
+        ? this.pageFetchWindow
       : undefined;
 
     if (!target) {
@@ -246,6 +282,113 @@ export class IwaraSessionService {
     }
 
     return this.capturedToken;
+  }
+
+  private async shouldRetryInsideIwaraPage(url: string, headers: Headers, response: Response): Promise<boolean> {
+    if (!this.canUseIwaraPageFetch(url, headers)) {
+      return false;
+    }
+
+    const contentType = response.headers.get("content-type") ?? "";
+    if (contentType.includes("application/json")) {
+      return false;
+    }
+
+    const text = await response.clone().text().catch(() => "");
+    const normalized = text.toLowerCase();
+    return normalized.includes("<html") || normalized.includes("cloudflare");
+  }
+
+  private canUseIwaraPageFetch(url: string, headers: Headers): boolean {
+    return isRelevantIwaraApiUrl(url) && (headers.get("Accept") ?? "").toLowerCase().includes("application/json");
+  }
+
+  private async fetchInsideIwaraPage(url: string, init: RequestInit): Promise<Response> {
+    const window = await this.ensurePageFetchWindow();
+    const headers = new Headers(init.headers);
+    for (const name of FORBIDDEN_BROWSER_FETCH_HEADERS) {
+      headers.delete(name);
+    }
+
+    const payload = {
+      url,
+      method: init.method ?? "GET",
+      headers: [...headers.entries()],
+      body: typeof init.body === "string" ? init.body : undefined
+    };
+    const result = await window.webContents.executeJavaScript(`
+      (async (request) => {
+        const response = await fetch(request.url, {
+          method: request.method,
+          headers: Object.fromEntries(request.headers),
+          body: request.body,
+          credentials: "include",
+          mode: "cors"
+        });
+        return {
+          status: response.status,
+          statusText: response.statusText,
+          headers: Array.from(response.headers.entries()),
+          text: await response.text()
+        };
+      })(${JSON.stringify(payload)})
+    `, true) as BrowserFetchResult;
+
+    const token = await this.captureTokenFromWindow(window);
+    if (token?.value) {
+      this.capturedToken = token;
+    }
+
+    return new Response(result.text, {
+      status: result.status,
+      statusText: result.statusText,
+      headers: result.headers
+    });
+  }
+
+  private async ensurePageFetchWindow(): Promise<BrowserWindow> {
+    if (this.verificationWindow && !this.verificationWindow.isDestroyed()) {
+      return this.verificationWindow;
+    }
+
+    if (this.pageFetchWindow && !this.pageFetchWindow.isDestroyed()) {
+      return this.pageFetchWindow;
+    }
+
+    this.pageFetchWindow = new BrowserWindow({
+      width: 960,
+      height: 640,
+      show: false,
+      title: "Iwara 会话请求",
+      backgroundColor: "#111317",
+      webPreferences: {
+        contextIsolation: true,
+        nodeIntegration: false,
+        sandbox: true,
+        session: session.defaultSession
+      }
+    });
+
+    this.pageFetchWindow.webContents.setWindowOpenHandler(({ url: targetUrl }) => {
+      if (isIwaraUrl(targetUrl)) {
+        this.pageFetchWindow?.loadURL(targetUrl);
+      } else {
+        shell.openExternal(targetUrl);
+      }
+
+      return { action: "deny" };
+    });
+    this.pageFetchWindow.on("closed", () => {
+      this.pageFetchWindow = undefined;
+    });
+
+    await this.pageFetchWindow.loadURL(IWARA_HOME);
+    const token = await this.captureTokenFromWindow(this.pageFetchWindow);
+    if (token?.value) {
+      this.capturedToken = token;
+    }
+
+    return this.pageFetchWindow;
   }
 
   private async captureTokenFromWindow(target: BrowserWindow): Promise<{ key: string; value: string } | undefined> {
@@ -346,6 +489,13 @@ export class IwaraSessionService {
 interface StorageDump {
   localStorage?: Record<string, string | null>;
   sessionStorage?: Record<string, string | null>;
+}
+
+interface BrowserFetchResult {
+  status: number;
+  statusText: string;
+  headers: Array<[string, string]>;
+  text: string;
 }
 
 function isIwaraUrl(url: string): boolean {

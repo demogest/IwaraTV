@@ -787,7 +787,7 @@ function SettingsView({
             </button>
           </div>
           <p className="subtle">
-            在弹出的应用内窗口完成 Cloudflare 验证并登录后，回到这里刷新会话；应用请求会复用这个窗口的 token 和 cookie。
+            在弹出的应用内窗口完成 Cloudflare 验证并登录；检测到网页登录 token 后窗口会自动关闭，应用请求会复用抓取到的 token 和 cookie。
           </p>
           {auth.warning && <p className="subtle">{auth.warning}</p>}
         </section>

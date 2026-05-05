@@ -104,7 +104,7 @@ export class PlayerService {
 
   async play(request: PlayRequest): Promise<PlayResult> {
     let settings = this.settingsStore.get();
-    let video = await this.iwaraClient.getVideo(request.videoId, { includeComments: false });
+    let video = await this.iwaraClient.getVideo(request.videoId);
     settings = this.settingsStore.addMediaHosts(video.formats.map((format) => mediaUrlHost(format.url)).filter((host): host is string => Boolean(host)));
     if (settings.mediaSpeed.autoTest && !settings.mediaSpeed.rankedHosts.length) {
       const report = await this.iwaraClient.speedTestVideo(video.id, settings.mediaSpeed);
@@ -234,9 +234,6 @@ function toSummary(video: VideoDetail): VideoSummary {
   const {
     formats: _formats,
     embedUrl: _embedUrl,
-    comments: _comments,
-    commentsTotal: _commentsTotal,
-    commentsError: _commentsError,
     ...summary
   } = video;
   return summary;

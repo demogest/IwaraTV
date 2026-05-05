@@ -38,14 +38,19 @@ export interface VideoComment {
   createdAt?: string;
   numLikes: number;
   numReplies: number;
+  replies: VideoComment[];
 }
 
 export interface VideoDetail extends VideoSummary {
   formats: VideoFormat[];
   embedUrl?: string;
+}
+
+export interface VideoCommentsResult {
+  videoId: string;
   comments: VideoComment[];
-  commentsTotal?: number;
-  commentsError?: string;
+  total: number;
+  fetchedAt: string;
 }
 
 export interface IwaraRuntimeSettings {
@@ -182,6 +187,17 @@ export interface ListVideosRequest {
   sort: VideoSort;
   page?: number;
   rating?: RatingFilter;
+  userId?: string;
+}
+
+export interface ListVideoCommentsRequest {
+  videoId: string;
+}
+
+export interface SendVideoCommentRequest {
+  videoId: string;
+  body: string;
+  parentId?: string;
 }
 
 export interface PlayRequest {

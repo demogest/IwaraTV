@@ -1,7 +1,9 @@
 import {
   AlertTriangle,
+  ArrowLeft,
   CheckCircle2,
   ClipboardCopy,
+  CornerDownRight,
   Clock3,
   ExternalLink,
   Flame,
@@ -17,6 +19,7 @@ import {
   RefreshCw,
   Search,
   Settings,
+  Send,
   Star,
   Tag,
   Trash2,
@@ -34,6 +37,8 @@ import type {
   PlayerDiagnostics,
   PlayerMode,
   PlayerProbe,
+  VideoComment,
+  VideoCommentsResult,
   VideoDetail,
   VideoListResult,
   VideoSort,
@@ -45,6 +50,11 @@ import logoMarkUrl from "./assets/iwara-tv-mark.svg";
 import { classifyIssue, type UiIssue } from "./issue-utils";
 
 type AppSection = "browse" | "history" | "settings";
+interface ActiveAuthor {
+  id: string;
+  name?: string;
+  username?: string;
+}
 
 const sectionTabs: Array<{ section: AppSection; label: string; Icon: LucideIcon }> = [
   { section: "browse", label: "浏览", Icon: MonitorPlay },
@@ -95,11 +105,14 @@ export function App() {
   const [activeSection, setActiveSection] = useState<AppSection>("browse");
   const [activeSort, setActiveSort] = useState<VideoSort>("date");
   const [feeds, setFeeds] = useState<Partial<Record<VideoSort, VideoListResult>>>({});
+  const [authorFeed, setAuthorFeed] = useState<VideoListResult | undefined>();
+  const [activeAuthor, setActiveAuthor] = useState<ActiveAuthor | undefined>();
   const [settings, setSettings] = useState<AppSettings>(defaultSettings);
   const [auth, setAuth] = useState<AuthState>(defaultAuth);
   const [diagnostics, setDiagnostics] = useState<PlayerDiagnostics | undefined>();
   const [mpvTest, setMpvTest] = useState<PlayerProbe | undefined>();
   const [videoDiagnostics, setVideoDiagnostics] = useState<IwaraVideoDiagnostics | undefined>();
+  const [commentsResult, setCommentsResult] = useState<VideoCommentsResult | undefined>();
   const [speedReport, setSpeedReport] = useState<MediaSpeedTestReport | undefined>();
   const [saltReport, setSaltReport] = useState<XVersionSaltReport | undefined>();
   const [selectedVideo, setSelectedVideo] = useState<VideoDetail | undefined>();
@@ -108,6 +121,7 @@ export function App() {
   const [status, setStatus] = useState<string>("");
   const [issue, setIssue] = useState<UiIssue | undefined>();
   const [loadingFeed, setLoadingFeed] = useState(false);
+  const [loadingComments, setLoadingComments] = useState(false);
   const [loadingVideoId, setLoadingVideoId] = useState<string | undefined>();
   const [quickPlayingId, setQuickPlayingId] = useState<string | undefined>();
   const [playing, setPlaying] = useState(false);
@@ -116,6 +130,10 @@ export function App() {
   const [diagnosingVideo, setDiagnosingVideo] = useState(false);
   const [speedTesting, setSpeedTesting] = useState(false);
   const [saltSniffing, setSaltSniffing] = useState(false);
+  const [commentDraft, setCommentDraft] = useState("");
+  const [replyDrafts, setReplyDrafts] = useState<Record<string, string>>({});
+  const [replyingTo, setReplyingTo] = useState<string | undefined>();
+  const [submittingComment, setSubmittingComment] = useState(false);
 
   const activeFeed = feeds[activeSort];
   const hasBridge = Boolean(bridge);
@@ -145,6 +163,14 @@ export function App() {
     void loadFeed(activeSort);
   }, [activeSection, activeSort, feeds, bridge]);
 
+  useEffect(() => {
+    if (!bridge || !selectedVideo) {
+      return;
+    }
+
+    void loadComments(selectedVideo.id);
+  }, [bridge, selectedVideo?.id]);
+
   async function loadFeed(sort: VideoSort, page = feeds[sort]?.page ?? 0) {
     if (!bridge) {
       return;
@@ -155,6 +181,30 @@ export function App() {
     try {
       const result = await bridge.iwara.listVideos({ sort, page, rating: "all" });
       setFeeds((current) => ({ ...current, [sort]: result }));
+    } catch (err) {
+      handleError(err);
+    } finally {
+      setLoadingFeed(false);
+    }
+  }
+
+  async function loadAuthorFeed(author: ActiveAuthor, page = 0) {
+    if (!bridge) {
+      return;
+    }
+
+    setActiveSection("browse");
+    setActiveAuthor(author);
+    setLoadingFeed(true);
+    clearMessages();
+    try {
+      const result = await bridge.iwara.listVideos({
+        sort: "date",
+        page,
+        rating: "all",
+        userId: author.id
+      });
+      setAuthorFeed(result);
     } catch (err) {
       handleError(err);
     } finally {
@@ -177,6 +227,10 @@ export function App() {
       setAuth(currentAuth);
       setSelectedVideo(video);
       setVideoDiagnostics(undefined);
+      setCommentsResult(undefined);
+      setReplyingTo(undefined);
+      setReplyDrafts({});
+      setCommentDraft("");
       setSpeedReport(undefined);
       let formats = video.formats;
       if (currentAuth.siteTokenReady && bestQualityRank(formats) <= 360) {
@@ -259,15 +313,80 @@ export function App() {
     setSelectedVideo(undefined);
     setSelectedQuality(undefined);
     setVideoDiagnostics(undefined);
+    setCommentsResult(undefined);
+    setReplyingTo(undefined);
+    setReplyDrafts({});
+    setCommentDraft("");
     setSpeedReport(undefined);
   }
 
   async function openAuthorProfile(video: VideoDetail) {
-    if (!bridge || !video.uploaderUsername) {
+    if (!video.uploaderId) {
       return;
     }
 
-    await bridge.system.openExternal(authorProfileUrl(video.uploaderUsername));
+    closeDetailPanel();
+    await loadAuthorFeed({
+      id: video.uploaderId,
+      name: video.uploaderName,
+      username: video.uploaderUsername
+    });
+  }
+
+  function showMainFeed(sort: VideoSort = activeSort) {
+    setActiveAuthor(undefined);
+    setAuthorFeed(undefined);
+    setActiveSort(sort);
+  }
+
+  async function loadComments(videoId: string) {
+    if (!bridge) {
+      return;
+    }
+
+    setLoadingComments(true);
+    try {
+      setCommentsResult(await bridge.iwara.listComments({ videoId }));
+    } catch (err) {
+      setCommentsResult({
+        videoId,
+        comments: [],
+        total: 0,
+        fetchedAt: new Date().toISOString()
+      });
+      setIssue(classifyIssue(err));
+    } finally {
+      setLoadingComments(false);
+    }
+  }
+
+  async function submitComment(parentId?: string) {
+    if (!bridge || !selectedVideo || submittingComment) {
+      return;
+    }
+
+    const body = (parentId ? replyDrafts[parentId] : commentDraft)?.trim();
+    if (!body) {
+      return;
+    }
+
+    setSubmittingComment(true);
+    clearMessages();
+    try {
+      await bridge.iwara.sendComment({ videoId: selectedVideo.id, body, parentId });
+      if (parentId) {
+        setReplyDrafts((current) => ({ ...current, [parentId]: "" }));
+        setReplyingTo(undefined);
+      } else {
+        setCommentDraft("");
+      }
+      await loadComments(selectedVideo.id);
+      setStatus(parentId ? "回复已发送。" : "评论已发送。");
+    } catch (err) {
+      handleError(err);
+    } finally {
+      setSubmittingComment(false);
+    }
   }
 
   async function handleSubmit(event: FormEvent) {
@@ -610,16 +729,18 @@ export function App() {
           <section className="primary-panel">
             {activeSection === "browse" && (
               <BrowseView
-                activeFeed={activeFeed}
+                activeAuthor={activeAuthor}
+                activeFeed={activeAuthor ? authorFeed : activeFeed}
                 activeSort={activeSort}
                 hasBridge={hasBridge}
                 loadingFeed={loadingFeed}
                 loadingVideoId={loadingVideoId}
                 onOpen={openVideo}
-                onPage={(page) => loadFeed(activeSort, page)}
+                onBackToFeeds={() => showMainFeed()}
+                onPage={(page) => activeAuthor ? loadAuthorFeed(activeAuthor, page) : loadFeed(activeSort, page)}
                 onQuickPlay={quickPlay}
-                onRefresh={() => loadFeed(activeSort, activeFeed?.page ?? 0)}
-                onSortChange={setActiveSort}
+                onRefresh={() => activeAuthor ? loadAuthorFeed(activeAuthor, authorFeed?.page ?? 0) : loadFeed(activeSort, activeFeed?.page ?? 0)}
+                onSortChange={showMainFeed}
                 quickPlayingId={quickPlayingId}
               />
             )}
@@ -678,9 +799,20 @@ export function App() {
               video={selectedVideo}
               onDiagnose={diagnoseSelectedVideo}
               onClose={closeDetailPanel}
+              onCommentDraftChange={setCommentDraft}
               onOpenAuthor={openAuthorProfile}
               onPlay={playVideo}
               onQualityChange={setSelectedQuality}
+              onRefreshComments={() => loadComments(selectedVideo.id)}
+              onReplyDraftChange={(commentId, value) => setReplyDrafts((current) => ({ ...current, [commentId]: value }))}
+              onReplyToggle={(commentId) => setReplyingTo((current) => current === commentId ? undefined : commentId)}
+              onSubmitComment={submitComment}
+              commentDraft={commentDraft}
+              comments={commentsResult}
+              loadingComments={loadingComments}
+              replyDrafts={replyDrafts}
+              replyingTo={replyingTo}
+              submittingComment={submittingComment}
             />
           )}
         </div>
@@ -690,11 +822,13 @@ export function App() {
 }
 
 function BrowseView({
+  activeAuthor,
   activeFeed,
   activeSort,
   hasBridge,
   loadingFeed,
   loadingVideoId,
+  onBackToFeeds,
   onOpen,
   onPage,
   onQuickPlay,
@@ -702,11 +836,13 @@ function BrowseView({
   onSortChange,
   quickPlayingId
 }: {
+  activeAuthor?: ActiveAuthor;
   activeFeed?: VideoListResult;
   activeSort: VideoSort;
   hasBridge: boolean;
   loadingFeed: boolean;
   loadingVideoId?: string;
+  onBackToFeeds: () => void;
   onOpen: (id: string) => void;
   onPage: (page: number) => void;
   onQuickPlay: (video: VideoSummary) => void;
@@ -720,9 +856,16 @@ function BrowseView({
     <>
       <div className="section-header">
         <div>
-          <p>视频源</p>
-          <h2>{feedTitle(activeSort)}</h2>
+          <p>{activeAuthor ? "作者主页" : "视频源"}</p>
+          <h2>{activeAuthor ? (activeAuthor.name ?? activeAuthor.username ?? "作者视频") : feedTitle(activeSort)}</h2>
+          {activeAuthor?.username && <span className="section-subtitle">@{activeAuthor.username}</span>}
         </div>
+        {activeAuthor && (
+          <button className="secondary-button compact" onClick={onBackToFeeds} type="button">
+            <ArrowLeft size={17} />
+            返回
+          </button>
+        )}
         <button
           className="icon-text-button"
           disabled={!hasBridge || loadingFeed}
@@ -734,21 +877,23 @@ function BrowseView({
         </button>
       </div>
 
-      <div className="feed-tabs" role="tablist">
-        {feedTabs.map(({ sort, label, Icon }) => (
-          <button
-            aria-selected={activeSort === sort}
-            className={activeSort === sort ? "feed-tab active" : "feed-tab"}
-            key={sort}
-            onClick={() => onSortChange(sort)}
-            role="tab"
-            type="button"
-          >
-            <Icon size={17} />
-            {label}
-          </button>
-        ))}
-      </div>
+      {!activeAuthor && (
+        <div className="feed-tabs" role="tablist">
+          {feedTabs.map(({ sort, label, Icon }) => (
+            <button
+              aria-selected={activeSort === sort}
+              className={activeSort === sort ? "feed-tab active" : "feed-tab"}
+              key={sort}
+              onClick={() => onSortChange(sort)}
+              role="tab"
+              type="button"
+            >
+              <Icon size={17} />
+              {label}
+            </button>
+          ))}
+        </div>
+      )}
 
       {loadingFeed && !videos.length ? (
         <SkeletonGrid />
@@ -808,9 +953,20 @@ function DetailPanel({
   video,
   onDiagnose,
   onClose,
+  onCommentDraftChange,
   onOpenAuthor,
   onPlay,
-  onQualityChange
+  onQualityChange,
+  onRefreshComments,
+  onReplyDraftChange,
+  onReplyToggle,
+  onSubmitComment,
+  commentDraft,
+  comments,
+  loadingComments,
+  replyDrafts,
+  replyingTo,
+  submittingComment
 }: {
   siteSessionReady: boolean;
   playing: boolean;
@@ -821,12 +977,23 @@ function DetailPanel({
   video: VideoDetail;
   onDiagnose: () => void;
   onClose: () => void;
+  onCommentDraftChange: (value: string) => void;
   onOpenAuthor: (video: VideoDetail) => void;
   onPlay: (mode: PlayerMode) => void;
   onQualityChange: (quality: string) => void;
+  onRefreshComments: () => void;
+  onReplyDraftChange: (commentId: string, value: string) => void;
+  onReplyToggle: (commentId: string) => void;
+  onSubmitComment: (parentId?: string) => void;
+  commentDraft: string;
+  comments?: VideoCommentsResult;
+  loadingComments: boolean;
+  replyDrafts: Record<string, string>;
+  replyingTo?: string;
+  submittingComment: boolean;
 }) {
   const authorName = video.uploaderName ?? video.uploaderUsername ?? "Unknown";
-  const displayedComments = video.comments ?? [];
+  const displayedComments = comments?.comments ?? [];
 
   return (
     <aside className="detail-panel">
@@ -849,7 +1016,7 @@ function DetailPanel({
           </div>
           <button
             className="secondary-button compact"
-            disabled={!video.uploaderUsername}
+            disabled={!video.uploaderId}
             onClick={() => onOpenAuthor(video)}
             type="button"
           >
@@ -930,32 +1097,132 @@ function DetailPanel({
         <div className="detail-section">
           <strong>
             <MessageCircle size={15} />
-            评论 {compactNumber(video.commentsTotal ?? video.numComments)}
+            评论 {compactNumber(comments?.total ?? video.numComments)}
           </strong>
-          {video.commentsError ? (
-            <div className="inline-warning">{video.commentsError}</div>
+          <CommentComposer
+            disabled={submittingComment}
+            onChange={onCommentDraftChange}
+            onSubmit={() => onSubmitComment()}
+            placeholder="写一条评论"
+            value={commentDraft}
+          />
+          <button className="secondary-button compact" disabled={loadingComments} onClick={onRefreshComments} type="button">
+            {loadingComments ? <Loader2 className="spin" size={17} /> : <RefreshCw size={17} />}
+            刷新评论
+          </button>
+          {loadingComments && !displayedComments.length ? (
+            <div className="inline-warning">正在加载完整评论区。</div>
           ) : displayedComments.length ? (
-            <div className="comment-list">
-              {displayedComments.map((comment) => (
-                <article className="comment-item" key={comment.id}>
-                  <div>
-                    <strong>{comment.authorName ?? comment.authorUsername ?? "Unknown"}</strong>
-                    <span>{formatDate(comment.createdAt)}</span>
-                  </div>
-                  <p>{comment.body}</p>
-                  <small>
-                    {compactNumber(comment.numLikes)} 喜欢
-                    {comment.numReplies ? ` · ${compactNumber(comment.numReplies)} 回复` : ""}
-                  </small>
-                </article>
-              ))}
-            </div>
+            <CommentList
+              comments={displayedComments}
+              loading={submittingComment}
+              onDraftChange={onReplyDraftChange}
+              onReplyToggle={onReplyToggle}
+              onSubmit={onSubmitComment}
+              replyDrafts={replyDrafts}
+              replyingTo={replyingTo}
+            />
           ) : (
             <p className="subtle">还没有评论。</p>
           )}
         </div>
       </div>
     </aside>
+  );
+}
+
+function CommentComposer({
+  disabled,
+  onChange,
+  onSubmit,
+  placeholder,
+  value
+}: {
+  disabled: boolean;
+  onChange: (value: string) => void;
+  onSubmit: () => void;
+  placeholder: string;
+  value: string;
+}) {
+  return (
+    <div className="comment-composer">
+      <textarea
+        disabled={disabled}
+        onChange={(event) => onChange(event.target.value)}
+        placeholder={placeholder}
+        rows={3}
+        value={value}
+      />
+      <button className="primary-button" disabled={disabled || !value.trim()} onClick={onSubmit} type="button">
+        {disabled ? <Loader2 className="spin" size={17} /> : <Send size={17} />}
+        发送
+      </button>
+    </div>
+  );
+}
+
+function CommentList({
+  comments,
+  loading,
+  onDraftChange,
+  onReplyToggle,
+  onSubmit,
+  replyDrafts,
+  replyingTo,
+  depth = 0
+}: {
+  comments: VideoComment[];
+  loading: boolean;
+  onDraftChange: (commentId: string, value: string) => void;
+  onReplyToggle: (commentId: string) => void;
+  onSubmit: (parentId?: string) => void;
+  replyDrafts: Record<string, string>;
+  replyingTo?: string;
+  depth?: number;
+}) {
+  return (
+    <div className={depth ? "comment-list replies" : "comment-list"}>
+      {comments.map((comment) => (
+        <article className="comment-item" key={comment.id}>
+          <div className="comment-meta">
+            <strong>{comment.authorName ?? comment.authorUsername ?? "Unknown"}</strong>
+            <span>{formatDate(comment.createdAt)}</span>
+          </div>
+          <p>{comment.body}</p>
+          <div className="comment-actions">
+            <small>
+              {compactNumber(comment.numLikes)} 喜欢
+              {comment.numReplies ? ` · ${compactNumber(comment.numReplies)} 回复` : ""}
+            </small>
+            <button className="comment-reply-button" onClick={() => onReplyToggle(comment.id)} type="button">
+              <CornerDownRight size={14} />
+              回复
+            </button>
+          </div>
+          {replyingTo === comment.id && (
+            <CommentComposer
+              disabled={loading}
+              onChange={(value) => onDraftChange(comment.id, value)}
+              onSubmit={() => onSubmit(comment.id)}
+              placeholder={`回复 ${comment.authorName ?? comment.authorUsername ?? "评论"}`}
+              value={replyDrafts[comment.id] ?? ""}
+            />
+          )}
+          {comment.replies.length ? (
+            <CommentList
+              comments={comment.replies}
+              depth={depth + 1}
+              loading={loading}
+              onDraftChange={onDraftChange}
+              onReplyToggle={onReplyToggle}
+              onSubmit={onSubmit}
+              replyDrafts={replyDrafts}
+              replyingTo={replyingTo}
+            />
+          ) : null}
+        </article>
+      ))}
+    </div>
   );
 }
 
@@ -1502,10 +1769,6 @@ function formatSpeed(bytesPerSecond?: number): string {
   }
 
   return `${Math.max(Math.round(bytesPerSecond / 1024), 1)} KB/s`;
-}
-
-function authorProfileUrl(username: string): string {
-  return `https://www.iwara.tv/profile/${encodeURIComponent(username)}/videos`;
 }
 
 function bestFormat(formats: VideoDetail["formats"]) {

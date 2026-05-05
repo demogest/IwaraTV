@@ -6,8 +6,10 @@ import type {
   VideoDetail,
   VideoFormat,
   ListVideosRequest,
+  ListVideoCommentsRequest,
   LoginRequest,
   PlayRequest,
+  SendVideoCommentRequest,
   SelectExecutableRequest,
   SelectExecutableResult,
   XVersionSaltReport
@@ -73,6 +75,8 @@ export function registerIpc(
     return report;
   });
   ipcMain.handle("iwara:sniffXVersionSalt", async () => updateXVersionSalt(await iwaraClient.sniffXVersionSalt()));
+  ipcMain.handle("iwara:listComments", (_event, request: ListVideoCommentsRequest) => iwaraClient.listVideoComments(request.videoId));
+  ipcMain.handle("iwara:sendComment", (_event, request: SendVideoCommentRequest) => iwaraClient.sendVideoComment(request));
   ipcMain.handle("iwara:speedTestVideo", async (_event, payload: { idOrUrl: string }) => {
     const settings = settingsStore.get();
     return rememberSpeedReportHosts(await iwaraClient.speedTestVideo(payload.idOrUrl, settings.mediaSpeed));

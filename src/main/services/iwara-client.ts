@@ -16,6 +16,7 @@ import type {
   ListVideosRequest,
   LoginRequest,
   RatingFilter,
+  SendVideoCommentRequest,
   IwaraNetworkCapture,
   IwaraVideoDiagnostics,
   IwaraFileProbe,
@@ -24,6 +25,7 @@ import type {
   VideoFormat,
   VideoListResult,
   VideoSort,
+  VideoCommentsResult,
   XVersionSaltReport,
   VideoSummary
 } from "../../shared/types";
@@ -92,6 +94,9 @@ export class IwaraClient {
     url.searchParams.set("page", String(page));
     url.searchParams.set("limit", String(DEFAULT_LIMIT));
     url.searchParams.set("subscribed", "false");
+    if (request.userId) {
+      url.searchParams.set("user", request.userId);
+    }
 
     const data = await this.requestJson<{
       count?: number;
@@ -110,7 +115,7 @@ export class IwaraClient {
     };
   }
 
-  async getVideo(idOrUrl: string, options: { includeComments?: boolean } = {}): Promise<VideoDetail> {
+  async getVideo(idOrUrl: string): Promise<VideoDetail> {
     const id = parseIwaraVideoId(idOrUrl);
     const data = await this.requestJson<Record<string, unknown>>(`${API_BASE}/video/${id}`, {
       headers: await this.mediaHeaders()
@@ -132,23 +137,13 @@ export class IwaraClient {
     const summary = this.mapVideoSummary(data);
     const fileUrl = typeof data.fileUrl === "string" ? data.fileUrl : undefined;
     const embedUrl = typeof data.embedUrl === "string" ? data.embedUrl : undefined;
-    const comments = options.includeComments === false
-      ? { results: [], total: undefined, error: undefined }
-      : await this.fetchVideoComments(id).catch((err) => ({
-        results: [],
-        total: undefined,
-        error: err instanceof Error ? err.message : String(err)
-      }));
 
     if (!fileUrl) {
       if (embedUrl) {
         return {
           ...summary,
           embedUrl,
-          formats: [],
-          comments: comments.results,
-          commentsTotal: comments.total,
-          commentsError: comments.error
+          formats: []
         };
       }
       throw new IwaraApiError("这个视频当前没有可播放的文件。", "unplayable");
@@ -158,10 +153,7 @@ export class IwaraClient {
     return {
       ...summary,
       embedUrl,
-      formats: this.preferCachedFormats(id, directFormats),
-      comments: comments.results,
-      commentsTotal: comments.total,
-      commentsError: comments.error
+      formats: this.preferCachedFormats(id, directFormats)
     };
   }
 
@@ -217,7 +209,7 @@ export class IwaraClient {
   }
 
   async speedTestVideo(idOrUrl: string, speedSettings: MediaSpeedSettings): Promise<MediaSpeedTestReport> {
-    const video = await this.getVideo(idOrUrl, { includeComments: false });
+    const video = await this.getVideo(idOrUrl);
     return this.speedTestHosts(video, speedSettings);
   }
 
@@ -259,22 +251,91 @@ export class IwaraClient {
     throw new IwaraApiError("没有在 Iwara 前端脚本里找到 X-Version 盐值。", "api");
   }
 
-  private async fetchVideoComments(videoId: string): Promise<{ results: VideoComment[]; total?: number; error?: string }> {
+  async listVideoComments(idOrUrl: string): Promise<VideoCommentsResult> {
+    const videoId = parseIwaraVideoId(idOrUrl);
+    const { results, total } = await this.fetchVideoComments(videoId);
+    return {
+      videoId,
+      comments: results,
+      total,
+      fetchedAt: new Date().toISOString()
+    };
+  }
+
+  async sendVideoComment(request: SendVideoCommentRequest): Promise<VideoComment> {
+    const videoId = parseIwaraVideoId(request.videoId);
+    const body = request.body.trim();
+    if (!body) {
+      throw new IwaraApiError("评论内容不能为空。", "api");
+    }
+
+    const response = await this.requestJson<unknown>(`${API_BASE}/video/${videoId}/comments`, {
+      method: "POST",
+      headers: {
+        ...(await this.mediaHeaders()),
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify({
+        body,
+        ...(request.parentId ? { parent: request.parentId } : {})
+      })
+    });
+    const comment = this.mapVideoComment(response);
+    if (!comment) {
+      throw new IwaraApiError("评论已提交，但 Iwara 没有返回可显示的评论内容。", "api");
+    }
+
+    return comment;
+  }
+
+  private async fetchVideoComments(videoId: string, parentId?: string): Promise<{ results: VideoComment[]; total: number }> {
     const url = new URL(`${API_BASE}/video/${videoId}/comments`);
     url.searchParams.set("page", "0");
     url.searchParams.set("limit", String(COMMENT_LIMIT));
+    if (parentId) {
+      url.searchParams.set("parent", parentId);
+    }
 
+    const first = await this.fetchCommentsPage(url);
+    const limit = Math.max(first.limit || COMMENT_LIMIT, 1);
+    const total = first.total;
+    const pages = Math.max(Math.ceil(total / limit), 1);
+    const all = [...first.results];
+    for (let page = 1; page < pages; page += 1) {
+      url.searchParams.set("page", String(page));
+      all.push(...(await this.fetchCommentsPage(url)).results);
+    }
+
+    const comments = all.map((item) => this.mapVideoComment(item)).filter((comment): comment is VideoComment => Boolean(comment));
+    const commentsWithReplies = await Promise.all(comments.map(async (comment) => {
+      if (comment.numReplies <= 0) {
+        return comment;
+      }
+
+      const replies = await this.fetchVideoComments(videoId, comment.id).catch(() => ({ results: [], total: 0 }));
+      return { ...comment, replies: replies.results };
+    }));
+
+    return {
+      total,
+      results: commentsWithReplies
+    };
+  }
+
+  private async fetchCommentsPage(url: URL): Promise<{ results: unknown[]; total: number; limit: number }> {
     const data = await this.requestJson<{
       count?: number;
       total?: number;
+      limit?: number;
       results?: unknown[];
     }>(url.toString(), {
       headers: await this.mediaHeaders()
     });
 
     return {
-      total: data.total ?? data.count,
-      results: (data.results ?? []).map((item) => this.mapVideoComment(item)).filter((comment): comment is VideoComment => Boolean(comment))
+      total: numberOrZero(data.total ?? data.count),
+      limit: numberOrZero(data.limit) || COMMENT_LIMIT,
+      results: data.results ?? []
     };
   }
 
@@ -460,7 +521,8 @@ export class IwaraClient {
       authorUsername: stringOrUndefined(user.username),
       createdAt: stringOrUndefined(value.createdAt),
       numLikes: numberOrZero(value.numLikes),
-      numReplies: numberOrZero(value.numReplies)
+      numReplies: numberOrZero(value.numReplies),
+      replies: []
     };
   }
 

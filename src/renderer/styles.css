@@ -312,6 +312,13 @@ button:disabled {
   letter-spacing: 0;
 }
 
+.section-subtitle {
+  display: block;
+  margin-top: 4px;
+  color: #aaa59a;
+  font-size: 13px;
+}
+
 .video-grid {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
@@ -569,6 +576,12 @@ button:disabled {
   gap: 10px;
 }
 
+.comment-list.replies {
+  margin-left: 12px;
+  border-left: 2px solid rgba(227, 181, 87, 0.18);
+  padding-left: 10px;
+}
+
 .comment-item {
   display: grid;
   gap: 6px;
@@ -578,7 +591,8 @@ button:disabled {
   background: #14161a;
 }
 
-.comment-item div {
+.comment-meta,
+.comment-actions {
   display: flex;
   justify-content: space-between;
   gap: 8px;
@@ -586,7 +600,7 @@ button:disabled {
   font-size: 12px;
 }
 
-.comment-item div strong {
+.comment-meta strong {
   min-width: 0;
   overflow: hidden;
   color: #f3f1ea;
@@ -596,6 +610,39 @@ button:disabled {
 
 .comment-item small {
   color: #aaa59a;
+}
+
+.comment-reply-button {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  border: 0;
+  padding: 0;
+  background: transparent;
+  color: #f4dfad;
+  font-size: 12px;
+}
+
+.comment-composer {
+  display: grid;
+  gap: 8px;
+}
+
+.comment-composer textarea {
+  width: 100%;
+  min-height: 72px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 8px;
+  padding: 9px 10px;
+  resize: vertical;
+  background: #101114;
+  color: #f3f1ea;
+  outline: 0;
+}
+
+.comment-composer button {
+  justify-self: end;
+  min-height: 36px;
 }
 
 .field-label {

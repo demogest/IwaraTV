@@ -3,6 +3,7 @@ import type {
   AppSettings,
   AuthState,
   ListVideosRequest,
+  ListVideoCommentsRequest,
   LoginRequest,
   IwaraVideoDiagnostics,
   MediaSpeedTestReport,
@@ -10,8 +11,11 @@ import type {
   PlayerProbe,
   PlayRequest,
   PlayResult,
+  SendVideoCommentRequest,
   SelectExecutableRequest,
   SelectExecutableResult,
+  VideoCommentsResult,
+  VideoComment,
   VideoDetail,
   VideoListResult,
   XVersionSaltReport
@@ -22,6 +26,8 @@ const api = {
     listVideos: (request: ListVideosRequest) => ipcRenderer.invoke("iwara:listVideos", request) as Promise<VideoListResult>,
     getVideo: (idOrUrl: string) => ipcRenderer.invoke("iwara:getVideo", { idOrUrl }) as Promise<VideoDetail>,
     diagnoseVideo: (idOrUrl: string) => ipcRenderer.invoke("iwara:diagnoseVideo", { idOrUrl }) as Promise<IwaraVideoDiagnostics>,
+    listComments: (request: ListVideoCommentsRequest) => ipcRenderer.invoke("iwara:listComments", request) as Promise<VideoCommentsResult>,
+    sendComment: (request: SendVideoCommentRequest) => ipcRenderer.invoke("iwara:sendComment", request) as Promise<VideoComment>,
     sniffXVersionSalt: () => ipcRenderer.invoke("iwara:sniffXVersionSalt") as Promise<XVersionSaltReport>,
     speedTestVideo: (idOrUrl: string) => ipcRenderer.invoke("iwara:speedTestVideo", { idOrUrl }) as Promise<MediaSpeedTestReport>
   },

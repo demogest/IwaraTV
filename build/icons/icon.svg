@@ -1,0 +1,33 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" role="img" aria-labelledby="title desc">
+  <title id="title">IwaraTV original mark</title>
+  <desc id="desc">An original Iwara-inspired dark rounded app icon with a teal video frame, warm play mark, soft coral accent, and compact media signal dot.</desc>
+  <defs>
+    <linearGradient id="bg" x1="128" y1="80" x2="896" y2="944" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#22282d"/>
+      <stop offset="1" stop-color="#0f1115"/>
+    </linearGradient>
+    <linearGradient id="frame" x1="176" y1="146" x2="848" y2="878" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#2c8478"/>
+      <stop offset="1" stop-color="#244a52"/>
+    </linearGradient>
+    <linearGradient id="screen" x1="218" y1="198" x2="802" y2="832" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#1b2228"/>
+      <stop offset="1" stop-color="#101216"/>
+    </linearGradient>
+    <linearGradient id="gold" x1="308" y1="250" x2="718" y2="766" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#f6d179"/>
+      <stop offset="1" stop-color="#dfad46"/>
+    </linearGradient>
+  </defs>
+  <rect x="64" y="64" width="896" height="896" rx="220" fill="url(#bg)"/>
+  <rect x="136" y="152" width="752" height="720" rx="184" fill="url(#frame)"/>
+  <rect x="178" y="192" width="668" height="640" rx="148" fill="url(#screen)"/>
+  <rect x="226" y="220" width="572" height="28" rx="14" fill="#ffffff" opacity=".12"/>
+  <path d="M334 196a64 64 0 1 1 0 128 64 64 0 0 1 0-128Z" fill="url(#gold)"/>
+  <rect x="278" y="338" width="112" height="386" rx="56" fill="url(#gold)"/>
+  <path d="M474 318 474 706 774 512Z" fill="#080a0d" opacity=".28" transform="translate(20 24)"/>
+  <path d="M458 306 458 718 780 512Z" fill="url(#gold)"/>
+  <circle cx="742" cy="284" r="40" fill="#ed735f"/>
+  <circle cx="792" cy="336" r="16" fill="#52bda8"/>
+</svg>

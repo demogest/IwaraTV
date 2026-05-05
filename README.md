@@ -1,0 +1,48 @@
+# IwaraTV
+
+![IwaraTV logo](src/renderer/assets/iwara-tv-mark.svg)
+
+IwaraTV is a local desktop browser and player launcher for Iwara.tv. It keeps the React UI lightweight while using a native Tauri backend for settings, session handling, diagnostics, and launching MPV or another external player.
+
+This project is independently made and is not affiliated with or endorsed by Iwara.
+
+## Features
+
+- Browse recent, trending, popular, followed-tag, and author-filtered video feeds.
+- Open Iwara video IDs or URLs directly.
+- Launch MPV or a configured external player with the selected quality.
+- Keep local playback history and player/media-host preferences.
+- Use an embedded verification window for site session setup.
+- Diagnose video format and network capture issues from inside the app.
+- Build native Windows, macOS, and Linux packages through GitHub Actions.
+
+## Development
+
+Requirements:
+
+- Node.js 24.14.1+
+- npm 11.11.0+
+- Rust stable
+- Tauri system dependencies for your platform
+
+Common commands:
+
+```bash
+npm ci
+npm run icons:build
+npm run typecheck
+npm test
+cargo test --manifest-path src-tauri/Cargo.toml
+npm run dev:tauri
+```
+
+Windows packaging with bundled MPV:
+
+```bash
+npm run mpv:update
+npm run dist:win
+```
+
+## Releases
+
+The `Build` workflow compiles Windows, macOS, and Linux artifacts on pushes, pull requests, manual runs, and version tags. Pushing a tag like `v0.2.0` publishes a GitHub Release with the generated bundles.

@@ -1,0 +1,2098 @@
+import {
+  AlertTriangle,
+  ArrowLeft,
+  Ban,
+  CheckCircle2,
+  ClipboardCopy,
+  CornerDownRight,
+  Clock3,
+  ExternalLink,
+  Flame,
+  FolderOpen,
+  Gauge,
+  Heart,
+  History,
+  Link2,
+  Loader2,
+  LogIn,
+  MessageCircle,
+  MonitorPlay,
+  Play,
+  RefreshCw,
+  Search,
+  Settings,
+  Send,
+  Shield,
+  Star,
+  Tag,
+  Trash2,
+  TrendingUp,
+  UserRound,
+  X
+} from "lucide-react";
+import type { LucideIcon } from "lucide-react";
+import { FormEvent, useEffect, useMemo, useState } from "react";
+import type {
+  AppSettings,
+  AuthState,
+  IwaraVideoDiagnostics,
+  MediaSpeedTestReport,
+  PlayerDiagnostics,
+  PlayerMode,
+  PlayerProbe,
+  VideoComment,
+  VideoCommentsResult,
+  VideoDetail,
+  VideoListResult,
+  VideoSort,
+  VideoSummary,
+  XVersionSaltReport
+} from "../shared/types";
+import { normalizeMediaHostList } from "../shared/media-speed-utils";
+import logoMarkUrl from "./assets/iwara-tv-mark.svg";
+import { classifyIssue, type UiIssue } from "./issue-utils";
+
+type AppSection = "browse" | "history" | "settings";
+type FeedTabKey = VideoSort | "followed";
+interface ActiveAuthor {
+  id: string;
+  name?: string;
+  username?: string;
+}
+interface VideoFilters {
+  query: string;
+  tags: string[];
+}
+
+const sectionTabs: Array<{ section: AppSection; label: string; Icon: LucideIcon }> = [
+  { section: "browse", label: "浏览", Icon: MonitorPlay },
+  { section: "history", label: "历史", Icon: History },
+  { section: "settings", label: "设置", Icon: Settings }
+];
+
+const feedTabs: Array<{ key: FeedTabKey; label: string; Icon: LucideIcon }> = [
+  { key: "date", label: "最新", Icon: Clock3 },
+  { key: "trending", label: "当前人气", Icon: Flame },
+  { key: "popularity", label: "流行视频", Icon: TrendingUp },
+  { key: "followed", label: "关注标签", Icon: Heart }
+];
+
+const defaultSettings: AppSettings = {
+  player: {
+    preferredMode: "mpv",
+    externalPlayerArgs: "{url}",
+    preferredQuality: "Source"
+  },
+  iwara: {
+    xVersionSalt: "mSvL05GfEmeEmsEYfGCnVpEjYgTJraJN",
+    autoSniffXVersionSalt: true
+  },
+  mediaSpeed: {
+    autoTest: false,
+    replaceLinks: false,
+    candidateHosts: [
+      "jade.iwara.tv",
+      "kafka.iwara.tv",
+      "bronya.iwara.tv",
+      "camellya.iwara.tv"
+    ],
+    rankedHosts: [],
+    testBytes: 524288,
+    timeoutMs: 4500
+  },
+  tagPreferences: {
+    followedTags: [],
+    blockedTags: [],
+    maxScanPages: 5,
+    requestDelayMs: 250
+  },
+  history: []
+};
+
+const defaultAuth: AuthState = {
+  loggedIn: false,
+  hasMediaToken: false,
+  encryptionAvailable: false
+};
+
+export function App() {
+  const bridge = window.iwaraTV;
+  const [activeSection, setActiveSection] = useState<AppSection>("browse");
+  const [activeFeedTab, setActiveFeedTab] = useState<FeedTabKey>("date");
+  const [feeds, setFeeds] = useState<Partial<Record<FeedTabKey, VideoListResult>>>({});
+  const [authorFeed, setAuthorFeed] = useState<VideoListResult | undefined>();
+  const [activeAuthor, setActiveAuthor] = useState<ActiveAuthor | undefined>();
+  const [filters, setFilters] = useState<VideoFilters>({ query: "", tags: [] });
+  const [tagInput, setTagInput] = useState("");
+  const [settings, setSettings] = useState<AppSettings>(defaultSettings);
+  const [auth, setAuth] = useState<AuthState>(defaultAuth);
+  const [diagnostics, setDiagnostics] = useState<PlayerDiagnostics | undefined>();
+  const [mpvTest, setMpvTest] = useState<PlayerProbe | undefined>();
+  const [videoDiagnostics, setVideoDiagnostics] = useState<IwaraVideoDiagnostics | undefined>();
+  const [commentsResult, setCommentsResult] = useState<VideoCommentsResult | undefined>();
+  const [speedReport, setSpeedReport] = useState<MediaSpeedTestReport | undefined>();
+  const [saltReport, setSaltReport] = useState<XVersionSaltReport | undefined>();
+  const [selectedVideo, setSelectedVideo] = useState<VideoDetail | undefined>();
+  const [selectedQuality, setSelectedQuality] = useState<string | undefined>();
+  const [urlInput, setUrlInput] = useState("");
+  const [status, setStatus] = useState<string>("");
+  const [issue, setIssue] = useState<UiIssue | undefined>();
+  const [loadingFeed, setLoadingFeed] = useState(false);
+  const [loadingComments, setLoadingComments] = useState(false);
+  const [loadingVideoId, setLoadingVideoId] = useState<string | undefined>();
+  const [quickPlayingId, setQuickPlayingId] = useState<string | undefined>();
+  const [playing, setPlaying] = useState(false);
+  const [probing, setProbing] = useState(false);
+  const [sessionBusy, setSessionBusy] = useState(false);
+  const [diagnosingVideo, setDiagnosingVideo] = useState(false);
+  const [speedTesting, setSpeedTesting] = useState(false);
+  const [saltSniffing, setSaltSniffing] = useState(false);
+  const [commentDraft, setCommentDraft] = useState("");
+  const [replyDrafts, setReplyDrafts] = useState<Record<string, string>>({});
+  const [replyingTo, setReplyingTo] = useState<string | undefined>();
+  const [submittingComment, setSubmittingComment] = useState(false);
+
+  const activeFeed = feeds[activeFeedTab];
+  const hasBridge = Boolean(bridge);
+  const showDetailPanel = activeSection === "browse" && Boolean(selectedVideo);
+  const authDisplayName = auth.email
+    ?? (auth.siteTokenReady ? "网页登录" : auth.siteSessionReady ? "已验证会话" : "匿名");
+  const sortedFormats = useMemo(
+    () => [...(selectedVideo?.formats ?? [])].sort((a, b) => b.qualityRank - a.qualityRank),
+    [selectedVideo]
+  );
+
+  useEffect(() => {
+    if (!bridge) {
+      return;
+    }
+
+    void bridge.settings.get().then(setSettings).catch(handleError);
+    void bridge.player.probe().then(setDiagnostics).catch(handleError);
+    void bridge.auth.state().then(setAuth).catch(handleError);
+  }, [bridge]);
+
+  useEffect(() => {
+    if (!bridge || activeSection !== "browse" || feeds[activeFeedTab]) {
+      return;
+    }
+
+    void loadFeed(activeFeedTab);
+  }, [activeSection, activeFeedTab, feeds, bridge]);
+
+  useEffect(() => {
+    if (!bridge || !selectedVideo) {
+      return;
+    }
+
+    void loadComments(selectedVideo.id);
+  }, [bridge, selectedVideo?.id]);
+
+  async function loadFeed(tab: FeedTabKey, page = feeds[tab]?.page ?? 0, nextFilters = filters) {
+    if (!bridge) {
+      return;
+    }
+
+    const sort: VideoSort = tab === "followed" ? "date" : tab;
+    setLoadingFeed(true);
+    clearMessages();
+    try {
+      const result = await bridge.iwara.listVideos({
+        sort,
+        page,
+        rating: "all",
+        query: nextFilters.query,
+        tags: nextFilters.tags,
+        followedOnly: tab === "followed"
+      });
+      setFeeds((current) => ({ ...current, [tab]: result }));
+    } catch (err) {
+      handleError(err);
+    } finally {
+      setLoadingFeed(false);
+    }
+  }
+
+  async function loadAuthorFeed(author: ActiveAuthor, page = 0, nextFilters = filters) {
+    if (!bridge) {
+      return;
+    }
+
+    setActiveSection("browse");
+    setActiveAuthor(author);
+    setLoadingFeed(true);
+    clearMessages();
+    try {
+      const result = await bridge.iwara.listVideos({
+        sort: "date",
+        page,
+        rating: "all",
+        query: nextFilters.query,
+        tags: nextFilters.tags,
+        userId: author.id
+      });
+      setAuthorFeed(result);
+    } catch (err) {
+      handleError(err);
+    } finally {
+      setLoadingFeed(false);
+    }
+  }
+
+  async function openVideo(idOrUrl: string) {
+    if (!bridge || !idOrUrl.trim()) {
+      return;
+    }
+
+    setLoadingVideoId(idOrUrl);
+    clearMessages();
+    try {
+      const video = await bridge.iwara.getVideo(idOrUrl);
+      const loadedSettings = await bridge.settings.get();
+      const currentAuth = await bridge.auth.state().catch(() => auth);
+      setSettings(loadedSettings);
+      setAuth(currentAuth);
+      setSelectedVideo(video);
+      setVideoDiagnostics(undefined);
+      setCommentsResult(undefined);
+      setReplyingTo(undefined);
+      setReplyDrafts({});
+      setCommentDraft("");
+      setSpeedReport(undefined);
+      let formats = video.formats;
+      if (currentAuth.siteTokenReady && bestQualityRank(formats) <= 360) {
+        const report = await bridge.iwara.diagnoseVideo(video.id);
+        setSettings(await bridge.settings.get());
+        const capturedFormats = report.network?.entries.flatMap((entry) => entry.formats ?? []) ?? [];
+        setVideoDiagnostics(report);
+        if (bestQualityRank(capturedFormats) > bestQualityRank(formats)) {
+          formats = capturedFormats;
+          setSelectedVideo({ ...video, formats });
+          setStatus(`已通过网页抓包补全：${formatLabelsText(formats.map((format) => format.label))}。`);
+        }
+      }
+      if (loadedSettings.mediaSpeed.autoTest && !loadedSettings.mediaSpeed.rankedHosts.length && formats.length) {
+        try {
+          const report = await bridge.iwara.speedTestVideo(video.id);
+          setSettings(await bridge.settings.get());
+          setSpeedReport(report);
+          setStatus(report.fastestHost ? `已完成全局线路测速，最快线路：${report.fastestHost}。` : "全局线路测速完成，没有可用线路。");
+        } catch (err) {
+          setStatus(`全局线路测速失败，不影响播放：${errorText(err)}。`);
+        }
+      }
+      const preferred = formats.find((format) => format.id === loadedSettings.player.preferredQuality);
+      const best = bestFormat(formats);
+      setSelectedQuality(preferred?.id ?? best?.id);
+    } catch (err) {
+      handleError(err);
+    } finally {
+      setLoadingVideoId(undefined);
+    }
+  }
+
+  async function quickPlay(video: VideoSummary) {
+    if (!bridge) {
+      return;
+    }
+
+    setQuickPlayingId(video.id);
+    clearMessages();
+    try {
+      const result = await bridge.player.play({
+        videoId: video.id,
+        mode: settings.player.preferredMode
+      });
+      setStatus(playStatus(result));
+      setSettings(await bridge.settings.get());
+      await refreshDiagnostics();
+    } catch (err) {
+      handleError(err);
+    } finally {
+      setQuickPlayingId(undefined);
+    }
+  }
+
+  async function playVideo(mode: PlayerMode = settings.player.preferredMode) {
+    if (!bridge || !selectedVideo) {
+      return;
+    }
+
+    setPlaying(true);
+    clearMessages();
+    try {
+      const result = await bridge.player.play({
+        videoId: selectedVideo.id,
+        quality: selectedQuality,
+        mode
+      });
+      setStatus(playStatus(result));
+      setSettings(await bridge.settings.get());
+      await refreshDiagnostics();
+    } catch (err) {
+      handleError(err);
+    } finally {
+      setPlaying(false);
+    }
+  }
+
+  function closeDetailPanel() {
+    setSelectedVideo(undefined);
+    setSelectedQuality(undefined);
+    setVideoDiagnostics(undefined);
+    setCommentsResult(undefined);
+    setReplyingTo(undefined);
+    setReplyDrafts({});
+    setCommentDraft("");
+    setSpeedReport(undefined);
+  }
+
+  async function openAuthorProfile(video: VideoDetail) {
+    if (!video.uploaderId) {
+      return;
+    }
+
+    closeDetailPanel();
+    await loadAuthorFeed({
+      id: video.uploaderId,
+      name: video.uploaderName,
+      username: video.uploaderUsername
+    });
+  }
+
+  function showMainFeed(tab: FeedTabKey = activeFeedTab) {
+    setActiveAuthor(undefined);
+    setAuthorFeed(undefined);
+    setActiveFeedTab(tab);
+  }
+
+  async function applyFilters(nextFilters: VideoFilters) {
+    const normalized = {
+      query: nextFilters.query.trim(),
+      tags: normalizeTagTokens(nextFilters.tags)
+    };
+    setFilters(normalized);
+    setFeeds((current) => ({ ...current, [activeFeedTab]: undefined }));
+    if (activeAuthor) {
+      await loadAuthorFeed(activeAuthor, 0, normalized);
+    } else {
+      await loadFeed(activeFeedTab, 0, normalized);
+    }
+  }
+
+  async function applyTagFromDetail(tag: string) {
+    closeDetailPanel();
+    await addTagFilter(tag);
+  }
+
+  async function addTagFilter(tag: string) {
+    const tags = normalizeTagTokens([...filters.tags, tag]);
+    setTagInput("");
+    await applyFilters({ ...filters, tags });
+  }
+
+  async function removeTagFilter(tag: string) {
+    await applyFilters({ ...filters, tags: filters.tags.filter((current) => current !== tag) });
+  }
+
+  async function clearFilters() {
+    setTagInput("");
+    await applyFilters({ query: "", tags: [] });
+  }
+
+  async function loadComments(videoId: string) {
+    if (!bridge) {
+      return;
+    }
+
+    setLoadingComments(true);
+    try {
+      setCommentsResult(await bridge.iwara.listComments({ videoId }));
+    } catch (err) {
+      setCommentsResult({
+        videoId,
+        comments: [],
+        total: 0,
+        fetchedAt: new Date().toISOString()
+      });
+      setIssue(classifyIssue(err));
+    } finally {
+      setLoadingComments(false);
+    }
+  }
+
+  async function submitComment(parentId?: string) {
+    if (!bridge || !selectedVideo || submittingComment) {
+      return;
+    }
+
+    const body = (parentId ? replyDrafts[parentId] : commentDraft)?.trim();
+    if (!body) {
+      return;
+    }
+
+    setSubmittingComment(true);
+    clearMessages();
+    try {
+      await bridge.iwara.sendComment({ videoId: selectedVideo.id, body, parentId });
+      if (parentId) {
+        setReplyDrafts((current) => ({ ...current, [parentId]: "" }));
+        setReplyingTo(undefined);
+      } else {
+        setCommentDraft("");
+      }
+      await loadComments(selectedVideo.id);
+      setStatus(parentId ? "回复已发送。" : "评论已发送。");
+    } catch (err) {
+      handleError(err);
+    } finally {
+      setSubmittingComment(false);
+    }
+  }
+
+  async function handleSubmit(event: FormEvent) {
+    event.preventDefault();
+    setActiveSection("browse");
+    await openVideo(urlInput);
+  }
+
+  async function updatePlayerSettings(partial: Partial<AppSettings["player"]>): Promise<AppSettings | undefined> {
+    if (!bridge) {
+      return undefined;
+    }
+
+    const next = await bridge.settings.update({ player: { ...settings.player, ...partial } });
+    setSettings(next);
+    return next;
+  }
+
+  async function updateIwaraSettings(partial: Partial<AppSettings["iwara"]>): Promise<AppSettings | undefined> {
+    if (!bridge) {
+      return undefined;
+    }
+
+    const next = await bridge.settings.update({ iwara: { ...settings.iwara, ...partial } });
+    setSettings(next);
+    return next;
+  }
+
+  async function updateMediaSpeedSettings(partial: Partial<AppSettings["mediaSpeed"]>): Promise<AppSettings | undefined> {
+    if (!bridge) {
+      return undefined;
+    }
+
+    const next = await bridge.settings.update({
+      mediaSpeed: {
+        ...settings.mediaSpeed,
+        ...partial,
+        candidateHosts: partial.candidateHosts
+          ? normalizeMediaHostList(partial.candidateHosts)
+          : settings.mediaSpeed.candidateHosts
+      }
+    });
+    setSettings(next);
+    return next;
+  }
+
+  async function updateTagPreferences(partial: Partial<AppSettings["tagPreferences"]>): Promise<AppSettings | undefined> {
+    if (!bridge) {
+      return undefined;
+    }
+
+    const next = await bridge.settings.update({
+      tagPreferences: {
+        ...settings.tagPreferences,
+        ...partial,
+        followedTags: partial.followedTags
+          ? normalizeTagTokens(partial.followedTags)
+          : settings.tagPreferences.followedTags,
+        blockedTags: partial.blockedTags
+          ? normalizeTagTokens(partial.blockedTags)
+          : settings.tagPreferences.blockedTags
+      }
+    });
+    setSettings(next);
+    return next;
+  }
+
+  async function followTag(tag: string) {
+    const normalized = normalizeTagTokens([tag])[0];
+    if (!normalized) {
+      return;
+    }
+
+    await updateTagPreferences({
+      followedTags: [...settings.tagPreferences.followedTags, normalized],
+      blockedTags: settings.tagPreferences.blockedTags.filter((blockedTag) => blockedTag !== normalized)
+    });
+    setStatus(`已关注标签：${normalized}。`);
+  }
+
+  async function blockTag(tag: string) {
+    const normalized = normalizeTagTokens([tag])[0];
+    if (!normalized) {
+      return;
+    }
+
+    await updateTagPreferences({
+      blockedTags: [...settings.tagPreferences.blockedTags, normalized],
+      followedTags: settings.tagPreferences.followedTags.filter((followedTag) => followedTag !== normalized)
+    });
+    setStatus(`已屏蔽标签：${normalized}。`);
+  }
+
+  async function sniffXVersionSalt() {
+    if (!bridge) {
+      return;
+    }
+
+    setSaltSniffing(true);
+    clearMessages();
+    try {
+      const report = await bridge.iwara.sniffXVersionSalt();
+      setSaltReport(report);
+      setSettings(await bridge.settings.get());
+      setStatus(`已嗅探到 X-Version 盐值：${report.salt}。`);
+    } catch (err) {
+      handleError(err);
+    } finally {
+      setSaltSniffing(false);
+    }
+  }
+
+  async function exportMediaHosts() {
+    if (!bridge) {
+      return;
+    }
+
+    clearMessages();
+    const hosts = normalizeMediaHostList(settings.mediaSpeed.candidateHosts);
+    await bridge.system.writeClipboard(hosts.join("\n"));
+    setStatus(`已导出 ${hosts.length} 个 CDN 域名到剪贴板。`);
+  }
+
+  async function speedTestSelectedVideo() {
+    if (!bridge || !selectedVideo) {
+      return;
+    }
+
+    setSpeedTesting(true);
+    clearMessages();
+    try {
+      const report = await bridge.iwara.speedTestVideo(selectedVideo.id);
+      const nextSettings = await bridge.settings.get();
+      setSettings(nextSettings);
+      setSpeedReport(report);
+      setStatus(report.fastestHost
+        ? `全局测速完成，最快线路：${report.fastestHost}。${nextSettings.mediaSpeed.replaceLinks ? "播放会按设置替换到最快线路。" : "当前未开启链接替换。"}`
+        : "全局测速完成，没有可用线路。");
+    } catch (err) {
+      handleError(err);
+    } finally {
+      setSpeedTesting(false);
+    }
+  }
+
+  async function chooseExecutable(kind: "mpv" | "external") {
+    if (!bridge) {
+      return;
+    }
+
+    const selected = await bridge.system.selectExecutable({
+      title: kind === "mpv" ? "选择 mpv.exe" : "选择外部播放器",
+      currentPath: kind === "mpv" ? settings.player.mpvPath : settings.player.externalPlayerPath
+    });
+
+    if (selected.canceled || !selected.path) {
+      return;
+    }
+
+    await updatePlayerSettings(kind === "mpv" ? { mpvPath: selected.path } : { externalPlayerPath: selected.path });
+    await refreshDiagnostics();
+  }
+
+  async function refreshDiagnostics() {
+    if (!bridge) {
+      return;
+    }
+
+    setProbing(true);
+    try {
+      setDiagnostics(await bridge.player.probe());
+    } catch (err) {
+      handleError(err);
+    } finally {
+      setProbing(false);
+    }
+  }
+
+  async function testMpv() {
+    if (!bridge) {
+      return;
+    }
+
+    setProbing(true);
+    clearMessages();
+    try {
+      const result = await bridge.player.testMpv();
+      setMpvTest(result);
+      setStatus(result.message);
+    } catch (err) {
+      handleError(err);
+    } finally {
+      setProbing(false);
+    }
+  }
+
+  async function diagnoseSelectedVideo() {
+    if (!bridge || !selectedVideo) {
+      return;
+    }
+
+    setDiagnosingVideo(true);
+    clearMessages();
+    try {
+      const report = await bridge.iwara.diagnoseVideo(selectedVideo.id);
+      setSettings(await bridge.settings.get());
+      const capturedFormats = report.network?.entries.flatMap((entry) => entry.formats ?? []) ?? [];
+      if (capturedFormats.length) {
+        const best = bestFormat(capturedFormats);
+        setSelectedVideo({ ...selectedVideo, formats: capturedFormats });
+        setSelectedQuality(best?.id);
+      }
+      setVideoDiagnostics(report);
+      setStatus(
+        capturedFormats.length
+          ? `抓包诊断完成，已用网页响应补全：${formatLabelsText(capturedFormats.map((format) => format.label))}。`
+          : `抓包诊断完成：应用 API ${formatLabelsText(report.appFormatLabels)}。`
+      );
+    } catch (err) {
+      handleError(err);
+    } finally {
+      setDiagnosingVideo(false);
+    }
+  }
+
+  async function clearHistory() {
+    if (!bridge) {
+      return;
+    }
+
+    const next = await bridge.settings.update({ history: [] });
+    setSettings(next);
+  }
+
+  async function refreshAuthState() {
+    if (!bridge) {
+      return;
+    }
+
+    setSessionBusy(true);
+    clearMessages();
+    try {
+      setAuth(await bridge.auth.state());
+      setStatus("会话状态已刷新。");
+    } catch (err) {
+      handleError(err);
+    } finally {
+      setSessionBusy(false);
+    }
+  }
+
+  async function openIwaraSession() {
+    if (!bridge) {
+      return;
+    }
+
+    setSessionBusy(true);
+    clearMessages();
+    try {
+      const initialAuth = await bridge.auth.openIwaraSession();
+      setAuth(initialAuth);
+      if (initialAuth.siteTokenReady) {
+        setStatus("网页登录就绪。");
+        return;
+      }
+
+      setStatus("已打开 Iwara 验证窗口，正在等待网页登录状态。");
+      const ready = await waitForSessionReady(45000);
+      setStatus(ready ? "网页登录就绪，验证窗口会自动关闭。" : "验证窗口仍在等待登录或 Cloudflare 验证。完成后应用会在刷新会话时复用它。");
+    } catch (err) {
+      handleError(err);
+    } finally {
+      setSessionBusy(false);
+    }
+  }
+
+  async function waitForSessionReady(timeoutMs: number): Promise<boolean> {
+    if (!bridge) {
+      return false;
+    }
+
+    const deadline = Date.now() + timeoutMs;
+    while (Date.now() < deadline) {
+      await delay(1200);
+      const nextAuth = await bridge.auth.state();
+      setAuth(nextAuth);
+      if (nextAuth.siteTokenReady) {
+        return true;
+      }
+    }
+
+    return false;
+  }
+
+  async function handleIssueAction(target: UiIssue) {
+    if (target.action === "settings") {
+      setActiveSection("settings");
+      return;
+    }
+
+    if (target.action === "login") {
+      setActiveSection("settings");
+      return;
+    }
+
+    if (target.action === "open-iwara") {
+      await openIwaraSession();
+      return;
+    }
+
+    if (selectedVideo) {
+      await openVideo(selectedVideo.id);
+    } else {
+      await loadFeed(activeFeedTab, activeFeed?.page ?? 0);
+    }
+  }
+
+  function clearMessages() {
+    setIssue(undefined);
+    setStatus("");
+  }
+
+  function handleError(err: unknown) {
+    setStatus("");
+    setIssue(classifyIssue(err));
+  }
+
+  return (
+    <main className="app-shell">
+      <aside className="sidebar">
+        <div className="brand">
+          <div className="brand-mark">
+            <img alt="" className="brand-logo" src={logoMarkUrl} />
+          </div>
+          <div>
+            <h1>IwaraTV</h1>
+            <span>{authDisplayName}</span>
+          </div>
+        </div>
+
+        <nav className="nav-list">
+          {sectionTabs.map(({ section, label, Icon }) => (
+            <button
+              className={activeSection === section ? "nav-button active" : "nav-button"}
+              key={section}
+              onClick={() => setActiveSection(section)}
+              type="button"
+            >
+              <Icon size={18} />
+              {label}
+            </button>
+          ))}
+        </nav>
+      </aside>
+
+      <section className="workspace">
+        <header className="topbar">
+          <form className="url-form" onSubmit={handleSubmit}>
+            <Search size={18} />
+            <input
+              value={urlInput}
+              onChange={(event) => setUrlInput(event.target.value)}
+              placeholder="Iwara 视频链接或 ID"
+            />
+            <button disabled={!hasBridge || !urlInput.trim() || Boolean(loadingVideoId)} type="submit">
+              {loadingVideoId === urlInput ? <Loader2 className="spin" size={18} /> : <ExternalLink size={18} />}
+              打开
+            </button>
+          </form>
+
+          <button className="auth-pill" onClick={() => setActiveSection("settings")} type="button">
+            {auth.siteTokenReady || auth.loggedIn ? <Star size={16} /> : <LogIn size={16} />}
+            {auth.siteTokenReady ? "网页登录就绪" : auth.siteSessionReady ? "会话已验证" : auth.loggedIn ? "API 已登录" : "未验证"}
+          </button>
+        </header>
+
+        {!hasBridge && (
+          <div className="notice warning">
+            当前是浏览器预览。运行桌面版后可以连接 Electron IPC、启动 MPV 和保存设置。
+          </div>
+        )}
+
+        {issue && <ActionNotice issue={issue} onAction={() => handleIssueAction(issue)} />}
+        {status && <div className="notice success">{status}</div>}
+
+        <div className={showDetailPanel ? "content-grid with-detail" : "content-grid"}>
+          <section className="primary-panel">
+            {activeSection === "browse" && (
+              <BrowseView
+                activeAuthor={activeAuthor}
+                activeFeed={activeAuthor ? authorFeed : activeFeed}
+                activeFeedTab={activeFeedTab}
+                hasBridge={hasBridge}
+                filters={filters}
+                loadingFeed={loadingFeed}
+                loadingVideoId={loadingVideoId}
+                onOpen={openVideo}
+                onAddTag={addTagFilter}
+                onBackToFeeds={() => showMainFeed()}
+                onClearFilters={clearFilters}
+                onFilterChange={(partial) => setFilters((current) => ({ ...current, ...partial }))}
+                onFilterSubmit={() => applyFilters(filters)}
+                onPage={(page) => activeAuthor ? loadAuthorFeed(activeAuthor, page) : loadFeed(activeFeedTab, page)}
+                onQuickPlay={quickPlay}
+                onRefresh={() => activeAuthor ? loadAuthorFeed(activeAuthor, authorFeed?.page ?? 0) : loadFeed(activeFeedTab, activeFeed?.page ?? 0)}
+                onRemoveTag={removeTagFilter}
+                onFeedTabChange={showMainFeed}
+                quickPlayingId={quickPlayingId}
+                tagInput={tagInput}
+                onTagInputChange={setTagInput}
+              />
+            )}
+
+            {activeSection === "history" && (
+              <HistoryView
+                history={settings.history}
+                onClear={clearHistory}
+                onOpen={(id) => {
+                  setActiveSection("browse");
+                  void openVideo(id);
+                }}
+              />
+            )}
+
+            {activeSection === "settings" && (
+              <SettingsView
+                auth={auth}
+                diagnostics={diagnostics}
+                hasBridge={hasBridge}
+                mpvTest={mpvTest}
+                onChooseExternal={() => chooseExecutable("external")}
+                onChooseMpv={() => chooseExecutable("mpv")}
+                onOpenIwaraSession={openIwaraSession}
+                onProbe={refreshDiagnostics}
+                onRefreshAuth={refreshAuthState}
+                onExportMediaHosts={exportMediaHosts}
+                onSniffXVersionSalt={sniffXVersionSalt}
+                onSpeedTest={speedTestSelectedVideo}
+                onTestMpv={testMpv}
+                onUpdateIwara={updateIwaraSettings}
+                onUpdateMediaSpeed={updateMediaSpeedSettings}
+                onUpdatePlayer={updatePlayerSettings}
+                onUpdateTagPreferences={updateTagPreferences}
+                iwara={settings.iwara}
+                saltReport={saltReport}
+                saltSniffing={saltSniffing}
+                player={settings.player}
+                probing={probing}
+                selectedVideo={selectedVideo}
+                sessionBusy={sessionBusy}
+                speedReport={speedReport}
+                speedSettings={settings.mediaSpeed}
+                speedTesting={speedTesting}
+                tagPreferences={settings.tagPreferences}
+              />
+            )}
+          </section>
+
+          {showDetailPanel && selectedVideo && (
+            <DetailPanel
+              siteSessionReady={Boolean(auth.siteTokenReady)}
+              playing={playing}
+              selectedQuality={selectedQuality}
+              sortedFormats={sortedFormats}
+              diagnostics={videoDiagnostics}
+              diagnosing={diagnosingVideo}
+              video={selectedVideo}
+              onDiagnose={diagnoseSelectedVideo}
+              onBlockTag={blockTag}
+              onClose={closeDetailPanel}
+              onCommentDraftChange={setCommentDraft}
+              onFilterTag={applyTagFromDetail}
+              onFollowTag={followTag}
+              onOpenAuthor={openAuthorProfile}
+              onPlay={playVideo}
+              onQualityChange={setSelectedQuality}
+              onRefreshComments={() => loadComments(selectedVideo.id)}
+              onReplyDraftChange={(commentId, value) => setReplyDrafts((current) => ({ ...current, [commentId]: value }))}
+              onReplyToggle={(commentId) => setReplyingTo((current) => current === commentId ? undefined : commentId)}
+              onSubmitComment={submitComment}
+              commentDraft={commentDraft}
+              comments={commentsResult}
+              loadingComments={loadingComments}
+              replyDrafts={replyDrafts}
+              replyingTo={replyingTo}
+              submittingComment={submittingComment}
+              tagPreferences={settings.tagPreferences}
+            />
+          )}
+        </div>
+      </section>
+    </main>
+  );
+}
+
+function BrowseView({
+  activeAuthor,
+  activeFeed,
+  activeFeedTab,
+  filters,
+  hasBridge,
+  loadingFeed,
+  loadingVideoId,
+  onAddTag,
+  onBackToFeeds,
+  onClearFilters,
+  onFilterChange,
+  onFilterSubmit,
+  onOpen,
+  onPage,
+  onQuickPlay,
+  onRefresh,
+  onRemoveTag,
+  onFeedTabChange,
+  onTagInputChange,
+  quickPlayingId,
+  tagInput
+}: {
+  activeAuthor?: ActiveAuthor;
+  activeFeed?: VideoListResult;
+  activeFeedTab: FeedTabKey;
+  filters: VideoFilters;
+  hasBridge: boolean;
+  loadingFeed: boolean;
+  loadingVideoId?: string;
+  onAddTag: (tag: string) => void;
+  onBackToFeeds: () => void;
+  onClearFilters: () => void;
+  onFilterChange: (partial: Partial<VideoFilters>) => void;
+  onFilterSubmit: () => void;
+  onOpen: (id: string) => void;
+  onPage: (page: number) => void;
+  onQuickPlay: (video: VideoSummary) => void;
+  onRefresh: () => void;
+  onRemoveTag: (tag: string) => void;
+  onFeedTabChange: (tab: FeedTabKey) => void;
+  onTagInputChange: (value: string) => void;
+  quickPlayingId?: string;
+  tagInput: string;
+}) {
+  const videos = activeFeed?.results ?? [];
+  const hasFilters = Boolean(filters.query.trim() || filters.tags.length);
+
+  return (
+    <>
+      <div className="section-header">
+        <div>
+          <p>{activeAuthor ? "作者主页" : "视频源"}</p>
+          <h2>{activeAuthor ? (activeAuthor.name ?? activeAuthor.username ?? "作者视频") : feedTitle(activeFeedTab)}</h2>
+          {activeAuthor?.username && <span className="section-subtitle">@{activeAuthor.username}</span>}
+        </div>
+        {activeAuthor && (
+          <button className="secondary-button compact" onClick={onBackToFeeds} type="button">
+            <ArrowLeft size={17} />
+            返回
+          </button>
+        )}
+        <button
+          className="icon-text-button"
+          disabled={!hasBridge || loadingFeed}
+          onClick={onRefresh}
+          type="button"
+        >
+          {loadingFeed ? <Loader2 className="spin" size={18} /> : <RefreshCw size={18} />}
+          刷新
+        </button>
+      </div>
+
+      {!activeAuthor && (
+        <div className="feed-tabs" role="tablist">
+          {feedTabs.map(({ key, label, Icon }) => (
+            <button
+              aria-selected={activeFeedTab === key}
+              className={activeFeedTab === key ? "feed-tab active" : "feed-tab"}
+              key={key}
+              onClick={() => onFeedTabChange(key)}
+              role="tab"
+              type="button"
+            >
+              <Icon size={17} />
+              {label}
+            </button>
+          ))}
+        </div>
+      )}
+
+      <form
+        className="filter-panel"
+        onSubmit={(event) => {
+          event.preventDefault();
+          onFilterSubmit();
+        }}
+      >
+        <label className="filter-field search-filter">
+          <Search size={17} />
+          <input
+            value={filters.query}
+            onChange={(event) => onFilterChange({ query: event.target.value })}
+            placeholder="搜索标题、作者或关键词"
+          />
+        </label>
+        <label className="filter-field tag-filter">
+          <Tag size={17} />
+          <input
+            value={tagInput}
+            onChange={(event) => onTagInputChange(event.target.value)}
+            placeholder="按标签筛选，例如 breeding"
+          />
+          <button
+            className="secondary-button compact"
+            disabled={!tagInput.trim()}
+            onClick={() => onAddTag(tagInput)}
+            type="button"
+          >
+            添加
+          </button>
+        </label>
+        <button className="primary-button" disabled={!hasBridge || loadingFeed} type="submit">
+          搜索
+        </button>
+        <button className="secondary-button" disabled={!hasFilters || loadingFeed} onClick={onClearFilters} type="button">
+          清除
+        </button>
+      </form>
+
+      {filters.tags.length ? (
+        <div className="active-filter-tags">
+          {filters.tags.map((tag) => (
+            <button key={tag} onClick={() => onRemoveTag(tag)} type="button">
+              {tag}
+              <X size={13} />
+            </button>
+          ))}
+        </div>
+      ) : null}
+
+      {loadingFeed && !videos.length ? (
+        <SkeletonGrid />
+      ) : videos.length ? (
+        <>
+          <ListScanSummary result={activeFeed} />
+          <div className="video-grid">
+            {videos.map((video) => (
+              <VideoCard
+                key={video.id}
+                loading={loadingVideoId === video.id}
+                onOpen={() => onOpen(video.id)}
+                onQuickPlay={() => onQuickPlay(video)}
+                quickPlaying={quickPlayingId === video.id}
+                video={video}
+              />
+            ))}
+          </div>
+
+          <div className="pager">
+            <button
+              disabled={!hasBridge || loadingFeed || (activeFeed?.page ?? 0) <= 0}
+              onClick={() => onPage(Math.max((activeFeed?.page ?? 0) - 1, 0))}
+              type="button"
+            >
+              上一页
+            </button>
+            <span>第 {(activeFeed?.page ?? 0) + 1} 页</span>
+            <button
+              disabled={!hasBridge || loadingFeed}
+              onClick={() => onPage((activeFeed?.page ?? 0) + 1)}
+              type="button"
+            >
+              下一页
+            </button>
+          </div>
+        </>
+      ) : (
+        <EmptyState
+          Icon={Search}
+          title="这里还没有视频"
+          actionLabel="重新加载"
+          disabled={!hasBridge || loadingFeed}
+          onAction={onRefresh}
+        />
+      )}
+    </>
+  );
+}
+
+function ListScanSummary({ result }: { result?: VideoListResult }) {
+  if (!result || (!result.scannedPages && !result.blockedCount && !result.partialFailures?.length)) {
+    return null;
+  }
+
+  return (
+    <div className="list-scan-summary">
+      {result.scannedPages ? <span>已扫描 {result.scannedPages} 页</span> : null}
+      {result.blockedCount ? <span>已隐藏 {result.blockedCount} 个屏蔽标签视频</span> : null}
+      {result.partialFailures?.length ? <span>{result.partialFailures.length} 个请求失败，已显示部分结果</span> : null}
+    </div>
+  );
+}
+
+function DetailPanel({
+  siteSessionReady,
+  playing,
+  selectedQuality,
+  sortedFormats,
+  diagnostics,
+  diagnosing,
+  video,
+  onDiagnose,
+  onBlockTag,
+  onClose,
+  onCommentDraftChange,
+  onFilterTag,
+  onFollowTag,
+  onOpenAuthor,
+  onPlay,
+  onQualityChange,
+  onRefreshComments,
+  onReplyDraftChange,
+  onReplyToggle,
+  onSubmitComment,
+  commentDraft,
+  comments,
+  loadingComments,
+  replyDrafts,
+  replyingTo,
+  submittingComment,
+  tagPreferences
+}: {
+  siteSessionReady: boolean;
+  playing: boolean;
+  selectedQuality?: string;
+  sortedFormats: VideoDetail["formats"];
+  diagnostics?: IwaraVideoDiagnostics;
+  diagnosing: boolean;
+  video: VideoDetail;
+  onDiagnose: () => void;
+  onBlockTag: (tag: string) => void;
+  onClose: () => void;
+  onCommentDraftChange: (value: string) => void;
+  onFilterTag: (tag: string) => void;
+  onFollowTag: (tag: string) => void;
+  onOpenAuthor: (video: VideoDetail) => void;
+  onPlay: (mode: PlayerMode) => void;
+  onQualityChange: (quality: string) => void;
+  onRefreshComments: () => void;
+  onReplyDraftChange: (commentId: string, value: string) => void;
+  onReplyToggle: (commentId: string) => void;
+  onSubmitComment: (parentId?: string) => void;
+  commentDraft: string;
+  comments?: VideoCommentsResult;
+  loadingComments: boolean;
+  replyDrafts: Record<string, string>;
+  replyingTo?: string;
+  submittingComment: boolean;
+  tagPreferences: AppSettings["tagPreferences"];
+}) {
+  const authorName = video.uploaderName ?? video.uploaderUsername ?? "Unknown";
+  const displayedComments = comments?.comments ?? [];
+  const followedTags = new Set(tagPreferences.followedTags);
+  const blockedTags = new Set(tagPreferences.blockedTags);
+
+  return (
+    <aside className="detail-panel">
+      <div className="detail-art">
+        <button aria-label="关闭视频预览" className="detail-close-button" onClick={onClose} type="button">
+          <X size={18} />
+        </button>
+        {video.thumbnailUrl ? (
+          <img alt={video.title} src={video.thumbnailUrl} />
+        ) : (
+          <div className="empty-art">NO IMAGE</div>
+        )}
+      </div>
+      <div className="detail-body">
+        <div className="detail-author-row">
+          <div>
+            <p className="eyebrow">作者</p>
+            <strong>{authorName}</strong>
+            {video.uploaderUsername && <span>@{video.uploaderUsername}</span>}
+          </div>
+          <button
+            className="secondary-button compact"
+            disabled={!video.uploaderId}
+            onClick={() => onOpenAuthor(video)}
+            type="button"
+          >
+            <UserRound size={17} />
+            主页
+          </button>
+        </div>
+        <h2>{video.title}</h2>
+        <div className="metric-row">
+          <span>{compactNumber(video.numViews)} 观看</span>
+          <span>{compactNumber(video.numLikes)} 喜欢</span>
+          {video.durationSeconds ? <span>{formatDuration(video.durationSeconds)}</span> : null}
+          <span>{formatDate(video.createdAt)}</span>
+        </div>
+
+        <div className="detail-section">
+          <strong>简介</strong>
+          <p className="detail-description">{video.description ?? "没有简介。"}</p>
+        </div>
+
+        <div className="detail-section">
+          <strong>
+            <Tag size={15} />
+            标签
+          </strong>
+          {video.tags.length ? (
+            <div className="tag-list">
+              {video.tags.map((tag) => (
+                <span className="tag-action-group" key={tag}>
+                  <button onClick={() => onFilterTag(tag)} type="button">
+                    {tag}
+                  </button>
+                  <button
+                    aria-label={`关注 ${tag}`}
+                    className={followedTags.has(normalizeTagLabel(tag)) ? "tag-mini-button active" : "tag-mini-button"}
+                    disabled={blockedTags.has(normalizeTagLabel(tag))}
+                    onClick={() => onFollowTag(tag)}
+                    type="button"
+                  >
+                    <Star size={12} />
+                  </button>
+                  <button
+                    aria-label={`屏蔽 ${tag}`}
+                    className={blockedTags.has(normalizeTagLabel(tag)) ? "tag-mini-button danger active" : "tag-mini-button danger"}
+                    onClick={() => onBlockTag(tag)}
+                    type="button"
+                  >
+                    <Ban size={12} />
+                  </button>
+                </span>
+              ))}
+            </div>
+          ) : (
+            <p className="subtle">没有标签。</p>
+          )}
+        </div>
+
+        {sortedFormats.length ? (
+          <div className="quality-panel">
+            <label className="field-label">
+              清晰度
+              <select value={selectedQuality ?? ""} onChange={(event) => onQualityChange(event.target.value)}>
+                {sortedFormats.map((format) => (
+                  <option key={format.id} value={format.id}>
+                    {format.label}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <p className="subtle">
+              Iwara 当前只返回：{sortedFormats.map((format) => format.label).join(" / ")}。
+              {siteSessionReady
+                ? "如果网页版也没有更高清晰度，通常是视频源或站点转码限制。"
+                : "如果网页版有 Source/540，请先在设置里完成应用内验证后重新打开视频。"}
+            </p>
+          </div>
+        ) : (
+          <div className="inline-warning">没有可用直链清晰度。</div>
+        )}
+
+        <div className="play-row">
+          <button className="primary-button" disabled={playing || !sortedFormats.length} onClick={() => onPlay("mpv")} type="button">
+            {playing ? <Loader2 className="spin" size={18} /> : <Play size={18} />}
+            MPV
+          </button>
+          <button className="secondary-button" disabled={playing || !sortedFormats.length} onClick={() => onPlay("external")} type="button">
+            <ExternalLink size={18} />
+            外部
+          </button>
+        </div>
+
+        <button className="secondary-button" disabled={diagnosing} onClick={onDiagnose} type="button">
+          {diagnosing ? <Loader2 className="spin" size={18} /> : <Search size={18} />}
+          抓包诊断
+        </button>
+
+        {diagnostics && <VideoDiagnosticsPanel diagnostics={diagnostics} />}
+
+        <div className="detail-section">
+          <strong>
+            <MessageCircle size={15} />
+            评论 {compactNumber(comments?.total ?? video.numComments)}
+          </strong>
+          <CommentComposer
+            disabled={submittingComment}
+            onChange={onCommentDraftChange}
+            onSubmit={() => onSubmitComment()}
+            placeholder="写一条评论"
+            value={commentDraft}
+          />
+          <button className="secondary-button compact" disabled={loadingComments} onClick={onRefreshComments} type="button">
+            {loadingComments ? <Loader2 className="spin" size={17} /> : <RefreshCw size={17} />}
+            刷新评论
+          </button>
+          {loadingComments && !displayedComments.length ? (
+            <div className="inline-warning">正在加载完整评论区。</div>
+          ) : displayedComments.length ? (
+            <CommentList
+              comments={displayedComments}
+              loading={submittingComment}
+              onDraftChange={onReplyDraftChange}
+              onReplyToggle={onReplyToggle}
+              onSubmit={onSubmitComment}
+              replyDrafts={replyDrafts}
+              replyingTo={replyingTo}
+            />
+          ) : (
+            <p className="subtle">还没有评论。</p>
+          )}
+        </div>
+      </div>
+    </aside>
+  );
+}
+
+function CommentComposer({
+  disabled,
+  onChange,
+  onSubmit,
+  placeholder,
+  value
+}: {
+  disabled: boolean;
+  onChange: (value: string) => void;
+  onSubmit: () => void;
+  placeholder: string;
+  value: string;
+}) {
+  return (
+    <div className="comment-composer">
+      <textarea
+        disabled={disabled}
+        onChange={(event) => onChange(event.target.value)}
+        placeholder={placeholder}
+        rows={3}
+        value={value}
+      />
+      <button className="primary-button" disabled={disabled || !value.trim()} onClick={onSubmit} type="button">
+        {disabled ? <Loader2 className="spin" size={17} /> : <Send size={17} />}
+        发送
+      </button>
+    </div>
+  );
+}
+
+function CommentList({
+  comments,
+  loading,
+  onDraftChange,
+  onReplyToggle,
+  onSubmit,
+  replyDrafts,
+  replyingTo,
+  depth = 0
+}: {
+  comments: VideoComment[];
+  loading: boolean;
+  onDraftChange: (commentId: string, value: string) => void;
+  onReplyToggle: (commentId: string) => void;
+  onSubmit: (parentId?: string) => void;
+  replyDrafts: Record<string, string>;
+  replyingTo?: string;
+  depth?: number;
+}) {
+  return (
+    <div className={depth ? "comment-list replies" : "comment-list"}>
+      {comments.map((comment) => (
+        <article className="comment-item" key={comment.id}>
+          <div className="comment-meta">
+            <strong>{comment.authorName ?? comment.authorUsername ?? "Unknown"}</strong>
+            <span>{formatDate(comment.createdAt)}</span>
+          </div>
+          <p>{comment.body}</p>
+          <div className="comment-actions">
+            <small>
+              {compactNumber(comment.numLikes)} 喜欢
+              {comment.numReplies ? ` · ${compactNumber(comment.numReplies)} 回复` : ""}
+            </small>
+            <button className="comment-reply-button" onClick={() => onReplyToggle(comment.id)} type="button">
+              <CornerDownRight size={14} />
+              回复
+            </button>
+          </div>
+          {replyingTo === comment.id && (
+            <CommentComposer
+              disabled={loading}
+              onChange={(value) => onDraftChange(comment.id, value)}
+              onSubmit={() => onSubmit(comment.id)}
+              placeholder={`回复 ${comment.authorName ?? comment.authorUsername ?? "评论"}`}
+              value={replyDrafts[comment.id] ?? ""}
+            />
+          )}
+          {comment.replies.length ? (
+            <CommentList
+              comments={comment.replies}
+              depth={depth + 1}
+              loading={loading}
+              onDraftChange={onDraftChange}
+              onReplyToggle={onReplyToggle}
+              onSubmit={onSubmit}
+              replyDrafts={replyDrafts}
+              replyingTo={replyingTo}
+            />
+          ) : null}
+        </article>
+      ))}
+    </div>
+  );
+}
+
+function VideoDiagnosticsPanel({ diagnostics }: { diagnostics: IwaraVideoDiagnostics }) {
+  const networkFormats = diagnostics.network?.entries.filter((entry) => entry.formatLabels.length) ?? [];
+
+  return (
+    <div className="diagnostics-panel">
+      <strong>API 对比</strong>
+      <div className="diagnostics-list">
+        <span>应用解析：{formatLabelsText(diagnostics.appFormatLabels)}</span>
+        {diagnostics.probes.map((probe) => (
+          <span key={probe.label}>
+            {probe.label}：{probe.ok ? `${probe.status ?? "-"} · ${formatLabelsText(probe.formatLabels)}` : probe.error}
+          </span>
+        ))}
+        {networkFormats.length ? (
+          networkFormats.map((entry) => (
+            <span key={`${entry.method}-${entry.url}-${entry.status}`}>
+              网页抓包：{entry.status ?? "-"} · {entry.xVersion ? `X ${entry.xVersion.slice(0, 8)}` : "X -"} · {entry.hasAuthorization ? "Bearer" : "无授权"} · {entry.responseShape ?? entry.resourceType ?? "response"} · {formatLabelsText(entry.formatLabels)}
+            </span>
+          ))
+        ) : (
+          <span>
+            网页抓包：{diagnostics.network?.timedOut ? "未在 18 秒内捕获文件列表。" : "未捕获到文件列表响应。"}
+          </span>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function SpeedReportPanel({ report }: { report: MediaSpeedTestReport }) {
+  const sorted = report.results
+    .slice()
+    .sort((a, b) => (b.bytesPerSecond ?? 0) - (a.bytesPerSecond ?? 0));
+
+  return (
+    <div className="speed-report-panel">
+      <strong>
+        <Link2 size={15} />
+        {report.fastestHost ? `最快线路：${report.fastestHost}` : "没有可用线路"}
+      </strong>
+      <div className="speed-report-list">
+        <span>样本：{report.sampleFormatLabel ?? "未知清晰度"} · {report.sampleHost ?? "未知来源"}</span>
+        {sorted.map((result) => (
+          <span key={result.host}>
+            {result.host}：{result.ok ? formatSpeed(result.bytesPerSecond) : result.error ?? "不可用"}
+          </span>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function VideoCard({
+  video,
+  loading,
+  quickPlaying,
+  onOpen,
+  onQuickPlay
+}: {
+  video: VideoSummary;
+  loading: boolean;
+  quickPlaying: boolean;
+  onOpen: () => void;
+  onQuickPlay: () => void;
+}) {
+  return (
+    <article className="video-card">
+      <button className="thumb-button" onClick={onOpen} type="button">
+        <div className="thumb">
+          {video.thumbnailUrl ? <img alt={video.title} src={video.thumbnailUrl} /> : <div className="empty-art">NO IMAGE</div>}
+          {video.durationSeconds ? <span className="duration-badge">{formatDuration(video.durationSeconds)}</span> : null}
+          {loading && <Loader2 className="card-loader spin" size={24} />}
+        </div>
+      </button>
+      <div className="video-copy">
+        <button className="video-title-button" onClick={onOpen} type="button">
+          {video.title}
+        </button>
+        <p>{video.uploaderName ?? video.uploaderUsername ?? "Unknown"}</p>
+        <div className="video-card-footer">
+          <span>{compactNumber(video.numViews)} 观看</span>
+          <span>{compactNumber(video.numLikes)} 喜欢</span>
+          {video.durationSeconds ? <span>{formatDuration(video.durationSeconds)}</span> : null}
+          <button className="quick-play-button" onClick={onQuickPlay} type="button">
+            {quickPlaying ? <Loader2 className="spin" size={16} /> : <Play size={16} />}
+            播放
+          </button>
+        </div>
+      </div>
+    </article>
+  );
+}
+
+function HistoryView({
+  history,
+  onClear,
+  onOpen
+}: {
+  history: AppSettings["history"];
+  onClear: () => void;
+  onOpen: (id: string) => void;
+}) {
+  return (
+    <>
+      <div className="section-header">
+        <div>
+          <p>播放记录</p>
+          <h2>历史</h2>
+        </div>
+        <button className="icon-text-button" disabled={!history.length} onClick={onClear} type="button">
+          <Trash2 size={18} />
+          清空
+        </button>
+      </div>
+      {history.length ? (
+        <div className="history-list">
+          {history.map((item) => (
+            <button className="history-item" key={`${item.video.id}-${item.playedAt}`} onClick={() => onOpen(item.video.id)} type="button">
+              <span>{item.video.title}</span>
+              <small>{item.mode.toUpperCase()} · {item.formatId} · {formatDate(item.playedAt)}</small>
+            </button>
+          ))}
+        </div>
+      ) : (
+        <EmptyState Icon={History} title="还没有播放历史" />
+      )}
+    </>
+  );
+}
+
+function SettingsView({
+  auth,
+  diagnostics,
+  hasBridge,
+  mpvTest,
+  onChooseExternal,
+  onChooseMpv,
+  onOpenIwaraSession,
+  onProbe,
+  onRefreshAuth,
+  onExportMediaHosts,
+  onSniffXVersionSalt,
+  onSpeedTest,
+  onTestMpv,
+  onUpdateIwara,
+  onUpdateMediaSpeed,
+  onUpdatePlayer,
+  onUpdateTagPreferences,
+  iwara,
+  saltReport,
+  saltSniffing,
+  player,
+  probing,
+  selectedVideo,
+  sessionBusy,
+  speedReport,
+  speedSettings,
+  speedTesting,
+  tagPreferences
+}: {
+  auth: AuthState;
+  diagnostics?: PlayerDiagnostics;
+  hasBridge: boolean;
+  mpvTest?: PlayerProbe;
+  onChooseExternal: () => void;
+  onChooseMpv: () => void;
+  onOpenIwaraSession: () => void;
+  onProbe: () => void;
+  onRefreshAuth: () => void;
+  onExportMediaHosts: () => void;
+  onSniffXVersionSalt: () => void;
+  onSpeedTest: () => void;
+  onTestMpv: () => void;
+  onUpdateIwara: (partial: Partial<AppSettings["iwara"]>) => void;
+  onUpdateMediaSpeed: (partial: Partial<AppSettings["mediaSpeed"]>) => void;
+  onUpdatePlayer: (partial: Partial<AppSettings["player"]>) => void;
+  onUpdateTagPreferences: (partial: Partial<AppSettings["tagPreferences"]>) => void;
+  iwara: AppSettings["iwara"];
+  saltReport?: XVersionSaltReport;
+  saltSniffing: boolean;
+  player: AppSettings["player"];
+  probing: boolean;
+  selectedVideo?: VideoDetail;
+  sessionBusy: boolean;
+  speedReport?: MediaSpeedTestReport;
+  speedSettings: AppSettings["mediaSpeed"];
+  speedTesting: boolean;
+  tagPreferences: AppSettings["tagPreferences"];
+}) {
+  return (
+    <>
+      <div className="section-header">
+        <div>
+          <p>本地播放</p>
+          <h2>设置</h2>
+        </div>
+        <button className="icon-text-button" disabled={!hasBridge || probing} onClick={onProbe} type="button">
+          {probing ? <Loader2 className="spin" size={18} /> : <RefreshCw size={18} />}
+          检测
+        </button>
+      </div>
+
+      <div className="settings-grid">
+        <section className="settings-block">
+          <h3>Iwara 会话</h3>
+          <div className={auth.siteTokenReady ? "probe-line ok" : "probe-line bad"}>
+            {auth.siteTokenReady ? <CheckCircle2 size={17} /> : <AlertTriangle size={17} />}
+            <span>
+              {auth.siteTokenReady
+                ? `已检测到网页登录 token（${auth.siteTokenKey ?? "storage"}）。`
+                : auth.siteSessionReady
+                  ? `只有 Iwara cookie（${auth.siteCookieCount ?? 0} 个），还没有网页登录 token。`
+                  : "尚未完成应用内 Iwara 验证。"}
+            </span>
+          </div>
+          <div className="settings-actions">
+            <button className="primary-button" disabled={!hasBridge || sessionBusy} onClick={onOpenIwaraSession} type="button">
+              {sessionBusy ? <Loader2 className="spin" size={18} /> : <LogIn size={18} />}
+              打开 Iwara 验证窗口
+            </button>
+            <button className="secondary-button" disabled={!hasBridge || sessionBusy} onClick={onRefreshAuth} type="button">
+              <RefreshCw size={18} />
+              刷新会话
+            </button>
+          </div>
+          <p className="subtle">
+            在弹出的应用内窗口完成 Cloudflare 验证并登录；检测到网页登录 token 后窗口会自动关闭，应用请求会复用抓取到的 token 和 cookie。
+          </p>
+          {auth.warning && <p className="subtle">{auth.warning}</p>}
+        </section>
+
+        <section className="settings-block compact-block">
+          <h3>播放偏好</h3>
+          <label className="field-label">
+            默认播放器
+            <select
+              value={player.preferredMode}
+              onChange={(event) => onUpdatePlayer({ preferredMode: event.target.value as PlayerMode })}
+            >
+              <option value="mpv">内置 MPV</option>
+              <option value="external">外部播放器</option>
+            </select>
+          </label>
+        </section>
+
+        <section className="settings-block">
+          <h3>Iwara 解析</h3>
+          <label className="toggle-row">
+            <input
+              checked={iwara.autoSniffXVersionSalt}
+              onChange={(event) => onUpdateIwara({ autoSniffXVersionSalt: event.target.checked })}
+              type="checkbox"
+            />
+            <span>打开视频前自动嗅探 X-Version 盐值</span>
+          </label>
+          <label className="field-label">
+            X-Version 盐值
+            <input
+              value={iwara.xVersionSalt}
+              onChange={(event) => onUpdateIwara({ xVersionSalt: event.target.value.trim() })}
+              placeholder="从 Iwara 前端脚本自动嗅探"
+            />
+          </label>
+          <div className="settings-actions">
+            <button className="secondary-button" disabled={!hasBridge || saltSniffing} onClick={onSniffXVersionSalt} type="button">
+              {saltSniffing ? <Loader2 className="spin" size={18} /> : <Search size={18} />}
+              嗅探盐值
+            </button>
+          </div>
+          <div className="probe-line ok">
+            <CheckCircle2 size={17} />
+            <span>
+              当前盐值：{iwara.xVersionSalt}
+              {iwara.lastSaltSniffAt ? ` · ${formatFullDate(iwara.lastSaltSniffAt)}` : ""}
+            </span>
+          </div>
+          {saltReport && (
+            <code className="args-preview">
+              {saltReport.sourceUrl}
+            </code>
+          )}
+          <p className="subtle">
+            应用会从 Iwara 网页前端脚本里识别生成 X-Version 的盐值；站点更新后可手动刷新。
+          </p>
+        </section>
+
+        <section className="settings-block">
+          <h3>Iwara 视频线路</h3>
+          <label className="toggle-row">
+            <input
+              checked={speedSettings.autoTest}
+              onChange={(event) => onUpdateMediaSpeed({ autoTest: event.target.checked })}
+              type="checkbox"
+            />
+            <span>域名池未测速时自动测速一次</span>
+          </label>
+          <label className="toggle-row">
+            <input
+              checked={speedSettings.replaceLinks}
+              onChange={(event) => onUpdateMediaSpeed({ replaceLinks: event.target.checked })}
+              type="checkbox"
+            />
+            <span>播放时替换为测速最快 CDN 域名</span>
+          </label>
+          <label className="field-label">
+            域名池
+            <textarea
+              rows={5}
+              value={speedSettings.candidateHosts.join("\n")}
+              onChange={(event) => onUpdateMediaSpeed({ candidateHosts: event.target.value.split(/[\s,;]+/).filter(Boolean) })}
+              placeholder="自动发现，也可粘贴：jade.iwara.tv&#10;kafka.iwara.tv"
+            />
+          </label>
+          {speedSettings.rankedHosts.length ? (
+            <div className="probe-line ok">
+              <Gauge size={17} />
+              <span>
+                当前排序：{speedSettings.rankedHosts.join(" / ")}
+                {speedSettings.lastTestedAt ? ` · ${formatFullDate(speedSettings.lastTestedAt)}` : ""}
+              </span>
+            </div>
+          ) : (
+            <div className="probe-line bad">
+              <AlertTriangle size={17} />
+              <span>域名池还没有测速排序，需先打开一个视频作为测速样本。</span>
+            </div>
+          )}
+          <div className="speed-options">
+            <label className="field-label">
+              读取量
+              <select
+                value={speedSettings.testBytes}
+                onChange={(event) => onUpdateMediaSpeed({ testBytes: Number(event.target.value) })}
+              >
+                <option value={262144}>256 KB</option>
+                <option value={524288}>512 KB</option>
+                <option value={1048576}>1 MB</option>
+              </select>
+            </label>
+            <label className="field-label">
+              超时
+              <select
+                value={speedSettings.timeoutMs}
+                onChange={(event) => onUpdateMediaSpeed({ timeoutMs: Number(event.target.value) })}
+              >
+                <option value={3000}>3 秒</option>
+                <option value={4500}>4.5 秒</option>
+                <option value={7000}>7 秒</option>
+              </select>
+            </label>
+          </div>
+          <button className="secondary-button" disabled={!hasBridge || !selectedVideo || speedTesting} onClick={onSpeedTest} type="button">
+            {speedTesting ? <Loader2 className="spin" size={18} /> : <Gauge size={18} />}
+            用当前视频全局测速
+          </button>
+          <button className="secondary-button" disabled={!hasBridge || !speedSettings.candidateHosts.length} onClick={onExportMediaHosts} type="button">
+            <ClipboardCopy size={18} />
+            导出域名池
+          </button>
+          <p className="subtle">
+            当前视频、网页抓包和测速结果里发现的新媒体域名会自动加入这里。替换功能只改最终播放直链的域名；如遇到 403 或播放失败，关闭替换即可回到原始链接。
+          </p>
+          {speedReport && <SpeedReportPanel report={speedReport} />}
+        </section>
+
+        <section className="settings-block">
+          <h3>标签偏好</h3>
+          <label className="field-label">
+            关注标签
+            <textarea
+              rows={4}
+              value={tagPreferences.followedTags.join("\n")}
+              onChange={(event) => onUpdateTagPreferences({ followedTags: event.target.value.split(/[\s,;，；]+/).filter(Boolean) })}
+              placeholder="每行一个标签，例如 breeding"
+            />
+          </label>
+          <label className="field-label">
+            屏蔽标签
+            <textarea
+              rows={4}
+              value={tagPreferences.blockedTags.join("\n")}
+              onChange={(event) => onUpdateTagPreferences({ blockedTags: event.target.value.split(/[\s,;，；]+/).filter(Boolean) })}
+              placeholder="命中这些标签的视频会被隐藏"
+            />
+          </label>
+          <div className="speed-options">
+            <label className="field-label">
+              扫描页数
+              <select
+                value={tagPreferences.maxScanPages}
+                onChange={(event) => onUpdateTagPreferences({ maxScanPages: Number(event.target.value) })}
+              >
+                <option value={3}>3 页</option>
+                <option value={5}>5 页</option>
+                <option value={8}>8 页</option>
+                <option value={10}>10 页</option>
+              </select>
+            </label>
+            <label className="field-label">
+              请求间隔
+              <select
+                value={tagPreferences.requestDelayMs}
+                onChange={(event) => onUpdateTagPreferences({ requestDelayMs: Number(event.target.value) })}
+              >
+                <option value={0}>不等待</option>
+                <option value={250}>250 ms</option>
+                <option value={500}>500 ms</option>
+                <option value={1000}>1 秒</option>
+              </select>
+            </label>
+          </div>
+          <div className="probe-line ok">
+            <Shield size={17} />
+            <span>屏蔽标签优先于关注标签。保存时若同一标签同时出现，会保留在屏蔽列表并从关注列表移除。</span>
+          </div>
+        </section>
+
+        <section className="settings-block">
+          <h3>内置 MPV</h3>
+          <label className="field-label">
+            MPV 路径
+            <div className="path-row">
+              <input
+                value={player.mpvPath ?? ""}
+                onChange={(event) => onUpdatePlayer({ mpvPath: event.target.value || undefined })}
+                placeholder="自动使用打包内置 MPV，也可手动指定 mpv.exe"
+              />
+              <button className="secondary-button compact" disabled={!hasBridge} onClick={onChooseMpv} type="button">
+                <FolderOpen size={17} />
+                选择
+              </button>
+            </div>
+          </label>
+          <ProbeLine probe={diagnostics?.mpv} />
+          {mpvTest && <ProbeLine probe={mpvTest} />}
+          <button className="secondary-button" disabled={!hasBridge || probing} onClick={onTestMpv} type="button">
+            <MonitorPlay size={18} />
+            测试 MPV
+          </button>
+        </section>
+
+        <section className="settings-block">
+          <h3>外部播放器</h3>
+          <label className="field-label">
+            播放器路径
+            <div className="path-row">
+              <input
+                value={player.externalPlayerPath ?? ""}
+                onChange={(event) => onUpdatePlayer({ externalPlayerPath: event.target.value || undefined })}
+                placeholder="例如 PotPlayerMini64.exe"
+              />
+              <button className="secondary-button compact" disabled={!hasBridge} onClick={onChooseExternal} type="button">
+                <FolderOpen size={17} />
+                选择
+              </button>
+            </div>
+          </label>
+          <label className="field-label">
+            启动参数
+            <input
+              value={player.externalPlayerArgs}
+              onChange={(event) => onUpdatePlayer({ externalPlayerArgs: event.target.value })}
+            />
+          </label>
+          <ProbeLine probe={diagnostics?.external} />
+          {diagnostics?.externalArgsPreview.length ? (
+            <code className="args-preview">{diagnostics.externalArgsPreview.join(" ")}</code>
+          ) : null}
+        </section>
+      </div>
+    </>
+  );
+}
+
+function ActionNotice({ issue, onAction }: { issue: UiIssue; onAction: () => void }) {
+  return (
+    <div className="notice danger action-notice">
+      <AlertTriangle size={20} />
+      <div>
+        <strong>{issue.title}</strong>
+        <span>{issue.detail}</span>
+      </div>
+      <button className="secondary-button compact" onClick={onAction} type="button">
+        {issue.actionLabel}
+      </button>
+    </div>
+  );
+}
+
+function ProbeLine({ probe }: { probe?: PlayerProbe }) {
+  if (!probe) {
+    return null;
+  }
+
+  return (
+    <div className={probe.ok ? "probe-line ok" : "probe-line bad"}>
+      {probe.ok ? <CheckCircle2 size={17} /> : <AlertTriangle size={17} />}
+      <span>{probe.message}</span>
+    </div>
+  );
+}
+
+function EmptyState({
+  Icon,
+  title,
+  actionLabel,
+  disabled,
+  onAction
+}: {
+  Icon: LucideIcon;
+  title: string;
+  actionLabel?: string;
+  disabled?: boolean;
+  onAction?: () => void;
+}) {
+  return (
+    <div className="empty-state">
+      <Icon size={32} />
+      <h3>{title}</h3>
+      {actionLabel && onAction && (
+        <button className="secondary-button" disabled={disabled} onClick={onAction} type="button">
+          {actionLabel}
+        </button>
+      )}
+    </div>
+  );
+}
+
+function SkeletonGrid() {
+  return (
+    <div className="video-grid">
+      {Array.from({ length: 8 }).map((_, index) => (
+        <div className="skeleton-card" key={index}>
+          <div />
+          <span />
+          <small />
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function feedTitle(tab: FeedTabKey): string {
+  if (tab === "followed") {
+    return "关注标签";
+  }
+
+  return tab === "date" ? "刚刚发布" : tab === "trending" ? "正在升温" : "长期热门";
+}
+
+function compactNumber(value: number): string {
+  return new Intl.NumberFormat("zh-CN", { notation: "compact" }).format(value);
+}
+
+function formatDate(value?: string): string {
+  if (!value) {
+    return "未知时间";
+  }
+
+  return new Intl.DateTimeFormat("zh-CN", { month: "short", day: "numeric" }).format(new Date(value));
+}
+
+function formatFullDate(value: string): string {
+  return new Intl.DateTimeFormat("zh-CN", {
+    month: "short",
+    day: "numeric",
+    hour: "2-digit",
+    minute: "2-digit"
+  }).format(new Date(value));
+}
+
+function formatDuration(seconds: number): string {
+  const safeSeconds = Math.max(0, Math.round(seconds));
+  const hours = Math.floor(safeSeconds / 3600);
+  const minutes = Math.floor((safeSeconds % 3600) / 60);
+  const rest = safeSeconds % 60;
+  const padded = (value: number) => value.toString().padStart(2, "0");
+
+  return hours > 0
+    ? `${hours}:${padded(minutes)}:${padded(rest)}`
+    : `${minutes}:${padded(rest)}`;
+}
+
+function playStatus(result: { mode: PlayerMode; format: { label: string }; fallbackFrom?: string }): string {
+  const player = result.mode === "mpv" ? "MPV" : "外部播放器";
+  const fallback = result.fallbackFrom ? `，${result.fallbackFrom} 不可用，已改用 ${result.format.label}` : `：${result.format.label}`;
+  return `已启动 ${player}${fallback}`;
+}
+
+function formatLabelsText(labels: string[]): string {
+  return labels.length ? labels.join(" / ") : "无清晰度";
+}
+
+function formatSpeed(bytesPerSecond?: number): string {
+  if (!bytesPerSecond) {
+    return "未知速度";
+  }
+
+  if (bytesPerSecond >= 1024 * 1024) {
+    return `${(bytesPerSecond / 1024 / 1024).toFixed(1)} MB/s`;
+  }
+
+  return `${Math.max(Math.round(bytesPerSecond / 1024), 1)} KB/s`;
+}
+
+function normalizeTagTokens(tags: string[]): string[] {
+  return [...new Set(
+    tags
+      .flatMap((tag) => tag.split(/[\s,;，；]+/))
+      .map(normalizeTagLabel)
+      .filter(Boolean)
+  )];
+}
+
+function normalizeTagLabel(tag: string): string {
+  return tag.trim().toLowerCase();
+}
+
+function bestFormat(formats: VideoDetail["formats"]) {
+  return formats.slice().sort((a, b) => b.qualityRank - a.qualityRank)[0];
+}
+
+function bestQualityRank(formats: VideoDetail["formats"]) {
+  return formats.reduce((best, format) => Math.max(best, format.qualityRank), 0);
+}
+
+function errorText(err: unknown): string {
+  return err instanceof Error ? err.message : String(err);
+}
+
+function delay(ms: number): Promise<void> {
+  return new Promise((resolve) => {
+    window.setTimeout(resolve, ms);
+  });
+}

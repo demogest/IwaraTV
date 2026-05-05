@@ -1,0 +1,41 @@
+{
+  "name": "iwara-tv-local-player",
+  "version": "0.2.0",
+  "private": true,
+  "description": "Local Iwara.tv browser and MPV launcher.",
+  "author": "Demogest",
+  "engines": {
+    "node": ">=24.14.1",
+    "npm": ">=11.11.0"
+  },
+  "scripts": {
+    "dev": "vite --host 127.0.0.1",
+    "dev:tauri": "tauri dev",
+    "build:renderer": "vite build",
+    "build": "npm run build:renderer",
+    "build:tauri": "tauri build",
+    "icons:build": "node scripts/generate-icons.mjs && tauri icon build/icons/icon.png --output build/icons",
+    "mpv:update": "node scripts/install-mpv.mjs",
+    "dist:win": "npm run mpv:update && npm run icons:build && npm run build:tauri -- --bundles nsis",
+    "pack:win": "npm run mpv:update && npm run icons:build && tauri build --no-bundle",
+    "preview": "vite preview --host 127.0.0.1",
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "lucide-react": "^1.14.0",
+    "react": "^19.2.5",
+    "react-dom": "^19.2.5"
+  },
+  "devDependencies": {
+    "@tauri-apps/cli": "2.11.0",
+    "@types/node": "^25.6.0",
+    "@types/react": "^19.2.14",
+    "@types/react-dom": "^19.2.3",
+    "@vitejs/plugin-react": "^6.0.1",
+    "7zip-bin": "^5.2.0",
+    "typescript": "^6.0.3",
+    "vite": "^8.0.10",
+    "vitest": "^4.1.5"
+  }
+}

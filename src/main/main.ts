@@ -17,7 +17,16 @@ function getAppIconPath(): string {
   return path.join(__dirname, "../../build/icons/icon.ico");
 }
 
-function createWindow(): void {
+function loadMainWindow(window: BrowserWindow): void {
+  const devUrl = process.env.ELECTRON_RENDERER_URL;
+  if (devUrl) {
+    window.loadURL(devUrl);
+  } else {
+    window.loadFile(path.join(__dirname, "../../dist/index.html"));
+  }
+}
+
+function createWindow(loadNow = true): void {
   mainWindow = new BrowserWindow({
     width: 1280,
     height: 820,
@@ -39,15 +48,14 @@ function createWindow(): void {
     return { action: "deny" };
   });
 
-  const devUrl = process.env.ELECTRON_RENDERER_URL;
-  if (devUrl) {
-    mainWindow.loadURL(devUrl);
-  } else {
-    mainWindow.loadFile(path.join(__dirname, "../../dist/index.html"));
+  if (loadNow) {
+    loadMainWindow(mainWindow);
   }
 }
 
 app.whenReady().then(() => {
+  createWindow(false);
+
   const settingsStore = new SettingsStore(app.getPath("userData"));
   const authStore = new AuthStore(app.getPath("userData"));
   const iwaraSessionService = new IwaraSessionService();
@@ -60,7 +68,7 @@ app.whenReady().then(() => {
   const playerService = new PlayerService(iwaraClient, settingsStore);
 
   registerIpc(iwaraClient, playerService, settingsStore, iwaraSessionService);
-  createWindow();
+  loadMainWindow(mainWindow!);
 
   app.on("activate", () => {
     if (BrowserWindow.getAllWindows().length === 0) {

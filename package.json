@@ -1,6 +1,6 @@
 {
   "name": "iwara-tv-local-player",
-  "version": "0.1.6",
+  "version": "0.1.7",
   "private": true,
   "description": "Local Iwara.tv browser and MPV launcher.",
   "author": "Demogest",
@@ -17,7 +17,7 @@
     "build": "npm run build:main && npm run build:renderer",
     "icons:build": "node scripts/generate-icons.mjs",
     "mpv:update": "node scripts/install-mpv.mjs",
-    "dist:win": "npm run mpv:update && npm run icons:build && npm run build && electron-builder --win portable --x64",
+    "dist:win": "npm run mpv:update && npm run icons:build && npm run build && electron-builder --win portable nsis zip --x64",
     "pack:win": "npm run mpv:update && npm run icons:build && npm run build && electron-builder --win dir --x64",
     "preview": "vite preview --host 127.0.0.1",
     "test": "vitest run",
@@ -26,6 +26,7 @@
   "build": {
     "appId": "local.iwaratv.player",
     "productName": "IwaraTV",
+    "artifactName": "${productName}-${version}-win-${arch}.${ext}",
     "asar": true,
     "directories": {
       "output": "release"
@@ -48,7 +49,11 @@
         "from": "vendor/mpv",
         "to": "mpv",
         "filter": [
-          "**/*"
+          "mpv.exe",
+          "mpv.com",
+          "*.dll",
+          "mpv/**",
+          "mpv-manifest.json"
         ]
       }
     ],
@@ -60,12 +65,31 @@
           "arch": [
             "x64"
           ]
+        },
+        {
+          "target": "nsis",
+          "arch": [
+            "x64"
+          ]
+        },
+        {
+          "target": "zip",
+          "arch": [
+            "x64"
+          ]
         }
       ],
       "artifactName": "${productName}-${version}-portable-${arch}.${ext}"
     },
     "portable": {
       "artifactName": "${productName}-${version}-portable-${arch}.${ext}"
+    },
+    "nsis": {
+      "artifactName": "${productName}-${version}-setup-${arch}.${ext}",
+      "oneClick": false,
+      "perMachine": false,
+      "allowToChangeInstallationDirectory": true,
+      "deleteAppDataOnUninstall": false
     }
   },
   "dependencies": {

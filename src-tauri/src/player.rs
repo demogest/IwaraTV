@@ -240,22 +240,32 @@ impl PlayerService {
     }
 
     fn resolve_mpv_path(&self, configured_path: Option<&str>) -> Option<PathBuf> {
-        let mut candidates = Vec::new();
-        if let Some(configured_path) = configured_path {
-            candidates.push(PathBuf::from(configured_path));
-        }
-        candidates.push(PathBuf::from("vendor").join("mpv").join("mpv.exe"));
-        if let Ok(resource) = self.app.path().resource_dir() {
-            candidates.push(resource.join("mpv").join("mpv.exe"));
-        }
-        if let Some(path) = find_on_path("mpv.exe") {
-            candidates.push(path);
-        }
-        if let Some(path) = find_on_path("mpv") {
-            candidates.push(path);
+        if let Some(configured_path) = configured_path
+            .map(str::trim)
+            .filter(|path| !path.is_empty())
+        {
+            let path = PathBuf::from(configured_path);
+            if path.is_file() {
+                return Some(path);
+            }
         }
 
-        candidates.into_iter().find(|path| path.exists())
+        let bundled_dev_path = PathBuf::from("vendor").join("mpv").join("mpv.exe");
+        if bundled_dev_path.is_file() {
+            return Some(bundled_dev_path);
+        }
+
+        if let Ok(resource) = self.app.path().resource_dir() {
+            let path = resource.join("mpv").join("mpv.exe");
+            if path.is_file() {
+                return Some(path);
+            }
+        }
+
+        if let Some(path) = find_on_path("mpv.exe") {
+            return Some(path);
+        }
+        find_on_path("mpv")
     }
 }
 
@@ -274,7 +284,14 @@ async fn launch_player(player_path: &Path, args: &[String]) -> AppResult<()> {
 
 fn find_on_path(command: &str) -> Option<PathBuf> {
     let lookup = if cfg!(windows) { "where.exe" } else { "which" };
-    let output = Command::new(lookup).arg(command).output().ok()?;
+    let output = Command::new(lookup)
+        .arg(command)
+        .stdin(Stdio::null())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::null())
+        .creation_flags_windows()
+        .output()
+        .ok()?;
     if !output.status.success() {
         return None;
     }

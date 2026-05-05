@@ -203,6 +203,7 @@ export function App() {
   const [replyingTo, setReplyingTo] = useState<string | undefined>();
   const [submittingComment, setSubmittingComment] = useState(false);
   const [avatarImageReady, setAvatarImageReady] = useState(Boolean(auth.avatarUrl));
+  const videoOpenRequestRef = useRef(0);
 
   const activeFeed = feeds[activeFeedTab];
   const hasApi = Boolean(api);
@@ -408,6 +409,7 @@ export function App() {
       return;
     }
 
+    const requestId = beginVideoOpenRequest();
     const returnSection = activeSection === "detail" ? detailReturnSection : activeSection;
     setDetailReturnSection(returnSection);
     setActiveSection("detail");
@@ -417,8 +419,17 @@ export function App() {
     clearMessages();
     try {
       const video = await api.iwara.getVideo(target);
+      if (!isCurrentVideoOpenRequest(requestId)) {
+        return;
+      }
       const loadedSettings = await api.settings.get();
+      if (!isCurrentVideoOpenRequest(requestId)) {
+        return;
+      }
       const currentAuth = await api.auth.state().catch(() => auth);
+      if (!isCurrentVideoOpenRequest(requestId)) {
+        return;
+      }
       setSettings(loadedSettings);
       setAuth(currentAuth);
       setSelectedVideo(video);
@@ -431,7 +442,13 @@ export function App() {
       let formats = video.formats;
       if (currentAuth.siteTokenReady && bestQualityRank(formats) <= 360) {
         const report = await api.iwara.diagnoseVideo(video.id);
+        if (!isCurrentVideoOpenRequest(requestId)) {
+          return;
+        }
         setSettings(await api.settings.get());
+        if (!isCurrentVideoOpenRequest(requestId)) {
+          return;
+        }
         const capturedFormats = report.network?.entries.flatMap((entry) => entry.formats ?? []) ?? [];
         setVideoDiagnostics(report);
         if (bestQualityRank(capturedFormats) > bestQualityRank(formats)) {
@@ -443,10 +460,19 @@ export function App() {
       if (loadedSettings.mediaSpeed.autoTest && !loadedSettings.mediaSpeed.rankedHosts.length && formats.length) {
         try {
           const report = await api.iwara.speedTestVideo(video.id);
+          if (!isCurrentVideoOpenRequest(requestId)) {
+            return;
+          }
           setSettings(await api.settings.get());
+          if (!isCurrentVideoOpenRequest(requestId)) {
+            return;
+          }
           setSpeedReport(report);
           setStatus(report.fastestHost ? `已完成全局线路测速，最快线路：${report.fastestHost}。` : "全局线路测速完成，没有可用线路。");
         } catch (err) {
+          if (!isCurrentVideoOpenRequest(requestId)) {
+            return;
+          }
           setStatus(`全局线路测速失败，不影响播放：${errorText(err)}。`);
         }
       }
@@ -454,10 +480,14 @@ export function App() {
       const best = bestFormat(formats);
       setSelectedQuality(preferred?.id ?? best?.id);
     } catch (err) {
-      handleError(err);
+      if (isCurrentVideoOpenRequest(requestId)) {
+        handleError(err);
+      }
     } finally {
-      setLoadingVideoId(undefined);
-      setLoadingVideoTitle(undefined);
+      if (isCurrentVideoOpenRequest(requestId)) {
+        setLoadingVideoId(undefined);
+        setLoadingVideoTitle(undefined);
+      }
     }
   }
 
@@ -539,6 +569,7 @@ export function App() {
   }
 
   function closeDetailPanel(nextSection: MainSection = detailReturnSection) {
+    invalidateVideoOpenRequest();
     setSelectedVideo(undefined);
     setSelectedQuality(undefined);
     setVideoDiagnostics(undefined);
@@ -547,7 +578,22 @@ export function App() {
     setReplyDrafts({});
     setCommentDraft("");
     setSpeedReport(undefined);
+    setLoadingVideoId(undefined);
+    setLoadingVideoTitle(undefined);
     setActiveSection(nextSection);
+  }
+
+  function beginVideoOpenRequest() {
+    videoOpenRequestRef.current += 1;
+    return videoOpenRequestRef.current;
+  }
+
+  function invalidateVideoOpenRequest() {
+    videoOpenRequestRef.current += 1;
+  }
+
+  function isCurrentVideoOpenRequest(requestId: number) {
+    return videoOpenRequestRef.current === requestId;
   }
 
   async function setAuthorFollowing(author: ActiveAuthor, following: boolean) {

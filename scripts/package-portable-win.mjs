@@ -1,5 +1,5 @@
 import { createRequire } from "node:module";
-import { cp, mkdir, rm, stat } from "node:fs/promises";
+import { cp, mkdir, readFile, readdir, rm, stat } from "node:fs/promises";
 import { existsSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import path from "node:path";
@@ -24,6 +24,7 @@ const STAGING_DIR = path.join(RELEASE_DIR, `IwaraTV_${VERSION}_${ARCH}-unpacked`
 async function main() {
   assertWorkspacePath(RELEASE_DIR);
   await requireFile(APP_EXE, "Run `npm run build:tauri -- --bundles nsis` before packaging.");
+  await assertReleaseExe(APP_EXE);
   await mkdir(RELEASE_DIR, { recursive: true });
 
   await cp(APP_EXE, PORTABLE_EXE, { force: true });
@@ -65,6 +66,42 @@ async function requireFile(file, hint) {
   const info = await stat(file);
   if (!info.isFile()) {
     throw new Error(`Expected a file: ${file}`);
+  }
+}
+
+async function assertReleaseExe(file) {
+  const raw = await readFile(file);
+  if (!raw.includes(Buffer.from("index.html")) || !raw.includes(Buffer.from("assets/index-"))) {
+    throw new Error(
+      `${file} does not contain the built frontend assets. Run \`npm run build:tauri -- --bundles nsis\` before packaging.`
+    );
+  }
+  await assertReleaseBuildMode();
+}
+
+async function assertReleaseBuildMode() {
+  const buildDir = path.join(TARGET_RELEASE_DIR, "build");
+  const entries = await readdir(buildDir, { withFileTypes: true }).catch(() => []);
+  const outputs = [];
+  for (const entry of entries) {
+    if (!entry.isDirectory() || !entry.name.startsWith("iwaratv-")) {
+      continue;
+    }
+    const output = path.join(buildDir, entry.name, "output");
+    if (existsSync(output)) {
+      outputs.push({ path: output, info: await stat(output) });
+    }
+  }
+  outputs.sort((a, b) => b.info.mtimeMs - a.info.mtimeMs);
+  const latest = outputs[0];
+  if (!latest) {
+    throw new Error("Could not verify the latest Tauri build mode.");
+  }
+  const output = await readFile(latest.path, "utf8");
+  if (output.includes("cargo:rustc-cfg=dev")) {
+    throw new Error(
+      "The latest release build was compiled in Tauri dev mode and would load 127.0.0.1. Run `npm run build:tauri -- --bundles nsis` with the `custom-protocol` feature enabled."
+    );
   }
 }
 

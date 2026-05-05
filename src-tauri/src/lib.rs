@@ -31,7 +31,9 @@ pub fn run() {
             if window.label() == MAIN_WINDOW_LABEL
                 && matches!(event, WindowEvent::CloseRequested { .. })
             {
-                close_auxiliary_webview_windows(window.app_handle());
+                let app = window.app_handle();
+                close_auxiliary_webview_windows(app);
+                app.exit(0);
             }
         })
         .invoke_handler(tauri::generate_handler![

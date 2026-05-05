@@ -14,7 +14,7 @@
     "dev:tauri": "tauri dev --features devtools",
     "build:web": "vite build",
     "build": "npm run build:tauri --",
-    "build:tauri": "tauri build",
+    "build:tauri": "tauri build --features custom-protocol",
     "check:release": "npm run typecheck && npm test && cargo test --manifest-path src-tauri/Cargo.toml",
     "release:portable:win": "node scripts/package-portable-win.mjs",
     "release:win": "npm run check:release && npm run build:tauri -- --bundles nsis && npm run release:portable:win",

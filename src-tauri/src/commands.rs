@@ -10,12 +10,12 @@ use crate::error::{message, AppResult};
 use crate::media_speed::media_url_host;
 use crate::models::{
     AppSettings, AuthState, AuthorFollowRequest, AuthorFollowResult, DownloadDeleteRequest,
-    DownloadResult, DownloadState, DownloadTask, DownloadVideoRequest, IwaraVideoDiagnostics,
-    ListVideoCommentsRequest, ListVideosRequest, LoginRequest, MediaSpeedTestReport,
-    PartialAppSettings, PlayRequest, PlayResult, PlayerDiagnostics, PlayerProbe,
-    SelectDirectoryRequest, SelectDirectoryResult, SelectExecutableRequest, SelectExecutableResult,
-    SendVideoCommentRequest, VideoComment, VideoCommentsResult, VideoDetail, VideoListResult,
-    XVersionSaltReport,
+    DownloadResult, DownloadState, DownloadTask, DownloadVideoRequest, FavoriteFileResult,
+    FavoriteImportResult, FavoriteState, IwaraVideoDiagnostics, ListVideoCommentsRequest,
+    ListVideosRequest, LoginRequest, MediaSpeedTestReport, PartialAppSettings, PlayRequest,
+    PlayResult, PlayerDiagnostics, PlayerProbe, SelectDirectoryRequest, SelectDirectoryResult,
+    SelectExecutableRequest, SelectExecutableResult, SendVideoCommentRequest, VideoComment,
+    VideoCommentsResult, VideoDetail, VideoListResult, VideoSummary, XVersionSaltReport,
 };
 use crate::state::AppState;
 
@@ -223,6 +223,81 @@ pub fn downloads_open_folder(
     app.opener()
         .open_path(directory.to_string_lossy().to_string(), None::<&str>)
         .map_err(|err| message(err.to_string()))
+}
+
+#[tauri::command]
+pub fn favorites_list(state: State<'_, AppState>) -> FavoriteState {
+    state.favorites.state()
+}
+
+#[tauri::command]
+pub fn favorites_add(state: State<'_, AppState>, video: VideoSummary) -> AppResult<FavoriteState> {
+    state.favorites.add(video)
+}
+
+#[tauri::command]
+pub fn favorites_remove(state: State<'_, AppState>, video_id: String) -> AppResult<FavoriteState> {
+    state.favorites.remove(&video_id)
+}
+
+#[tauri::command]
+pub fn favorites_backup(state: State<'_, AppState>) -> AppResult<FavoriteFileResult> {
+    state.favorites.backup()
+}
+
+#[tauri::command]
+pub async fn favorites_export(
+    app: AppHandle,
+    state: State<'_, AppState>,
+) -> AppResult<FavoriteFileResult> {
+    let selected = app
+        .dialog()
+        .file()
+        .set_title("导出收藏 JSON")
+        .add_filter("JSON", &["json"])
+        .add_filter("All Files", &["*"])
+        .set_file_name("iwaratv-favorites.json")
+        .blocking_save_file();
+    let Some(path) = selected else {
+        return Ok(FavoriteFileResult {
+            canceled: true,
+            path: None,
+            count: state.favorites.state().items.len(),
+        });
+    };
+    let mut path = path.into_path().map_err(|err| message(err.to_string()))?;
+    if path.extension().is_none() {
+        path.set_extension("json");
+    }
+    state.favorites.export_to_path(&path)
+}
+
+#[tauri::command]
+pub async fn favorites_import(
+    app: AppHandle,
+    state: State<'_, AppState>,
+) -> AppResult<FavoriteImportResult> {
+    let selected = app
+        .dialog()
+        .file()
+        .set_title("导入收藏 JSON")
+        .add_filter("JSON", &["json"])
+        .add_filter("All Files", &["*"])
+        .blocking_pick_file();
+    let Some(path) = selected else {
+        let current = state.favorites.state();
+        return Ok(FavoriteImportResult {
+            canceled: true,
+            path: None,
+            imported: 0,
+            merged: 0,
+            skipped: 0,
+            total: current.items.len(),
+            state: current,
+        });
+    };
+    let path = path.into_path().map_err(|err| message(err.to_string()))?;
+    state.favorites.import_from_path(&path)
 }
 
 #[tauri::command]

@@ -2,6 +2,7 @@ mod auth;
 mod commands;
 mod downloads;
 mod error;
+mod favorites;
 mod iwara_client;
 mod iwara_utils;
 mod media_speed;
@@ -52,6 +53,12 @@ pub fn run() {
             commands::downloads_delete,
             commands::downloads_open_file,
             commands::downloads_open_folder,
+            commands::favorites_list,
+            commands::favorites_add,
+            commands::favorites_remove,
+            commands::favorites_backup,
+            commands::favorites_export,
+            commands::favorites_import,
             commands::player_play,
             commands::player_probe,
             commands::player_test_mpv,

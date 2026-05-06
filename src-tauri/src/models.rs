@@ -295,6 +295,43 @@ pub struct PlaybackHistoryItem {
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
+pub struct FavoriteItem {
+    pub video: VideoSummary,
+    pub favorited_at: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub note: Option<String>,
+}
+
+#[derive(Clone, Debug, Default, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct FavoriteState {
+    pub items: Vec<FavoriteItem>,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct FavoriteFileResult {
+    pub canceled: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub path: Option<String>,
+    pub count: usize,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct FavoriteImportResult {
+    pub canceled: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub path: Option<String>,
+    pub imported: usize,
+    pub merged: usize,
+    pub skipped: usize,
+    pub total: usize,
+    pub state: FavoriteState,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct AppSettings {
     pub player: PlayerSettings,
     pub iwara: IwaraRuntimeSettings,

@@ -42,6 +42,7 @@ import type {
   DownloadResult,
   DownloadState,
   DownloadTask,
+  FavoriteState,
   IwaraVideoDiagnostics,
   MediaSpeedTestReport,
   PlayerDiagnostics,
@@ -60,7 +61,7 @@ import { normalizeMediaHostList } from "./lib/media-speed-utils";
 import logoMarkUrl from "./assets/iwara-tv-mark.svg";
 import { classifyIssue, type UiIssue } from "./lib/issue-utils";
 
-type MainSection = "browse" | "search" | "subscriptions" | "downloads" | "history" | "settings";
+type MainSection = "browse" | "search" | "subscriptions" | "favorites" | "downloads" | "history" | "settings";
 type AppSection = MainSection | "detail";
 type FeedTabKey = Extract<VideoSort, "date" | "trending" | "popularity"> | "followed";
 type SearchSort = Extract<VideoSort, "relevance" | "date" | "views" | "likes">;
@@ -81,6 +82,7 @@ const sectionTabs: Array<{ section: MainSection; label: string; Icon: LucideIcon
   { section: "browse", label: "浏览", Icon: MonitorPlay },
   { section: "search", label: "搜索", Icon: Search },
   { section: "subscriptions", label: "订阅", Icon: Bell },
+  { section: "favorites", label: "收藏", Icon: Star },
   { section: "downloads", label: "下载", Icon: Download },
   { section: "history", label: "历史", Icon: History },
   { section: "settings", label: "设置", Icon: Settings }
@@ -150,6 +152,10 @@ const defaultDownloadState: DownloadState = {
   history: []
 };
 
+const defaultFavoriteState: FavoriteState = {
+  items: []
+};
+
 export function App() {
   const api = window.iwaraTV;
   const [activeSection, setActiveSection] = useState<AppSection>("browse");
@@ -167,6 +173,7 @@ export function App() {
   const [searchTagInput, setSearchTagInput] = useState("");
   const [settings, setSettings] = useState<AppSettings>(defaultSettings);
   const [downloads, setDownloads] = useState<DownloadState>(defaultDownloadState);
+  const [favorites, setFavorites] = useState<FavoriteState>(defaultFavoriteState);
   const [auth, setAuth] = useState<AuthState>(defaultAuth);
   const [diagnostics, setDiagnostics] = useState<PlayerDiagnostics | undefined>();
   const [mpvTest, setMpvTest] = useState<PlayerProbe | undefined>();
@@ -191,6 +198,8 @@ export function App() {
   const [quickPlayingId, setQuickPlayingId] = useState<string | undefined>();
   const [downloadingVideoId, setDownloadingVideoId] = useState<string | undefined>();
   const [downloadActionId, setDownloadActionId] = useState<string | undefined>();
+  const [favoriteActionId, setFavoriteActionId] = useState<string | undefined>();
+  const [favoriteFileBusy, setFavoriteFileBusy] = useState(false);
   const [playing, setPlaying] = useState(false);
   const [authorFollowBusyId, setAuthorFollowBusyId] = useState<string | undefined>();
   const [probing, setProbing] = useState(false);
@@ -230,6 +239,10 @@ export function App() {
     () => new Set(downloads.history.filter((task) => task.status === "completed").map((task) => task.videoId)),
     [downloads.history]
   );
+  const favoriteVideoIds = useMemo(
+    () => new Set(favorites.items.map((item) => item.video.id)),
+    [favorites.items]
+  );
 
   useEffect(() => {
     if (!api) {
@@ -238,6 +251,7 @@ export function App() {
 
     void api.settings.get().then(setSettings).catch(handleError);
     void refreshDownloads(false);
+    void refreshFavorites(false);
     void api.player.probe().then(setDiagnostics).catch(handleError);
     void api.auth.state().then(setAuth).catch(handleError);
   }, [api]);
@@ -543,6 +557,20 @@ export function App() {
 
     try {
       setDownloads(await api.downloads.list());
+    } catch (err) {
+      if (reportError) {
+        handleError(err);
+      }
+    }
+  }
+
+  async function refreshFavorites(reportError = true) {
+    if (!api) {
+      return;
+    }
+
+    try {
+      setFavorites(await api.favorites.list());
     } catch (err) {
       if (reportError) {
         handleError(err);
@@ -1047,6 +1075,86 @@ export function App() {
     setSettings(next);
   }
 
+  async function toggleFavorite(video: VideoSummary) {
+    if (!api || favoriteActionId) {
+      return;
+    }
+
+    setFavoriteActionId(video.id);
+    clearMessages();
+    try {
+      const isFavorite = favoriteVideoIds.has(video.id);
+      const next = isFavorite
+        ? await api.favorites.remove(video.id)
+        : await api.favorites.add(video);
+      setFavorites(next);
+      setStatus(isFavorite ? `已取消收藏：${video.title}。` : `已加入收藏：${video.title}。`);
+    } catch (err) {
+      handleError(err);
+    } finally {
+      setFavoriteActionId(undefined);
+    }
+  }
+
+  async function backupFavorites() {
+    if (!api || favoriteFileBusy) {
+      return;
+    }
+
+    setFavoriteFileBusy(true);
+    clearMessages();
+    try {
+      const result = await api.favorites.backup();
+      if (!result.canceled) {
+        setStatus(`已备份 ${result.count} 条收藏：${result.path ?? ""}`);
+      }
+    } catch (err) {
+      handleError(err);
+    } finally {
+      setFavoriteFileBusy(false);
+    }
+  }
+
+  async function exportFavorites() {
+    if (!api || favoriteFileBusy) {
+      return;
+    }
+
+    setFavoriteFileBusy(true);
+    clearMessages();
+    try {
+      const result = await api.favorites.exportFile();
+      if (!result.canceled) {
+        setStatus(`已导出 ${result.count} 条收藏：${result.path ?? ""}`);
+      }
+    } catch (err) {
+      handleError(err);
+    } finally {
+      setFavoriteFileBusy(false);
+    }
+  }
+
+  async function importFavorites() {
+    if (!api || favoriteFileBusy) {
+      return;
+    }
+
+    setFavoriteFileBusy(true);
+    clearMessages();
+    try {
+      const result = await api.favorites.importFile();
+      if (result.canceled) {
+        return;
+      }
+      setFavorites(result.state);
+      setStatus(`已导入 ${result.imported} 条，合并 ${result.merged} 条，当前共 ${result.total} 条收藏。`);
+    } catch (err) {
+      handleError(err);
+    } finally {
+      setFavoriteFileBusy(false);
+    }
+  }
+
   function downloadStateForVideo(videoId: string): DownloadButtonState {
     if (downloadingVideoId === videoId || activeDownloadVideoIds.has(videoId)) {
       return "downloading";
@@ -1210,6 +1318,8 @@ export function App() {
       await loadSubscriptionFeed(subscriptionFeed?.page ?? 0);
     } else if (activeSection === "downloads") {
       await refreshDownloads();
+    } else if (activeSection === "favorites") {
+      await refreshFavorites();
     } else {
       await loadFeed(activeFeedTab, activeFeed?.page ?? 0);
     }
@@ -1303,6 +1413,8 @@ export function App() {
             diagnostics={videoDiagnostics}
             diagnosing={diagnosingVideo}
             downloadState={selectedVideo ? downloadStateForVideo(selectedVideo.id) : "idle"}
+            favorite={selectedVideo ? favoriteVideoIds.has(selectedVideo.id) : false}
+            favoriteBusy={Boolean(selectedVideo && favoriteActionId === selectedVideo.id)}
             authorFollowBusy={Boolean(selectedVideo && authorFollowBusyId === selectedVideo.uploaderId)}
             canFollowAuthor={canFollowAuthors}
             video={selectedVideo}
@@ -1319,6 +1431,7 @@ export function App() {
             onToggleAuthorFollow={toggleAuthorFollowFromVideo}
             onPlay={playVideo}
             onDownload={() => selectedVideo && downloadVideo(selectedVideo, selectedQuality)}
+            onToggleFavorite={() => selectedVideo && toggleFavorite(selectedVideo)}
             onQualityChange={setSelectedQuality}
             onRefreshComments={() => selectedVideo && loadComments(selectedVideo.id)}
             onReplyDraftChange={(commentId, value) => setReplyDrafts((current) => ({ ...current, [commentId]: value }))}
@@ -1343,6 +1456,8 @@ export function App() {
                 authorFollowBusyId={authorFollowBusyId}
                 canFollowAuthor={canFollowAuthors}
                 downloadStateForVideo={downloadStateForVideo}
+                favoriteActionId={favoriteActionId}
+                favoriteVideoIds={favoriteVideoIds}
                 hasApi={hasApi}
                 filters={filters}
                 loadingFeed={loadingFeed}
@@ -1352,6 +1467,7 @@ export function App() {
                 onBackToFeeds={() => showMainFeed()}
                 onClearFilters={clearFilters}
                 onDownload={(video) => downloadVideo(video)}
+                onToggleFavorite={toggleFavorite}
                 onFilterChange={(partial) => setFilters((current) => ({ ...current, ...partial }))}
                 onFilterSubmit={() => applyFilters(filters)}
                 onPage={(page) => activeAuthor ? loadAuthorFeed(activeAuthor, page) : loadFeed(activeFeedTab, page)}
@@ -1369,6 +1485,8 @@ export function App() {
             {activeSection === "search" && (
               <SearchView
                 downloadStateForVideo={downloadStateForVideo}
+                favoriteActionId={favoriteActionId}
+                favoriteVideoIds={favoriteVideoIds}
                 filters={searchFilters}
                 hasApi={hasApi}
                 loading={loadingSearch}
@@ -1376,6 +1494,7 @@ export function App() {
                 onAddTag={addSearchTagFilter}
                 onClearFilters={clearSearchFilters}
                 onDownload={(video) => downloadVideo(video)}
+                onToggleFavorite={toggleFavorite}
                 onFilterChange={(partial) => setSearchFilters((current) => ({ ...current, ...partial }))}
                 onFilterSubmit={() => applySearchFilters(searchFilters)}
                 onOpen={openVideo}
@@ -1395,17 +1514,40 @@ export function App() {
             {activeSection === "subscriptions" && (
               <SubscriptionView
                 downloadStateForVideo={downloadStateForVideo}
+                favoriteActionId={favoriteActionId}
+                favoriteVideoIds={favoriteVideoIds}
                 feed={subscriptionFeed}
                 hasApi={hasApi}
                 isLoggedIn={canLoadSubscriptions}
                 loading={loadingSubscriptions}
                 loadingVideoId={loadingVideoId}
                 onDownload={(video) => downloadVideo(video)}
+                onToggleFavorite={toggleFavorite}
                 onLogin={openIwaraSession}
                 onOpen={openVideo}
                 onPage={loadSubscriptionFeed}
                 onQuickPlay={quickPlay}
                 onRefresh={() => loadSubscriptionFeed(subscriptionFeed?.page ?? 0)}
+                quickPlayingId={quickPlayingId}
+              />
+            )}
+
+            {activeSection === "favorites" && (
+              <FavoritesView
+                downloadStateForVideo={downloadStateForVideo}
+                favoriteActionId={favoriteActionId}
+                favoriteFileBusy={favoriteFileBusy}
+                favorites={favorites}
+                hasApi={hasApi}
+                loadingVideoId={loadingVideoId}
+                onBackup={backupFavorites}
+                onDownload={(video) => downloadVideo(video)}
+                onExport={exportFavorites}
+                onImport={importFavorites}
+                onOpen={openVideo}
+                onQuickPlay={quickPlay}
+                onRefresh={() => refreshFavorites()}
+                onToggleFavorite={toggleFavorite}
                 quickPlayingId={quickPlayingId}
               />
             )}
@@ -1483,6 +1625,8 @@ function VideoDetailRoute({
   diagnostics,
   diagnosing,
   downloadState,
+  favorite,
+  favoriteBusy,
   authorFollowBusy,
   canFollowAuthor,
   video,
@@ -1498,6 +1642,7 @@ function VideoDetailRoute({
   onOpenAuthor,
   onToggleAuthorFollow,
   onDownload,
+  onToggleFavorite,
   onPlay,
   onQualityChange,
   onRefreshComments,
@@ -1518,6 +1663,8 @@ function VideoDetailRoute({
   diagnostics?: IwaraVideoDiagnostics;
   diagnosing: boolean;
   downloadState: DownloadButtonState;
+  favorite: boolean;
+  favoriteBusy: boolean;
   authorFollowBusy: boolean;
   canFollowAuthor: boolean;
   video?: VideoDetail;
@@ -1533,6 +1680,7 @@ function VideoDetailRoute({
   onOpenAuthor: (video: VideoDetail) => void;
   onToggleAuthorFollow: (video: VideoDetail) => void;
   onDownload: () => void;
+  onToggleFavorite: () => void;
   onPlay: (mode: PlayerMode) => void;
   onQualityChange: (quality: string) => void;
   onRefreshComments: () => void;
@@ -1572,6 +1720,8 @@ function VideoDetailRoute({
           diagnostics={diagnostics}
           diagnosing={diagnosing}
           downloadState={downloadState}
+          favorite={favorite}
+          favoriteBusy={favoriteBusy}
           authorFollowBusy={authorFollowBusy}
           canFollowAuthor={canFollowAuthor}
           video={video}
@@ -1585,6 +1735,7 @@ function VideoDetailRoute({
           onToggleAuthorFollow={onToggleAuthorFollow}
           onPlay={onPlay}
           onDownload={onDownload}
+          onToggleFavorite={onToggleFavorite}
           onQualityChange={onQualityChange}
           onRefreshComments={onRefreshComments}
           onReplyDraftChange={onReplyDraftChange}
@@ -1617,6 +1768,8 @@ function DetailLoadingState({ idOrUrl, title }: { idOrUrl: string; title?: strin
 
 function SearchView({
   downloadStateForVideo,
+  favoriteActionId,
+  favoriteVideoIds,
   filters,
   hasApi,
   loading,
@@ -1624,6 +1777,7 @@ function SearchView({
   onAddTag,
   onClearFilters,
   onDownload,
+  onToggleFavorite,
   onFilterChange,
   onFilterSubmit,
   onOpen,
@@ -1639,6 +1793,8 @@ function SearchView({
   tagInput
 }: {
   downloadStateForVideo: (videoId: string) => DownloadButtonState;
+  favoriteActionId?: string;
+  favoriteVideoIds: Set<string>;
   filters: VideoFilters;
   hasApi: boolean;
   loading: boolean;
@@ -1646,6 +1802,7 @@ function SearchView({
   onAddTag: (tag: string) => void;
   onClearFilters: () => void;
   onDownload: (video: VideoSummary) => void;
+  onToggleFavorite: (video: VideoSummary) => void;
   onFilterChange: (partial: Partial<VideoFilters>) => void;
   onFilterSubmit: () => void;
   onOpen: (id: string) => void;
@@ -1764,9 +1921,12 @@ function SearchView({
             {videos.map((video) => (
               <VideoCard
                 downloadState={downloadStateForVideo(video.id)}
+                favorite={favoriteVideoIds.has(video.id)}
+                favoriteBusy={favoriteActionId === video.id}
                 key={video.id}
                 loading={loadingVideoId === video.id}
                 onDownload={() => onDownload(video)}
+                onToggleFavorite={() => onToggleFavorite(video)}
                 onOpen={() => onOpen(video.id)}
                 onQuickPlay={() => onQuickPlay(video)}
                 quickPlaying={quickPlayingId === video.id}
@@ -1813,6 +1973,8 @@ function BrowseView({
   authorFollowBusyId,
   canFollowAuthor,
   downloadStateForVideo,
+  favoriteActionId,
+  favoriteVideoIds,
   filters,
   hasApi,
   loadingFeed,
@@ -1821,6 +1983,7 @@ function BrowseView({
   onBackToFeeds,
   onClearFilters,
   onDownload,
+  onToggleFavorite,
   onFilterChange,
   onFilterSubmit,
   onOpen,
@@ -1840,6 +2003,8 @@ function BrowseView({
   authorFollowBusyId?: string;
   canFollowAuthor: boolean;
   downloadStateForVideo: (videoId: string) => DownloadButtonState;
+  favoriteActionId?: string;
+  favoriteVideoIds: Set<string>;
   filters: VideoFilters;
   hasApi: boolean;
   loadingFeed: boolean;
@@ -1848,6 +2013,7 @@ function BrowseView({
   onBackToFeeds: () => void;
   onClearFilters: () => void;
   onDownload: (video: VideoSummary) => void;
+  onToggleFavorite: (video: VideoSummary) => void;
   onFilterChange: (partial: Partial<VideoFilters>) => void;
   onFilterSubmit: () => void;
   onOpen: (id: string) => void;
@@ -1985,9 +2151,12 @@ function BrowseView({
             {videos.map((video) => (
               <VideoCard
                 downloadState={downloadStateForVideo(video.id)}
+                favorite={favoriteVideoIds.has(video.id)}
+                favoriteBusy={favoriteActionId === video.id}
                 key={video.id}
                 loading={loadingVideoId === video.id}
                 onDownload={() => onDownload(video)}
+                onToggleFavorite={() => onToggleFavorite(video)}
                 onOpen={() => onOpen(video.id)}
                 onQuickPlay={() => onQuickPlay(video)}
                 quickPlaying={quickPlayingId === video.id}
@@ -2029,12 +2198,15 @@ function BrowseView({
 
 function SubscriptionView({
   downloadStateForVideo,
+  favoriteActionId,
+  favoriteVideoIds,
   feed,
   hasApi,
   isLoggedIn,
   loading,
   loadingVideoId,
   onDownload,
+  onToggleFavorite,
   onLogin,
   onOpen,
   onPage,
@@ -2043,12 +2215,15 @@ function SubscriptionView({
   quickPlayingId
 }: {
   downloadStateForVideo: (videoId: string) => DownloadButtonState;
+  favoriteActionId?: string;
+  favoriteVideoIds: Set<string>;
   feed?: VideoListResult;
   hasApi: boolean;
   isLoggedIn: boolean;
   loading: boolean;
   loadingVideoId?: string;
   onDownload: (video: VideoSummary) => void;
+  onToggleFavorite: (video: VideoSummary) => void;
   onLogin: () => void;
   onOpen: (id: string) => void;
   onPage: (page: number) => void;
@@ -2160,9 +2335,12 @@ function SubscriptionView({
               {visibleVideos.map((video) => (
                 <VideoCard
                   downloadState={downloadStateForVideo(video.id)}
+                  favorite={favoriteVideoIds.has(video.id)}
+                  favoriteBusy={favoriteActionId === video.id}
                   key={video.id}
                   loading={loadingVideoId === video.id}
                   onDownload={() => onDownload(video)}
+                  onToggleFavorite={() => onToggleFavorite(video)}
                   onOpen={() => onOpen(video.id)}
                   onQuickPlay={() => onQuickPlay(video)}
                   quickPlaying={quickPlayingId === video.id}
@@ -2287,6 +2465,8 @@ function DetailPanel({
   diagnostics,
   diagnosing,
   downloadState,
+  favorite,
+  favoriteBusy,
   authorFollowBusy,
   canFollowAuthor,
   video,
@@ -2299,6 +2479,7 @@ function DetailPanel({
   onOpenAuthor,
   onToggleAuthorFollow,
   onDownload,
+  onToggleFavorite,
   onPlay,
   onQualityChange,
   onRefreshComments,
@@ -2319,6 +2500,8 @@ function DetailPanel({
   diagnostics?: IwaraVideoDiagnostics;
   diagnosing: boolean;
   downloadState: DownloadButtonState;
+  favorite: boolean;
+  favoriteBusy: boolean;
   authorFollowBusy: boolean;
   canFollowAuthor: boolean;
   video: VideoDetail;
@@ -2331,6 +2514,7 @@ function DetailPanel({
   onOpenAuthor: (video: VideoDetail) => void;
   onToggleAuthorFollow: (video: VideoDetail) => void;
   onDownload: () => void;
+  onToggleFavorite: () => void;
   onPlay: (mode: PlayerMode) => void;
   onQualityChange: (quality: string) => void;
   onRefreshComments: () => void;
@@ -2371,6 +2555,15 @@ function DetailPanel({
             {video.uploaderUsername && <span>@{video.uploaderUsername}</span>}
           </div>
           <div className="detail-author-actions">
+            <button
+              className={favorite ? "secondary-button compact favorite-button active" : "secondary-button compact favorite-button"}
+              disabled={favoriteBusy}
+              onClick={onToggleFavorite}
+              type="button"
+            >
+              {favoriteBusy ? <Loader2 className="spin" size={17} /> : <Star size={17} />}
+              {favorite ? "已收藏" : "收藏"}
+            </button>
             <button
               className={authorFollowing ? "secondary-button compact author-follow-button active" : "secondary-button compact author-follow-button"}
               disabled={!video.uploaderId || !canFollowAuthor || authorFollowBusy}
@@ -2694,17 +2887,23 @@ function DownloadButtonContent({ state, size }: { state: DownloadButtonState; si
 function VideoCard({
   video,
   downloadState,
+  favorite,
+  favoriteBusy,
   loading,
   quickPlaying,
   onDownload,
+  onToggleFavorite,
   onOpen,
   onQuickPlay
 }: {
   video: VideoSummary;
   downloadState: DownloadButtonState;
+  favorite: boolean;
+  favoriteBusy: boolean;
   loading: boolean;
   quickPlaying: boolean;
   onDownload: () => void;
+  onToggleFavorite: () => void;
   onOpen: () => void;
   onQuickPlay: () => void;
 }) {
@@ -2726,6 +2925,16 @@ function VideoCard({
           <span>{compactNumber(video.numViews)} 观看</span>
           <span>{compactNumber(video.numLikes)} 喜欢</span>
           {video.durationSeconds ? <span>{formatDuration(video.durationSeconds)}</span> : null}
+          <button
+            aria-label={favorite ? "取消收藏" : "收藏"}
+            className={favorite ? "quick-play-button favorite-button active" : "quick-play-button favorite-button"}
+            disabled={favoriteBusy}
+            onClick={onToggleFavorite}
+            title={favorite ? "取消收藏" : "收藏"}
+            type="button"
+          >
+            {favoriteBusy ? <Loader2 className="spin" size={16} /> : <Star size={16} />}
+          </button>
           <button className="quick-play-button" disabled={downloadState !== "idle"} onClick={onDownload} type="button">
             <DownloadButtonContent state={downloadState} size={16} />
           </button>
@@ -2736,6 +2945,105 @@ function VideoCard({
         </div>
       </div>
     </article>
+  );
+}
+
+function FavoritesView({
+  downloadStateForVideo,
+  favoriteActionId,
+  favoriteFileBusy,
+  favorites,
+  hasApi,
+  loadingVideoId,
+  onBackup,
+  onDownload,
+  onExport,
+  onImport,
+  onOpen,
+  onQuickPlay,
+  onRefresh,
+  onToggleFavorite,
+  quickPlayingId
+}: {
+  downloadStateForVideo: (videoId: string) => DownloadButtonState;
+  favoriteActionId?: string;
+  favoriteFileBusy: boolean;
+  favorites: FavoriteState;
+  hasApi: boolean;
+  loadingVideoId?: string;
+  onBackup: () => void;
+  onDownload: (video: VideoSummary) => void;
+  onExport: () => void;
+  onImport: () => void;
+  onOpen: (id: string) => void;
+  onQuickPlay: (video: VideoSummary) => void;
+  onRefresh: () => void;
+  onToggleFavorite: (video: VideoSummary) => void;
+  quickPlayingId?: string;
+}) {
+  const items = favorites.items;
+
+  return (
+    <>
+      <div className="section-header">
+        <div>
+          <p>本地收藏</p>
+          <h2>收藏</h2>
+        </div>
+        <div className="section-header-actions">
+          <button className="secondary-button compact" disabled={!hasApi || favoriteFileBusy} onClick={onBackup} type="button">
+            {favoriteFileBusy ? <Loader2 className="spin" size={17} /> : <Shield size={17} />}
+            备份
+          </button>
+          <button className="secondary-button compact" disabled={!hasApi || favoriteFileBusy} onClick={onExport} type="button">
+            <Download size={17} />
+            导出
+          </button>
+          <button className="secondary-button compact" disabled={!hasApi || favoriteFileBusy} onClick={onImport} type="button">
+            <FolderOpen size={17} />
+            导入
+          </button>
+          <button className="icon-text-button" disabled={!hasApi || favoriteFileBusy} onClick={onRefresh} type="button">
+            <RefreshCw size={18} />
+            刷新
+          </button>
+        </div>
+      </div>
+
+      {items.length ? (
+        <>
+          <div className="list-scan-summary">
+            <span>{items.length} 条收藏</span>
+            <span>最近收藏：{formatDate(items[0]?.favoritedAt)}</span>
+          </div>
+          <div className="video-grid">
+            {items.map((item) => (
+              <VideoCard
+                downloadState={downloadStateForVideo(item.video.id)}
+                favorite
+                favoriteBusy={favoriteActionId === item.video.id}
+                key={`${item.video.id}-${item.favoritedAt}`}
+                loading={loadingVideoId === item.video.id}
+                onDownload={() => onDownload(item.video)}
+                onToggleFavorite={() => onToggleFavorite(item.video)}
+                onOpen={() => onOpen(item.video.id)}
+                onQuickPlay={() => onQuickPlay(item.video)}
+                quickPlaying={quickPlayingId === item.video.id}
+                video={item.video}
+              />
+            ))}
+          </div>
+        </>
+      ) : (
+        <EmptyState
+          Icon={Star}
+          title="还没有本地收藏"
+          actionLabel="导入收藏"
+          disabled={!hasApi || favoriteFileBusy}
+          onAction={onImport}
+        />
+      )}
+    </>
   );
 }
 
@@ -3493,6 +3801,8 @@ function sectionLabel(section: MainSection): string {
       return "搜索";
     case "subscriptions":
       return "订阅";
+    case "favorites":
+      return "收藏";
     case "downloads":
       return "下载";
     case "history":

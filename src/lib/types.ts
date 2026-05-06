@@ -195,6 +195,32 @@ export interface PlaybackHistoryItem {
   mode: PlayerMode;
 }
 
+export interface FavoriteItem {
+  video: VideoSummary;
+  favoritedAt: string;
+  note?: string;
+}
+
+export interface FavoriteState {
+  items: FavoriteItem[];
+}
+
+export interface FavoriteFileResult {
+  canceled: boolean;
+  path?: string;
+  count: number;
+}
+
+export interface FavoriteImportResult {
+  canceled: boolean;
+  path?: string;
+  imported: number;
+  merged: number;
+  skipped: number;
+  total: number;
+  state: FavoriteState;
+}
+
 export interface AppSettings {
   player: PlayerSettings;
   iwara: IwaraRuntimeSettings;

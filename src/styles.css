@@ -701,6 +701,15 @@ button:disabled {
   color: #e7eee9;
 }
 
+.favorite-button {
+  min-width: 34px;
+}
+
+.favorite-button.active {
+  background: rgba(227, 181, 87, 0.24);
+  color: #f4dfad;
+}
+
 .pager {
   justify-content: center;
   margin-top: 18px;

@@ -8,6 +8,9 @@ import type {
   DownloadState,
   DownloadTask,
   DownloadVideoRequest,
+  FavoriteFileResult,
+  FavoriteImportResult,
+  FavoriteState,
   IwaraVideoDiagnostics,
   ListVideoCommentsRequest,
   ListVideosRequest,
@@ -26,6 +29,7 @@ import type {
   VideoCommentsResult,
   VideoDetail,
   VideoListResult,
+  VideoSummary,
   XVersionSaltReport
 } from "../lib/types";
 
@@ -59,6 +63,12 @@ const commandMap = {
   downloadsDelete: "downloads_delete",
   downloadsOpenFile: "downloads_open_file",
   downloadsOpenFolder: "downloads_open_folder",
+  favoritesAdd: "favorites_add",
+  favoritesBackup: "favorites_backup",
+  favoritesExport: "favorites_export",
+  favoritesImport: "favorites_import",
+  favoritesList: "favorites_list",
+  favoritesRemove: "favorites_remove",
   play: "player_play",
   probe: "player_probe",
   testMpv: "player_test_mpv",
@@ -104,6 +114,14 @@ export const tauriApi = {
     delete: (request: DownloadDeleteRequest) => tauriInvoke<DownloadState>(commandMap.downloadsDelete, { request }),
     openFile: (id: string) => tauriInvoke<void>(commandMap.downloadsOpenFile, { id }),
     openFolder: (id: string) => tauriInvoke<void>(commandMap.downloadsOpenFolder, { id })
+  },
+  favorites: {
+    list: () => tauriInvoke<FavoriteState>(commandMap.favoritesList),
+    add: (video: VideoSummary) => tauriInvoke<FavoriteState>(commandMap.favoritesAdd, { video }),
+    remove: (videoId: string) => tauriInvoke<FavoriteState>(commandMap.favoritesRemove, { videoId }),
+    backup: () => tauriInvoke<FavoriteFileResult>(commandMap.favoritesBackup),
+    exportFile: () => tauriInvoke<FavoriteFileResult>(commandMap.favoritesExport),
+    importFile: () => tauriInvoke<FavoriteImportResult>(commandMap.favoritesImport)
   },
   player: {
     play: (request: PlayRequest) => tauriInvoke<PlayResult>(commandMap.play, { request }),

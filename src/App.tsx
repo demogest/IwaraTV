@@ -225,7 +225,10 @@ export function App() {
   const [avatarImageReady, setAvatarImageReady] = useState(Boolean(auth.avatarUrl));
   const workspaceRef = useRef<HTMLElement | null>(null);
   const mainSectionScrollRef = useRef<Record<MainSection, number>>({ ...initialMainSectionScroll });
+  const activeSectionRef = useRef<AppSection>("browse");
+  const scrollRestoreFrameRef = useRef<number | undefined>(undefined);
   const videoOpenRequestRef = useRef(0);
+  activeSectionRef.current = activeSection;
 
   const activeFeed = feeds[activeFeedTab];
   const hasApi = Boolean(api);
@@ -268,16 +271,17 @@ export function App() {
       workspace.scrollTop = 0;
       workspace.scrollLeft = 0;
     } else {
-      workspace.scrollTop = mainSectionScrollRef.current[activeSection] ?? 0;
-      workspace.scrollLeft = 0;
+      restoreMainSectionScroll(activeSection);
     }
+  }, [activeSection]);
 
+  useEffect(() => {
     return () => {
-      if (activeSection !== "detail") {
-        mainSectionScrollRef.current[activeSection] = workspace.scrollTop;
+      if (scrollRestoreFrameRef.current !== undefined) {
+        window.cancelAnimationFrame(scrollRestoreFrameRef.current);
       }
     };
-  }, [activeSection]);
+  }, []);
 
   useEffect(() => {
     if (!api) {
@@ -482,6 +486,9 @@ export function App() {
 
     const requestId = beginVideoOpenRequest();
     const returnSection = activeSection === "detail" ? detailReturnSection : activeSection;
+    if (activeSection !== "detail") {
+      rememberMainSectionScroll(activeSection);
+    }
     setDetailReturnSection(returnSection);
     setActiveSection("detail");
     setSelectedVideo(undefined);
@@ -666,6 +673,57 @@ export function App() {
     setLoadingVideoId(undefined);
     setLoadingVideoTitle(undefined);
     setActiveSection(nextSection);
+  }
+
+  function rememberMainSectionScroll(section: MainSection) {
+    const workspace = workspaceRef.current;
+    if (!workspace) {
+      return;
+    }
+
+    mainSectionScrollRef.current[section] = workspace.scrollTop;
+  }
+
+  function rememberActiveMainSectionScroll() {
+    const section = activeSectionRef.current;
+    if (section !== "detail") {
+      rememberMainSectionScroll(section);
+    }
+  }
+
+  function restoreMainSectionScroll(section: MainSection) {
+    const workspace = workspaceRef.current;
+    if (!workspace) {
+      return;
+    }
+
+    const top = mainSectionScrollRef.current[section] ?? 0;
+    workspace.scrollTop = top;
+    workspace.scrollLeft = 0;
+
+    if (scrollRestoreFrameRef.current !== undefined) {
+      window.cancelAnimationFrame(scrollRestoreFrameRef.current);
+    }
+
+    scrollRestoreFrameRef.current = window.requestAnimationFrame(() => {
+      scrollRestoreFrameRef.current = undefined;
+      if (workspaceRef.current !== workspace || activeSectionRef.current !== section) {
+        return;
+      }
+
+      workspace.scrollTop = top;
+      workspace.scrollLeft = 0;
+    });
+  }
+
+  function handleWorkspaceScroll() {
+    const workspace = workspaceRef.current;
+    const section = activeSectionRef.current;
+    if (!workspace || section === "detail") {
+      return;
+    }
+
+    mainSectionScrollRef.current[section] = workspace.scrollTop;
   }
 
   function beginVideoOpenRequest() {
@@ -1421,6 +1479,7 @@ export function App() {
                   closeDetailPanel(section);
                   return;
                 }
+                rememberActiveMainSectionScroll();
                 setActiveSection(section);
               }}
               type="button"
@@ -1432,7 +1491,11 @@ export function App() {
         </nav>
       </aside>
 
-      <section className={showDetailPage ? "workspace detail-route" : "workspace"} ref={workspaceRef}>
+      <section
+        className={showDetailPage ? "workspace detail-route" : "workspace"}
+        onScroll={handleWorkspaceScroll}
+        ref={workspaceRef}
+      >
         <header className="topbar">
           <form className="url-form" onSubmit={handleSubmit}>
             <Search size={18} />
@@ -1447,7 +1510,18 @@ export function App() {
             </button>
           </form>
 
-          <button className="auth-pill" onClick={() => setActiveSection("settings")} type="button">
+          <button
+            className="auth-pill"
+            onClick={() => {
+              if (activeSection === "detail") {
+                closeDetailPanel("settings");
+                return;
+              }
+              rememberActiveMainSectionScroll();
+              setActiveSection("settings");
+            }}
+            type="button"
+          >
             {auth.siteTokenReady || auth.loggedIn ? <Star size={16} /> : <LogIn size={16} />}
             {authStatusLabel}
           </button>

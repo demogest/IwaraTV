@@ -12,7 +12,7 @@
 [![Vite](https://img.shields.io/badge/Vite-8-646cff?logo=vite&logoColor=white)](https://vite.dev/)
 [![Platforms](https://img.shields.io/badge/platform-Windows%20%7C%20macOS%20%7C%20Linux-555)](#发布)
 
-![IwaraTV logo](src/assets/iwara-tv-mark.svg)
+<img src="src/assets/iwara-tv-mark.svg" alt="IwaraTV logo" width="48" height="48">
 
 IwaraTV 是一个本地桌面端 Iwara.tv 浏览器与播放器启动器。React 界面保持轻量和快速，Tauri/Rust 后端负责会话、Iwara API、设置、诊断、下载和播放器启动。
 

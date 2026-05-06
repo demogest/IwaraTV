@@ -12,7 +12,7 @@
 [![Vite](https://img.shields.io/badge/Vite-8-646cff?logo=vite&logoColor=white)](https://vite.dev/)
 [![Platforms](https://img.shields.io/badge/platform-Windows%20%7C%20macOS%20%7C%20Linux-555)](#releases)
 
-![IwaraTV logo](src/assets/iwara-tv-mark.svg)
+<img src="src/assets/iwara-tv-mark.svg" alt="IwaraTV logo" width="48" height="48">
 
 IwaraTV is a local desktop browser and player launcher for Iwara.tv. The app keeps the React UI light and fast while a native Tauri/Rust backend owns session handling, Iwara API access, settings, diagnostics, downloads, and player launch.
 

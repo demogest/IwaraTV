@@ -232,6 +232,7 @@ export function App() {
   const canLoadSubscriptions = Boolean(auth.loggedIn || auth.siteTokenReady);
   const canFollowAuthors = canLoadSubscriptions;
   const showDetailPage = activeSection === "detail";
+  const activeNavSection = showDetailPage ? detailReturnSection : activeSection;
   const authDisplayName = auth.username
     ?? auth.email
     ?? (auth.siteTokenReady ? "网页登录" : auth.siteSessionReady ? "已验证会话" : "匿名");
@@ -1413,7 +1414,7 @@ export function App() {
         <nav className="nav-list">
           {sectionTabs.map(({ section, label, Icon }) => (
             <button
-              className={activeSection === section ? "nav-button active" : "nav-button"}
+              className={activeNavSection === section ? "nav-button active" : "nav-button"}
               key={section}
               onClick={() => {
                 if (activeSection === "detail") {

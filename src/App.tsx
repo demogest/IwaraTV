@@ -35,7 +35,7 @@ import {
   X
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
-import { FormEvent, useEffect, useMemo, useRef, useState } from "react";
+import { FormEvent, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import type {
   AppSettings,
   AuthState,
@@ -87,6 +87,16 @@ const sectionTabs: Array<{ section: MainSection; label: string; Icon: LucideIcon
   { section: "history", label: "历史", Icon: History },
   { section: "settings", label: "设置", Icon: Settings }
 ];
+
+const initialMainSectionScroll: Record<MainSection, number> = {
+  browse: 0,
+  search: 0,
+  subscriptions: 0,
+  favorites: 0,
+  downloads: 0,
+  history: 0,
+  settings: 0
+};
 
 const feedTabs: Array<{ key: FeedTabKey; label: string; Icon: LucideIcon }> = [
   { key: "date", label: "最新", Icon: Clock3 },
@@ -212,6 +222,8 @@ export function App() {
   const [replyingTo, setReplyingTo] = useState<string | undefined>();
   const [submittingComment, setSubmittingComment] = useState(false);
   const [avatarImageReady, setAvatarImageReady] = useState(Boolean(auth.avatarUrl));
+  const workspaceRef = useRef<HTMLElement | null>(null);
+  const mainSectionScrollRef = useRef<Record<MainSection, number>>({ ...initialMainSectionScroll });
   const videoOpenRequestRef = useRef(0);
 
   const activeFeed = feeds[activeFeedTab];
@@ -243,6 +255,27 @@ export function App() {
     () => new Set(favorites.items.map((item) => item.video.id)),
     [favorites.items]
   );
+
+  useLayoutEffect(() => {
+    const workspace = workspaceRef.current;
+    if (!workspace) {
+      return;
+    }
+
+    if (activeSection === "detail") {
+      workspace.scrollTop = 0;
+      workspace.scrollLeft = 0;
+    } else {
+      workspace.scrollTop = mainSectionScrollRef.current[activeSection] ?? 0;
+      workspace.scrollLeft = 0;
+    }
+
+    return () => {
+      if (activeSection !== "detail") {
+        mainSectionScrollRef.current[activeSection] = workspace.scrollTop;
+      }
+    };
+  }, [activeSection]);
 
   useEffect(() => {
     if (!api) {
@@ -1375,7 +1408,7 @@ export function App() {
         </nav>
       </aside>
 
-      <section className={showDetailPage ? "workspace detail-route" : "workspace"}>
+      <section className={showDetailPage ? "workspace detail-route" : "workspace"} ref={workspaceRef}>
         <header className="topbar">
           <form className="url-form" onSubmit={handleSubmit}>
             <Search size={18} />

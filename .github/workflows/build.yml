@@ -26,6 +26,7 @@ jobs:
     outputs:
       changed: ${{ steps.detect.outputs.changed }}
       publish: ${{ steps.detect.outputs.publish }}
+      should_tag: ${{ steps.detect.outputs.should_tag }}
       tag: ${{ steps.detect.outputs.tag }}
       version: ${{ steps.detect.outputs.version }}
 
@@ -48,21 +49,26 @@ jobs:
           echo "tag=v${current_version}" >> "$GITHUB_OUTPUT"
           echo "changed=false" >> "$GITHUB_OUTPUT"
           echo "publish=false" >> "$GITHUB_OUTPUT"
-
-          if [[ "${GITHUB_EVENT_NAME}" == "workflow_dispatch" ]]; then
-            echo "changed=true" >> "$GITHUB_OUTPUT"
-            echo "Manual build for ${current_version}; release publish is disabled."
-            exit 0
-          fi
+          echo "should_tag=false" >> "$GITHUB_OUTPUT"
 
           if [[ "${GITHUB_REF}" == refs/tags/v* ]]; then
             tag="${GITHUB_REF_NAME}"
             version="${tag#v}"
+            if [[ "$version" != "$current_version" ]]; then
+              echo "::error::Tag ${tag} does not match package.json version ${current_version}."
+              exit 1
+            fi
+
             echo "version=${version}" >> "$GITHUB_OUTPUT"
             echo "tag=${tag}" >> "$GITHUB_OUTPUT"
             echo "changed=true" >> "$GITHUB_OUTPUT"
             echo "publish=true" >> "$GITHUB_OUTPUT"
             echo "Building tagged release ${tag}."
+            exit 0
+          fi
+
+          if [[ "${GITHUB_EVENT_NAME}" == "workflow_dispatch" ]]; then
+            echo "Manual builds must target a v* tag to produce release artifacts."
             exit 0
           fi
 
@@ -80,8 +86,8 @@ jobs:
 
           if [[ "$current_version" != "$previous_version" ]]; then
             echo "changed=true" >> "$GITHUB_OUTPUT"
-            echo "publish=true" >> "$GITHUB_OUTPUT"
-            echo "Version changed: ${previous_version} -> ${current_version}"
+            echo "should_tag=true" >> "$GITHUB_OUTPUT"
+            echo "Version changed: ${previous_version} -> ${current_version}; release tag will be created."
           else
             echo "Version unchanged: ${current_version}"
           fi
@@ -120,6 +126,9 @@ jobs:
       - name: Install npm dependencies
         run: npm ci
 
+      - name: Version consistency
+        run: npm run version:check
+
       - name: Typecheck
         run: npm run typecheck
 
@@ -129,13 +138,58 @@ jobs:
       - name: Rust tests
         run: cargo test --manifest-path src-tauri/Cargo.toml
 
+  create-release-tag:
+    name: Create release tag
+    runs-on: ubuntu-latest
+    needs:
+      - checks
+      - version
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main' && needs.version.outputs.should_tag == 'true'
+    permissions:
+      actions: write
+      contents: write
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Create tag and dispatch release build
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG_NAME: ${{ needs.version.outputs.tag }}
+        run: |
+          set -euo pipefail
+
+          if git rev-parse -q --verify "refs/tags/${TAG_NAME}^{commit}" >/dev/null; then
+            tag_sha="$(git rev-parse "refs/tags/${TAG_NAME}^{commit}")"
+            if [[ "$tag_sha" != "$GITHUB_SHA" ]]; then
+              echo "Tag ${TAG_NAME} already points to ${tag_sha}, not ${GITHUB_SHA}."
+              exit 1
+            fi
+
+            if gh release view "$TAG_NAME" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+              echo "Release ${TAG_NAME} already exists; skipping release dispatch."
+              exit 0
+            fi
+
+            echo "Tag ${TAG_NAME} already exists; dispatching release build at the tag."
+            gh workflow run build.yml --repo "$GITHUB_REPOSITORY" --ref "$TAG_NAME"
+            exit 0
+          fi
+
+          git tag "$TAG_NAME" "$GITHUB_SHA"
+          git push origin "refs/tags/${TAG_NAME}"
+          gh workflow run build.yml --repo "$GITHUB_REPOSITORY" --ref "$TAG_NAME"
+
   build:
     name: Build ${{ matrix.name }}
     runs-on: ${{ matrix.os }}
     needs:
       - checks
       - version
-    if: needs.version.outputs.changed == 'true'
+    if: startsWith(github.ref, 'refs/tags/v') && needs.version.outputs.changed == 'true'
     strategy:
       fail-fast: false
       matrix:
@@ -220,11 +274,16 @@ jobs:
     needs:
       - build
       - version
-    if: needs.version.outputs.publish == 'true'
+    if: startsWith(github.ref, 'refs/tags/v') && needs.version.outputs.publish == 'true'
     permissions:
       contents: write
 
     steps:
+      - name: Checkout release history
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
       - name: Download build artifacts
         uses: actions/download-artifact@v4
         with:
@@ -237,6 +296,70 @@ jobs:
           find artifacts -type f -exec cp '{}' release-assets/ \;
           (cd release-assets && sha256sum * > SHA256SUMS.txt)
           ls -lah release-assets
+
+      - name: Create release notes
+        env:
+          TAG_NAME: ${{ needs.version.outputs.tag }}
+          VERSION: ${{ needs.version.outputs.version }}
+        run: |
+          set -euo pipefail
+
+          changelog_base=""
+          changelog_label=""
+
+          previous_version=""
+          previous_sha=""
+          for commit in $(git rev-list --first-parent "$GITHUB_SHA"); do
+            commit_version="$(git show "${commit}:package.json" 2>/dev/null | node -p "JSON.parse(require('fs').readFileSync(0, 'utf8')).version" 2>/dev/null || true)"
+            if [[ -n "$commit_version" ]] && [[ "$commit_version" != "$VERSION" ]]; then
+              previous_version="$commit_version"
+              previous_sha="$commit"
+              break
+            fi
+          done
+
+          if [[ -n "$previous_version" ]]; then
+            previous_tag="v${previous_version}"
+            if git rev-parse -q --verify "refs/tags/${previous_tag}^{commit}" >/dev/null && git merge-base --is-ancestor "${previous_tag}^{commit}" "$GITHUB_SHA"; then
+              changelog_base="$previous_tag"
+              changelog_label="$previous_tag"
+            else
+              changelog_base="$previous_sha"
+              changelog_label="${previous_version} baseline (${previous_sha:0:7})"
+            fi
+          else
+            previous_tag="$(git tag --merged "$GITHUB_SHA" --list "v*" --sort=-v:refname | grep -vx "$TAG_NAME" | head -n 1 || true)"
+            if [[ -n "$previous_tag" ]]; then
+              changelog_base="$previous_tag"
+              changelog_label="$previous_tag"
+            fi
+          fi
+
+          {
+            echo "## Assets"
+            echo
+            echo "- Windows installer: \`IwaraTV_${VERSION}_x64-setup.exe\`"
+            echo "- Windows portable package: \`IwaraTV_${VERSION}_x64-portable.exe\`"
+            echo "- Windows unpacked archive: \`IwaraTV_${VERSION}_x64-unpacked.zip\`"
+            echo "- macOS disk image: \`*.dmg\`"
+            echo "- Linux packages: \`*.deb\` and \`*.AppImage\`"
+            echo "- Checksums: \`SHA256SUMS.txt\`"
+            echo
+            echo "## Changelog"
+            echo
+
+            if [[ -n "$changelog_base" ]]; then
+              echo "Changes since ${changelog_label}:"
+              echo
+              git log --no-merges --pretty=format:"- %s (%h)" "${changelog_base}..${GITHUB_SHA}"
+            else
+              echo "Initial release notes:"
+              echo
+              git log --no-merges --pretty=format:"- %s (%h)" "$GITHUB_SHA"
+            fi
+          } > release-notes.md
+
+          cat release-notes.md
 
       - name: Publish release
         env:
@@ -252,4 +375,4 @@ jobs:
             --repo "$GITHUB_REPOSITORY" \
             --target "$GITHUB_SHA" \
             --title "$TAG_NAME" \
-            --notes "Cross-platform IwaraTV build artifacts."
+            --notes-file release-notes.md

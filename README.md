@@ -1,5 +1,7 @@
 # IwaraTV
 
+[简体中文](README.zh-CN.md) | English
+
 [![Build](https://github.com/demogest/IwaraTV/actions/workflows/build.yml/badge.svg?branch=main)](https://github.com/demogest/IwaraTV/actions/workflows/build.yml)
 [![Release](https://img.shields.io/github/v/release/demogest/IwaraTV?include_prereleases&sort=semver)](https://github.com/demogest/IwaraTV/releases)
 [![License: MIT](https://img.shields.io/badge/license-MIT-2ea44f.svg)](LICENSE)
@@ -16,11 +18,17 @@ IwaraTV is a local desktop browser and player launcher for Iwara.tv. The app kee
 
 This project is independently made and is not affiliated with, sponsored by, or endorsed by Iwara.
 
+## Documentation
+
+- [User Manual](docs/user-manual.en.md) / [用户手册](docs/user-manual.zh-CN.md)
+- [Developer Contribution Guide](CONTRIBUTING.md) / [开发者贡献参考](CONTRIBUTING.zh-CN.md)
+
 ## Highlights
 
 - Browse recent, trending, popular, followed-tag, subscribed-author, and author-filtered feeds.
 - Open Iwara video IDs or URLs directly from the top bar.
 - Follow or unfollow authors from the video detail panel or author page.
+- Save local favorites, then back up, export, or import the favorites list.
 - Launch MPV or a configured external player with a selected quality.
 - Download videos to a configured local folder with preferred quality fallback.
 - Keep local playback history and player/media-host preferences.
@@ -28,9 +36,9 @@ This project is independently made and is not affiliated with, sponsored by, or 
 - Diagnose video formats, X-Version salt, media hosts, and captured network responses.
 - Build native Windows, macOS, and Linux packages through GitHub Actions.
 
-## Screens
+## App Flow
 
-The first screen is the working app: browse feeds, open a video, choose a quality, and play or download immediately. Settings cover login/session state, MPV/external player paths, download defaults, media-host speed tests, X-Version sniffing, and tag preferences.
+The first screen is the working app: browse feeds, open a video, choose a quality, and play, favorite, or download immediately. Settings cover login/session state, MPV/external player paths, download defaults, media-host speed tests, X-Version sniffing, and tag preferences.
 
 ## Requirements
 

@@ -32,7 +32,7 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
         with:
           fetch-depth: 0
 
@@ -98,10 +98,10 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       - name: Setup Node
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v6
         with:
           node-version-file: .node-version
           cache: npm
@@ -151,7 +151,7 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
         with:
           fetch-depth: 0
 
@@ -218,10 +218,10 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       - name: Setup Node
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v6
         with:
           node-version-file: .node-version
           cache: npm
@@ -262,7 +262,7 @@ jobs:
         run: npm run release:portable:win
 
       - name: Upload bundle artifacts
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: ${{ matrix.artifact_name }}
           path: ${{ matrix.artifact_path }}
@@ -280,12 +280,12 @@ jobs:
 
     steps:
       - name: Checkout release history
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
         with:
           fetch-depth: 0
 
       - name: Download build artifacts
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v7
         with:
           path: artifacts
           merge-multiple: true

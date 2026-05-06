@@ -70,6 +70,8 @@ Useful commands:
 | `npm run build:web` | Build the web UI into `dist`. |
 | `npm run build` | Build the Tauri app. |
 | `npm run check:release` | Run TypeScript, Vitest, and Rust release-gate checks. |
+| `npm run version:check` | Verify that npm, Tauri, and Cargo version metadata match. |
+| `npm run version:update -- patch` | Bump every app version reference together. Also accepts `minor`, `major`, or an exact version. |
 | `npm run release:portable:win` | Package the current Windows release build as a portable EXE and unpacked ZIP. |
 | `npm run release:win` | Run release checks, then build the Windows NSIS installer, portable EXE, and unpacked ZIP. |
 | `npm run release:win:fast` | Build the Windows release artifacts without rerunning checks. |
@@ -94,6 +96,8 @@ The `main` branch is the Tauri/Rust desktop app. The former Electron implementat
 - `tests` covers UI helpers and command boundary expectations.
 
 ## Releases
+
+Use `npm run version:update -- patch` before a release to keep `package.json`, `package-lock.json`, `src-tauri/tauri.conf.json`, `src-tauri/Cargo.toml`, and `src-tauri/Cargo.lock` in sync. Run `npm run version:check` if you need to verify the metadata without changing it.
 
 The `Build` workflow runs checks on pull requests, compiles release artifacts when the package version changes on `main`, and also supports manual artifact builds. Version tags like `v1.0.0` publish a GitHub Release with the generated bundles and checksums.
 

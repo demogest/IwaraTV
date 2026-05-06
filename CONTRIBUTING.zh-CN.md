@@ -57,6 +57,8 @@ npm run check:release
 | --- | --- |
 | `npm run build:web` | 将 Vite UI 构建到 `dist`。 |
 | `npm run build` | 构建 Tauri 应用。 |
+| `npm run version:check` | 检查所有应用版本引用是否同步。 |
+| `npm run version:update -- patch` | 同时更新 npm、Tauri 和 Cargo 版本元数据。 |
 | `npm run release:win` | 运行检查，构建 Windows NSIS 安装包，并打包便携产物。 |
 | `npm run release:win:fast` | 不重复运行检查，直接构建 Windows 发布产物。 |
 | `npm run dist:win` | 更新内置 MPV、重建图标，并运行 Windows 发布流程。 |
@@ -105,5 +107,7 @@ npm run check:release
 - 不要提交个人设置、token、下载的视频或本地 WebView/会话数据。
 
 ## 发布说明
+
+补丁发布使用 `npm run version:update -- patch`，较大的版本递增可使用 `minor` 或 `major`，也可以传入精确 semver，例如 `npm run version:update -- 1.2.3`。脚本会更新 `package.json`、`package-lock.json`、`src-tauri/tauri.conf.json`、`src-tauri/Cargo.toml`，以及 `src-tauri/Cargo.lock` 中的 `iwaratv` 条目。发布前只想确认版本元数据一致时，运行 `npm run version:check`。
 
 GitHub `Build` 工作流会在 pull request 上运行检查。`main` 上的 `package.json` 版本变化，或推送类似 `v1.0.0` 的版本标签时，会构建发布产物。带标签的发布会通过 GitHub Releases 发布生成的资产和校验和。

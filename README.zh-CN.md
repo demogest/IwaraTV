@@ -70,6 +70,8 @@ npm run dev:tauri
 | `npm run build:web` | 将 Web UI 构建到 `dist`。 |
 | `npm run build` | 构建 Tauri 应用。 |
 | `npm run check:release` | 运行 TypeScript、Vitest 和 Rust 发布前检查。 |
+| `npm run version:check` | 检查 npm、Tauri 和 Cargo 版本元数据是否一致。 |
+| `npm run version:update -- patch` | 一次更新所有应用版本引用。也可传 `minor`、`major` 或精确版本号。 |
 | `npm run release:portable:win` | 将当前 Windows release 构建打包为便携 EXE 和解包 ZIP。 |
 | `npm run release:win` | 运行发布检查，然后构建 Windows NSIS 安装包、便携 EXE 和解包 ZIP。 |
 | `npm run release:win:fast` | 不重复运行检查，直接构建 Windows 发布产物。 |
@@ -94,6 +96,8 @@ Release 构建会启用 Rust LTO、单 codegen unit、符号剥离和 panic abor
 - `tests` 覆盖 UI 辅助函数和命令边界预期。
 
 ## 发布
+
+发版前使用 `npm run version:update -- patch`，让 `package.json`、`package-lock.json`、`src-tauri/tauri.conf.json`、`src-tauri/Cargo.toml` 和 `src-tauri/Cargo.lock` 保持一致。需要只检查不修改时，运行 `npm run version:check`。
 
 `Build` 工作流会在 pull request 上运行检查；当 `main` 上的包版本变化时编译发布产物，也支持手动构建。类似 `v1.0.0` 的版本标签会发布 GitHub Release，并附带生成的安装包和校验和。
 

@@ -19,6 +19,8 @@
     "release:portable:win": "node scripts/package-portable-win.mjs",
     "release:win": "npm run check:release && npm run build:tauri -- --bundles nsis && npm run release:portable:win",
     "release:win:fast": "npm run build:tauri -- --bundles nsis && npm run release:portable:win",
+    "version:check": "node scripts/update-version.mjs --check",
+    "version:update": "node scripts/update-version.mjs",
     "icons:build": "node scripts/generate-icons.mjs && tauri icon build/icons/icon.png --output build/icons",
     "mpv:update": "node scripts/install-mpv.mjs",
     "dist:win": "npm run mpv:update && npm run icons:build && npm run release:win",

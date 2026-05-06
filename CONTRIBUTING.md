@@ -57,6 +57,8 @@ Useful build commands:
 | --- | --- |
 | `npm run build:web` | Build the Vite UI into `dist`. |
 | `npm run build` | Build the Tauri app. |
+| `npm run version:check` | Verify that all app version references are synchronized. |
+| `npm run version:update -- patch` | Update npm, Tauri, and Cargo version metadata together. |
 | `npm run release:win` | Run checks, build the Windows NSIS installer, and package portable artifacts. |
 | `npm run release:win:fast` | Build Windows release artifacts without rerunning checks. |
 | `npm run dist:win` | Update bundled MPV, rebuild icons, and run the Windows release flow. |
@@ -105,5 +107,7 @@ When adding a new command:
 - Do not include personal settings, tokens, downloaded videos, or local WebView/session data.
 
 ## Release Notes
+
+Use `npm run version:update -- patch` for patch releases, `npm run version:update -- minor` or `major` for larger bumps, or pass an exact semver such as `npm run version:update -- 1.2.3`. The script updates `package.json`, `package-lock.json`, `src-tauri/tauri.conf.json`, `src-tauri/Cargo.toml`, and the `iwaratv` entry in `src-tauri/Cargo.lock`. Use `npm run version:check` before publishing if you only need to confirm that the metadata is aligned.
 
 The GitHub `Build` workflow runs checks on pull requests. On `main`, release artifacts are built when `package.json` version changes or when a version tag such as `v1.0.0` is pushed. Tagged releases publish generated assets and checksums through GitHub Releases.

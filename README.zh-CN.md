@@ -1,18 +1,19 @@
-# IwaraTV
-
-简体中文 | [English](README.md)
-
-[![Build](https://github.com/demogest/IwaraTV/actions/workflows/build.yml/badge.svg?branch=main)](https://github.com/demogest/IwaraTV/actions/workflows/build.yml)
-[![Release](https://img.shields.io/github/v/release/demogest/IwaraTV?include_prereleases&sort=semver)](https://github.com/demogest/IwaraTV/releases)
-[![License: MIT](https://img.shields.io/badge/license-MIT-2ea44f.svg)](LICENSE)
-[![Tauri](https://img.shields.io/badge/Tauri-2.x-24c8db?logo=tauri&logoColor=white)](https://tauri.app/)
-[![React](https://img.shields.io/badge/React-19-61dafb?logo=react&logoColor=111111)](https://react.dev/)
-[![TypeScript](https://img.shields.io/badge/TypeScript-6-3178c6?logo=typescript&logoColor=white)](https://www.typescriptlang.org/)
-[![Rust](https://img.shields.io/badge/Rust-stable-b7410e?logo=rust&logoColor=white)](https://www.rust-lang.org/)
-[![Vite](https://img.shields.io/badge/Vite-8-646cff?logo=vite&logoColor=white)](https://vite.dev/)
-[![Platforms](https://img.shields.io/badge/platform-Windows%20%7C%20macOS%20%7C%20Linux-555)](#发布)
-
-<img src="src/assets/iwara-tv-mark.svg" alt="IwaraTV logo" width="48" height="48">
+<div align="center">
+  <img src="src/assets/iwara-tv-mark.svg" alt="IwaraTV logo" width="80" height="80">
+  <h1>IwaraTV</h1>
+  <p>简体中文 | <a href="README.md">English</a></p>
+  <p>
+    <a href="https://github.com/demogest/IwaraTV/actions/workflows/build.yml"><img src="https://github.com/demogest/IwaraTV/actions/workflows/build.yml/badge.svg?branch=main" alt="Build"></a>
+    <a href="https://github.com/demogest/IwaraTV/releases"><img src="https://img.shields.io/github/v/release/demogest/IwaraTV?include_prereleases&amp;sort=semver" alt="Release"></a>
+    <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-2ea44f.svg" alt="License: MIT"></a>
+    <a href="https://tauri.app/"><img src="https://img.shields.io/badge/Tauri-2.x-24c8db?logo=tauri&amp;logoColor=white" alt="Tauri 2.x"></a>
+    <a href="https://react.dev/"><img src="https://img.shields.io/badge/React-19-61dafb?logo=react&amp;logoColor=111111" alt="React 19"></a>
+    <a href="https://www.typescriptlang.org/"><img src="https://img.shields.io/badge/TypeScript-6-3178c6?logo=typescript&amp;logoColor=white" alt="TypeScript 6"></a>
+    <a href="https://www.rust-lang.org/"><img src="https://img.shields.io/badge/Rust-stable-b7410e?logo=rust&amp;logoColor=white" alt="Rust stable"></a>
+    <a href="https://vite.dev/"><img src="https://img.shields.io/badge/Vite-8-646cff?logo=vite&amp;logoColor=white" alt="Vite 8"></a>
+    <a href="#发布"><img src="https://img.shields.io/badge/platform-Windows%20%7C%20macOS%20%7C%20Linux-555" alt="Platforms"></a>
+  </p>
+</div>
 
 IwaraTV 是一个本地桌面端 Iwara.tv 浏览器与播放器启动器。React 界面保持轻量和快速，Tauri/Rust 后端负责会话、Iwara API、设置、诊断、下载和播放器启动。
 

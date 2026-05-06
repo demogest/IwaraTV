@@ -35,7 +35,7 @@ import {
   X
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
-import { FormEvent, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { type CSSProperties, FormEvent, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import type {
   AppSettings,
   AuthState,
@@ -113,6 +113,7 @@ const searchSortTabs: Array<{ key: SearchSort; label: string; Icon: LucideIcon }
 ];
 
 const qualityOptions = ["Source", "2160", "1440", "1080", "720", "540", "360", "Preview"];
+const TOAST_AUTO_DISMISS_MS = 3000;
 
 const defaultSettings: AppSettings = {
   player: {
@@ -304,6 +305,28 @@ export function App() {
   useEffect(() => {
     setAvatarImageReady(Boolean(auth.avatarUrl));
   }, [auth.avatarUrl]);
+
+  useEffect(() => {
+    if (!issue) {
+      return;
+    }
+
+    const timer = window.setTimeout(() => {
+      setIssue(undefined);
+    }, TOAST_AUTO_DISMISS_MS);
+    return () => window.clearTimeout(timer);
+  }, [issue]);
+
+  useEffect(() => {
+    if (!status) {
+      return;
+    }
+
+    const timer = window.setTimeout(() => {
+      setStatus("");
+    }, TOAST_AUTO_DISMISS_MS);
+    return () => window.clearTimeout(timer);
+  }, [status]);
 
   useEffect(() => {
     if (!api || activeSection !== "browse" || loadingFeed || feeds[activeFeedTab]) {
@@ -1435,8 +1458,15 @@ export function App() {
           </div>
         )}
 
-        {issue && <ActionNotice issue={issue} onAction={() => handleIssueAction(issue)} />}
-        {status && <div className="notice success">{status}</div>}
+        <FeedbackToastLayer
+          issue={issue}
+          onDismissIssue={() => setIssue(undefined)}
+          onDismissStatus={() => setStatus("")}
+          onIssueAction={(target) => {
+            void handleIssueAction(target);
+          }}
+          status={status}
+        />
 
         {showDetailPage ? (
           <VideoDetailRoute
@@ -3718,18 +3748,74 @@ function SettingsView({
   );
 }
 
-function ActionNotice({ issue, onAction }: { issue: UiIssue; onAction: () => void }) {
+function FeedbackToastLayer({
+  issue,
+  status,
+  onIssueAction,
+  onDismissIssue,
+  onDismissStatus
+}: {
+  issue?: UiIssue;
+  status: string;
+  onIssueAction: (issue: UiIssue) => void;
+  onDismissIssue: () => void;
+  onDismissStatus: () => void;
+}) {
+  if (!issue && !status) {
+    return null;
+  }
+
+  const toastTimingStyle = {
+    "--toast-duration": `${TOAST_AUTO_DISMISS_MS}ms`
+  } as CSSProperties;
+  const issueToastKey = issue ? `${issue.title}-${issue.detail}-${issue.actionLabel}` : undefined;
+
   return (
-    <div className="notice danger action-notice">
-      <AlertTriangle size={20} />
-      <div>
-        <strong>{issue.title}</strong>
-        <span>{issue.detail}</span>
-      </div>
-      <button className="secondary-button compact" onClick={onAction} type="button">
-        {issue.actionLabel}
-      </button>
+    <div aria-atomic="true" aria-live="polite" className="toast-region">
+      {issue && (
+        <div className="toast-card danger" key={issueToastKey} role="alert" style={toastTimingStyle}>
+          <ToastProgress />
+          <AlertTriangle className="toast-icon" size={20} />
+          <div className="toast-copy">
+            <strong>{issue.title}</strong>
+            <span>{issue.detail}</span>
+          </div>
+          <button
+            className="secondary-button compact"
+            onClick={() => onIssueAction(issue)}
+            type="button"
+          >
+            {issue.actionLabel}
+          </button>
+          <button aria-label="关闭提示" className="toast-close-button" onClick={onDismissIssue} type="button">
+            <X size={16} />
+          </button>
+        </div>
+      )}
+      {status && (
+        <div className="toast-card success" key={status} role="status" style={toastTimingStyle}>
+          <ToastProgress />
+          <CheckCircle2 className="toast-icon" size={20} />
+          <div className="toast-copy">
+            <span>{status}</span>
+          </div>
+          <button aria-label="关闭提示" className="toast-close-button" onClick={onDismissStatus} type="button">
+            <X size={16} />
+          </button>
+        </div>
+      )}
     </div>
+  );
+}
+
+function ToastProgress() {
+  return (
+    <span aria-hidden="true" className="toast-progress">
+      <span className="toast-progress-segment top" />
+      <span className="toast-progress-segment right" />
+      <span className="toast-progress-segment bottom" />
+      <span className="toast-progress-segment left" />
+    </span>
   );
 }
 

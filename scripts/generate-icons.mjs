@@ -3,7 +3,7 @@ import path from "node:path";
 import zlib from "node:zlib";
 
 const root = process.cwd();
-const webAssetDir = path.join(root, "src", "assets");
+const webAssetDir = path.join(root, "src", "renderer", "assets");
 const iconDir = path.join(root, "build", "icons");
 const webSvgPath = path.join(webAssetDir, "iwara-tv-mark.svg");
 const iconSvgPath = path.join(iconDir, "icon.svg");
@@ -55,7 +55,8 @@ fs.writeFileSync(webSvgPath, svg);
 fs.writeFileSync(iconSvgPath, svg);
 
 const pngs = sizes.map((size) => ({ size, data: renderPng(size) }));
-fs.writeFileSync(iconPngPath, pngs.find((item) => item.size === 256).data);
+// Linux and macOS packaging want a 512 px source image; ICO tops out at 256.
+fs.writeFileSync(iconPngPath, renderPng(512));
 fs.writeFileSync(iconIcoPath, makeIco(pngs));
 fs.copyFileSync(iconPngPath, builderIconPngPath);
 fs.copyFileSync(iconIcoPath, builderIconIcoPath);

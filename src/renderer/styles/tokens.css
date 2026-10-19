@@ -1,0 +1,115 @@
+/* Design tokens. Dark is the default; [data-theme="light"] overrides.
+   Text/background pairs are chosen for WCAG AA contrast (>= 4.5:1). */
+
+:root {
+  color-scheme: dark;
+
+  --color-bg: #0e1014;
+  --color-bg-raised: #13161b;
+  --color-surface: #191d23;
+  --color-surface-hover: #20252d;
+  --color-surface-active: #283039;
+  --color-border: #262b33;
+  --color-border-strong: #353c47;
+  --color-text: #eceef2;
+  --color-text-muted: #a8afbb;
+  --color-text-subtle: #808897;
+  --color-accent: #46c58a;
+  --color-accent-hover: #5ad39b;
+  --color-accent-soft: rgb(70 197 138 / 14%);
+  --color-accent-text: #6fdcaa;
+  --color-on-accent: #04170e;
+  --color-danger: #ef6b6b;
+  --color-danger-soft: rgb(239 107 107 / 14%);
+  --color-warning: #e9b44c;
+  --color-warning-soft: rgb(233 180 76 / 14%);
+  --color-info: #74aeff;
+  --color-info-soft: rgb(116 174 255 / 14%);
+  --color-focus: #8ab4ff;
+  --color-overlay: rgb(5 7 9 / 64%);
+  --color-scrim-strong: linear-gradient(180deg, rgb(0 0 0 / 0%) 35%, rgb(0 0 0 / 72%) 100%);
+  --color-scrollbar: rgb(255 255 255 / 16%);
+  --color-scrollbar-hover: rgb(255 255 255 / 28%);
+
+  --shadow-1: 0 1px 2px rgb(0 0 0 / 35%);
+  --shadow-2: 0 8px 24px rgb(0 0 0 / 32%);
+  --shadow-3: 0 20px 56px rgb(0 0 0 / 48%);
+
+  --font-sans: "Inter", "Segoe UI Variable Text", "Segoe UI", system-ui, -apple-system, BlinkMacSystemFont,
+    "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei UI", "Microsoft YaHei", "Noto Sans CJK SC",
+    "Noto Sans SC", sans-serif;
+  --font-mono: ui-monospace, "Cascadia Code", "SF Mono", Menlo, Consolas, "Liberation Mono", monospace;
+
+  --text-xs: 12px;
+  --text-sm: 13px;
+  --text-md: 14px;
+  --text-lg: 16px;
+  --text-xl: 20px;
+  --text-2xl: 26px;
+
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 20px;
+  --space-6: 24px;
+  --space-8: 32px;
+  --space-10: 40px;
+
+  --radius-sm: 6px;
+  --radius-md: 10px;
+  --radius-lg: 14px;
+  --radius-full: 999px;
+
+  --sidebar-width: 236px;
+  --sidebar-collapsed-width: 68px;
+  --topbar-height: 60px;
+  --content-max: 1680px;
+
+  --ease-out: cubic-bezier(0.2, 0.7, 0.2, 1);
+  --duration-fast: 120ms;
+  --duration-base: 180ms;
+  --duration-slow: 260ms;
+}
+
+:root[data-theme="light"] {
+  color-scheme: light;
+
+  --color-bg: #f3f4f7;
+  --color-bg-raised: #ffffff;
+  --color-surface: #ffffff;
+  --color-surface-hover: #eef0f4;
+  --color-surface-active: #e3e7ee;
+  --color-border: #e1e4ea;
+  --color-border-strong: #c9ced8;
+  --color-text: #15181d;
+  --color-text-muted: #4d5563;
+  --color-text-subtle: #687080;
+  --color-accent: #177d4e;
+  --color-accent-hover: #126a41;
+  --color-accent-soft: rgb(23 125 78 / 11%);
+  --color-accent-text: #116a40;
+  --color-on-accent: #ffffff;
+  --color-danger: #c53636;
+  --color-danger-soft: rgb(197 54 54 / 10%);
+  --color-warning: #9a6200;
+  --color-warning-soft: rgb(154 98 0 / 11%);
+  --color-info: #1f5fd6;
+  --color-info-soft: rgb(31 95 214 / 10%);
+  --color-focus: #2463eb;
+  --color-overlay: rgb(20 24 30 / 42%);
+  --color-scrollbar: rgb(15 23 42 / 18%);
+  --color-scrollbar-hover: rgb(15 23 42 / 32%);
+
+  --shadow-1: 0 1px 2px rgb(15 23 42 / 8%);
+  --shadow-2: 0 8px 24px rgb(15 23 42 / 10%);
+  --shadow-3: 0 20px 56px rgb(15 23 42 / 18%);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  :root {
+    --duration-fast: 0ms;
+    --duration-base: 0ms;
+    --duration-slow: 0ms;
+  }
+}

@@ -8,25 +8,25 @@ IwaraTV is independent and is not affiliated with, sponsored by, or endorsed by 
 
 ## Project Shape
 
-The mainline app is a Tauri 2 desktop application:
+IwaraTV is an Electron app built with electron-vite:
 
-- `src`: Vite, React, and TypeScript UI.
-- `src/lib`: Browser-safe types and UI helper utilities.
-- `src/tauri`: The typed web-to-Tauri command wrapper.
-- `src-tauri/src`: Rust backend for Iwara API access, auth, session capture, settings, favorites, downloads, playback, diagnostics, and OS integration.
-- `src-tauri/capabilities`: Tauri permission surface for the main window.
-- `tests`: Vitest coverage for browser-safe helpers and command boundary expectations.
-- `.github/workflows/build.yml`: CI checks, package builds, and release publishing.
-
-The legacy Electron implementation is deprecated and should not be reintroduced on `main`.
+- `src/main` — the main process.
+  - `index.ts` — app lifecycle, the `app://` protocol, window creation and hardening, OS integration.
+  - `backend.ts` — wires stores and services together; one method per IPC channel.
+  - `ipc-handlers.ts` / `ipc.ts` — channel → handler and channel → validator tables, and their registration.
+  - `services/` — `iwara-client` (API, file lists, comments, follows, speed tests), `iwara-session` (the `persist:iwara` browser session, sign-in window, page-context fetch, network capture), `download-manager`, `player-service`, `settings-store`, `favorite-store`.
+  - `lib/` — Electron-free helpers: X-Version, JWT detection, response parsing, file transfer, JSON files, legacy data migration.
+- `src/preload/index.ts` — exposes `window.iwaraTV` with allowlisted `invoke` and `on`.
+- `src/renderer` — React UI: `views/`, `components/`, `state/` (app state, navigation, toasts, confirm dialogs), `hooks/`, `i18n/` (`en.ts`, `zh-CN.ts`), `styles/`, and `dev/mock-bridge.ts` for the browser preview.
+- `src/shared` — types, the IPC contract (`ipc.ts`), error codes, CSP and helpers shared by both processes.
+- `tests` — Vitest suites; `tests/e2e` — the Playwright smoke test and mock Iwara server.
+- `.github/workflows/build.yml` — CI checks, packaging and release publishing.
 
 ## Prerequisites
 
-- Node.js `24.14.1` or newer. The repository includes `.node-version`.
-- npm `11.11.0` or newer.
-- Rust stable. The Rust crate declares `rust-version = "1.77.2"`.
-- Tauri system dependencies for your platform.
-- MPV for playback testing, unless you are only changing code paths that do not launch playback.
+- Node.js `24.14.1` or newer (`.node-version`) and npm `11.11.0` or newer.
+- MPV for playback testing.
+- Linux only, for `npm run test:e2e`: `xvfb` (or a desktop session) and `openssl`.
 
 On Windows packaging flows, `npm run mpv:update` downloads a current MPV build into `vendor/mpv`. It requires network access and should be run intentionally.
 
@@ -34,80 +34,51 @@ On Windows packaging flows, `npm run mpv:update` downloads a current MPV build i
 
 ```bash
 npm ci
-npm run icons:build
-npm run dev:tauri
+npm run dev
 ```
 
-`npm run dev` starts only the Vite UI preview. It is useful for layout work, but Tauri commands are unavailable there. Use `npm run dev:tauri` when testing settings, login, downloads, playback, dialogs, clipboard, or OS integration.
+The Electron binary is downloaded on first use. `npm run dev:web` serves only the UI with a mock backend (`src/renderer/dev/mock-bridge.ts`); query parameters `lang`, `theme`, `signedIn=0` and `empty=1` switch the fake state.
 
 ## Quality Gates
-
-Run the smallest relevant checks while developing, then run the full release gate before a PR that touches behavior:
 
 ```bash
 npm run typecheck
 npm test
-cargo test --manifest-path src-tauri/Cargo.toml
+npm run test:e2e        # Linux: xvfb-run -a npm run test:e2e
 npm run check:release
 ```
 
-Useful build commands:
-
-| Command | Purpose |
-| --- | --- |
-| `npm run build:web` | Build the Vite UI into `dist`. |
-| `npm run build` | Build the Tauri app. |
-| `npm run version:check` | Verify that all app version references are synchronized. |
-| `npm run version:update -- patch` | Update npm, Tauri, and Cargo version metadata together. |
-| `npm run release:win` | Run checks, build the Windows NSIS installer, and package portable artifacts. |
-| `npm run release:win:fast` | Build Windows release artifacts without rerunning checks. |
-| `npm run dist:win` | Update bundled MPV, rebuild icons, and run the Windows release flow. |
+The unit suites cover the Iwara client against a fake fetch, downloads against a local Range server, stores, the player service, IPC validation, translations, and static boundary/security rules (`tests/boundaries.test.ts`). The smoke test builds the app and walks through browsing, search, playback (with a stub MPV), downloads, favorites, sign-in, subscriptions, following, commenting, settings and sign-out against `tests/e2e/mock-iwara.mjs`, saving screenshots to `test-results/e2e/`. Set `IWARATV_E2E_EXECUTABLE` to run it against a packaged app instead of `out/` (only for builds without the inspector fuse, since Playwright attaches through it).
 
 ## Coding Guidelines
 
-- Prefer existing module boundaries over new cross-cutting abstractions.
-- Keep browser runtime code free of Node.js APIs. `tests/tauri-boundary.test.ts` guards this boundary.
-- Keep Tauri commands typed in both directions: Rust models in `src-tauri/src/models.rs`, TypeScript mirrors in `src/lib/types.ts`, and command wrappers in `src/tauri/api.ts`.
-- Keep settings migrations tolerant. `settings.rs` merges stored JSON with defaults so older settings files keep working.
-- Avoid storing secrets in JSON files. API credentials belong in the OS keyring when available; WebView session data should stay in the WebView session surface.
-- Preserve user data behavior. Changes to `settings.json`, `downloads.json`, history, or auth state should include a migration or compatibility plan.
-- Prefer explicit errors with user-actionable messages. The UI classifies common issues in `src/lib/issue-utils.ts`.
+- Keep the process boundaries: the renderer never imports Node.js, Electron or `src/main`; `src/shared` imports nothing outside itself; the preload imports only `electron` and the IPC contract. `tests/boundaries.test.ts` enforces this.
+- Never weaken `webPreferences` (`sandbox`, `contextIsolation`, `nodeIntegration: false`, `webSecurity`), the CSP, the navigation and permission handlers, or the IPC sender check.
+- Keep `src/main/lib` and the services other than `iwara-session` free of Electron imports so they stay unit-testable; pass Electron features in through `SessionPort` and `PlatformPort`.
+- Throw `AppError` with a specific `AppErrorCode`. The renderer maps codes to localized titles, details and recovery actions in `src/renderer/lib/errors.ts`.
+- Add every user-visible string to both `en.ts` and `zh-CN.ts`; the type system and `tests/renderer.test.ts` check keys and placeholders.
+- Keep settings tolerant: `normalizeSettings` merges stored JSON over defaults and clamps values, so old files keep working.
+- Don't log tokens, cookies or signed media URLs; use `safeUrl` for diagnostics.
 
-## Adding A Tauri Command
+## Adding An IPC Channel
 
-When adding a new command:
-
-1. Add or update shared data structures in `src-tauri/src/models.rs`.
-2. Implement the command in `src-tauri/src/commands.rs`.
-3. Register it in `tauri::generate_handler!` in `src-tauri/src/lib.rs`.
-4. Add the command string to `commandMap` in `src/tauri/api.ts`.
-5. Expose a typed wrapper from `tauriApi`.
-6. Update TypeScript types in `src/lib/types.ts`.
-7. Add or update `tests/tauri-api.test.ts`.
-8. Check `src-tauri/capabilities/default.json` if the feature needs new plugin permissions.
-
-## Feature Areas
-
-- **Iwara API and parsing**: Keep request logic in `iwara_client.rs` and parsing helpers close to the API response shape.
-- **Session and Cloudflare verification**: Keep browser-session work in `session.rs`; avoid leaking raw token or cookie details into UI logs.
-- **Playback**: Keep player resolution and process launching in `player.rs`; external-player argument parsing belongs in `player_template.rs`.
-- **Favorites**: Keep local favorite persistence, import, export, backup, and merge behavior in `favorites.rs`.
-- **Downloads**: Keep queue/history behavior in `downloads.rs`; file naming, format choice, and segmented transfer planning live near the Iwara client download path.
-- **Settings**: Defaults, normalization, and compatibility live in `settings.rs`.
-- **Media host speed tests**: Shared browser-safe normalization helpers live in `src/lib/media-speed-utils.ts`; Rust routing should stay in `media_speed.rs`.
+1. Add request/response types to `src/shared/types.ts` if needed.
+2. Declare the channel in `InvokeContract` and `INVOKE_CHANNELS` in `src/shared/ipc.ts`.
+3. Implement the method on `Backend` (`src/main/backend.ts`).
+4. Add the handler and an argument validator in `src/main/ipc-handlers.ts` — validators must reject anything unexpected and copy only known fields.
+5. Call it from the renderer with `invoke("your:channel", …)` from `src/renderer/lib/api.ts`, and add it to `src/renderer/dev/mock-bridge.ts`.
+6. Add a happy-path sample to `tests/ipc.test.ts` (it fails until every channel has one) and tests for the new behavior.
 
 ## Pull Request Checklist
 
 - Describe the user-visible behavior and affected platform(s).
 - Link the issue or explain the motivation.
-- Include screenshots or short clips for visible UI changes.
-- Include the commands you ran, especially `npm run typecheck`, `npm test`, and Rust tests.
-- Note any checks you could not run.
-- Do not commit generated release artifacts unless the change is specifically about packaging output.
-- Do not include personal settings, tokens, downloaded videos, or local WebView/session data.
+- Include screenshots for visible UI changes (both themes when colors change).
+- List the commands you ran: `npm run typecheck`, `npm test`, `npm run test:e2e`.
+- Don't commit build output (`out/`, `release/`), test screenshots, personal settings, tokens, downloaded videos or session data.
 
 ## Release Notes
 
-Use `npm run version:update -- patch` for patch releases, `npm run version:update -- minor` or `major` for larger bumps, or pass an exact semver such as `npm run version:update -- 1.2.3`. The script updates `package.json`, `package-lock.json`, `src-tauri/tauri.conf.json`, `src-tauri/Cargo.toml`, and the `iwaratv` entry in `src-tauri/Cargo.lock`. Use `npm run version:check` before publishing if you only need to confirm that the metadata is aligned.
+Use `npm run version:update -- patch` (or `minor`, `major`, or an exact semver such as `1.2.3`). It updates `package.json` and `package-lock.json`; electron-builder reads the version from there. `npm run version:check` confirms they agree.
 
-The GitHub `Build` workflow runs checks on pull requests. On `main`, release artifacts are built when `package.json` version changes or when a version tag such as `v1.0.0` is pushed. Tagged releases publish generated assets and checksums through GitHub Releases.
+The GitHub `Build` workflow runs checks on pull requests and pushes. On `main`, a version change creates a `v*` tag and dispatches a tag build, which packages Windows (NSIS installer, portable EXE, ZIP), macOS (DMG) and Linux (DEB, AppImage) and publishes a GitHub Release with `SHA256SUMS.txt`.

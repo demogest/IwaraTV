@@ -1,0 +1,73 @@
+appId: local.iwaratv.player
+productName: IwaraTV
+copyright: Copyright © Demogest
+artifactName: ${productName}_${version}_${arch}.${ext}
+
+directories:
+  output: release
+  buildResources: build
+
+files:
+  - out/**
+  - package.json
+
+asar: true
+
+# Turn off Electron features this app never uses, so a packaged build can't be
+# repurposed as a generic Node runtime or debugged/injected from outside.
+electronFuses:
+  runAsNode: false
+  enableNodeOptionsEnvironmentVariable: false
+  enableNodeCliInspectArguments: false
+  onlyLoadAppFromAsar: true
+  grantFileProtocolExtraPrivileges: false
+electronLanguages:
+  - en-US
+  - zh-CN
+  - zh-TW
+
+win:
+  icon: build/icons/icon.ico
+  artifactName: ${productName}_${version}_${arch}-unpacked.${ext}
+  target:
+    - nsis
+    - portable
+    - zip
+  extraResources:
+    - from: vendor/mpv
+      to: mpv
+      filter:
+        - "**/*"
+        - "!.gitkeep"
+
+nsis:
+  artifactName: ${productName}_${version}_${arch}-setup.${ext}
+  oneClick: false
+  perMachine: false
+  allowToChangeInstallationDirectory: true
+  deleteAppDataOnUninstall: false
+
+portable:
+  artifactName: ${productName}_${version}_${arch}-portable.${ext}
+
+mac:
+  icon: build/icons/icon.icns
+  category: public.app-category.entertainment
+  target:
+    - dmg
+
+linux:
+  executableName: iwaratv
+  icon: build/icons/icon.png
+  category: AudioVideo
+  maintainer: Demogest
+  synopsis: Local Iwara.tv browser and MPV launcher
+  target:
+    - deb
+    - AppImage
+
+deb:
+  recommends:
+    - mpv
+
+publish: null

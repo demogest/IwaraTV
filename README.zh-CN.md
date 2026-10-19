@@ -1,21 +1,20 @@
 <div align="center">
-  <img src="src/assets/iwara-tv-mark.svg" alt="IwaraTV logo" width="80" height="80">
+  <img src="src/renderer/assets/iwara-tv-mark.svg" alt="IwaraTV 标志" width="80" height="80">
   <h1>IwaraTV</h1>
   <p>简体中文 | <a href="README.md">English</a></p>
   <p>
     <a href="https://github.com/demogest/IwaraTV/actions/workflows/build.yml"><img src="https://github.com/demogest/IwaraTV/actions/workflows/build.yml/badge.svg?branch=main" alt="Build"></a>
     <a href="https://github.com/demogest/IwaraTV/releases"><img src="https://img.shields.io/github/v/release/demogest/IwaraTV?include_prereleases&amp;sort=semver" alt="Release"></a>
     <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-2ea44f.svg" alt="License: MIT"></a>
-    <a href="https://tauri.app/"><img src="https://img.shields.io/badge/Tauri-2.x-24c8db?logo=tauri&amp;logoColor=white" alt="Tauri 2.x"></a>
+    <a href="https://www.electronjs.org/"><img src="https://img.shields.io/badge/Electron-44-47848f?logo=electron&amp;logoColor=white" alt="Electron 44"></a>
     <a href="https://react.dev/"><img src="https://img.shields.io/badge/React-19-61dafb?logo=react&amp;logoColor=111111" alt="React 19"></a>
     <a href="https://www.typescriptlang.org/"><img src="https://img.shields.io/badge/TypeScript-6-3178c6?logo=typescript&amp;logoColor=white" alt="TypeScript 6"></a>
-    <a href="https://www.rust-lang.org/"><img src="https://img.shields.io/badge/Rust-stable-b7410e?logo=rust&amp;logoColor=white" alt="Rust stable"></a>
     <a href="https://vite.dev/"><img src="https://img.shields.io/badge/Vite-8-646cff?logo=vite&amp;logoColor=white" alt="Vite 8"></a>
-    <a href="#发布"><img src="https://img.shields.io/badge/platform-Windows%20%7C%20macOS%20%7C%20Linux-555" alt="Platforms"></a>
+    <a href="#发布"><img src="https://img.shields.io/badge/platform-Windows%20%7C%20macOS%20%7C%20Linux-555" alt="平台"></a>
   </p>
 </div>
 
-IwaraTV 是一个本地桌面端 Iwara.tv 浏览器与播放器启动器。React 界面保持轻量和快速，Tauri/Rust 后端负责会话、Iwara API、设置、诊断、下载和播放器启动。
+IwaraTV 是一个用于浏览 Iwara.tv、并在 MPV 或其他本地播放器中播放视频的桌面应用。可以浏览和搜索视频、直接打开任意视频链接、关注作者和标签、发表评论、保存本地收藏和播放历史，并通过可续传的多线程下载保存视频。
 
 本项目为独立制作，不隶属于 Iwara，也未获得 Iwara 的赞助、认可或背书。
 
@@ -23,85 +22,75 @@ IwaraTV 是一个本地桌面端 Iwara.tv 浏览器与播放器启动器。React
 
 - [用户手册](docs/user-manual.zh-CN.md) / [User Manual](docs/user-manual.en.md)
 - [开发者贡献参考](CONTRIBUTING.zh-CN.md) / [Developer Contribution Guide](CONTRIBUTING.md)
+- [UI/UX 与安全审计报告（英文）](docs/audit.md)
 
 ## 功能亮点
 
-- 浏览最新、当前人气、长期热门、关注标签、订阅作者和指定作者的视频列表。
-- 直接在顶部输入 Iwara 视频 ID 或 URL 打开详情。
-- 在视频详情或作者页关注、取消关注作者。
-- 保存本地收藏，并可备份、导出或导入收藏列表。
-- 使用 MPV 或自定义外部播放器，以指定清晰度启动播放。
-- 下载视频到本地文件夹，并在首选清晰度不可用时自动回退。
-- 保留本地播放历史，以及播放器、媒体线路等偏好设置。
-- 使用应用内验证窗口完成登录、Cloudflare 验证和站点会话准备。
-- 诊断视频清晰度、X-Version 盐值、媒体域名和抓包到的网络响应。
-- 通过 GitHub Actions 构建 Windows、macOS 和 Linux 原生安装包。
-
-## 应用流程
-
-启动后即进入可用的浏览界面：浏览视频列表、打开详情、选择清晰度，然后立即播放、收藏或下载。设置页覆盖登录和会话状态、MPV/外部播放器路径、下载默认值、媒体线路测速、X-Version 嗅探和标签偏好。
+- 最新、当前人气、流行视频和关注标签四个列表，支持标签筛选和分级切换。
+- 顶部只有一个输入框：输入文字即搜索，粘贴 Iwara 链接或视频 ID 即打开视频。
+- 视频页可选择清晰度，一键用 MPV 播放、下载、收藏、关注作者，查看标签和带回复的评论。
+- 订阅页展示已关注作者的新视频，可按作者筛选。
+- 本地收藏支持撤销、备份、导出和导入；播放历史按日期分组。
+- 下载管理支持多连接分段下载、取消或重启后续传、重试，并显示进度、速度和剩余时间。
+- 在独立窗口中通过 Iwara 官方页面登录，应用不会接触你的密码。
+- 支持简体中文和英文、浅色和深色主题、键盘快捷键和可折叠侧边栏。
+- 故障排查工具：与网页版对比清晰度、CDN 线路测速、刷新 X-Version 盐值。
 
 ## 环境要求
 
-- Node.js 24.14.1+
-- npm 11.11.0+
-- Rust stable
-- 当前平台所需的 Tauri 系统依赖
+- Node.js 24.14.1+ 和 npm 11.11.0+（见 `.node-version`）。
+- 播放需要 MPV（Windows 发布版已内置），或在设置中配置其他播放器。
 
 ## 开发
 
 ```bash
 npm ci
-npm run icons:build
-npm run typecheck
-npm test
-cargo test --manifest-path src-tauri/Cargo.toml
-npm run dev:tauri
+npm run dev
 ```
 
-常用命令：
+`npm run dev` 启动带热重载的完整 Electron 应用。`npm run dev:web` 只在浏览器中打开界面（http://127.0.0.1:5175），使用模拟数据，适合调整布局；可在地址后加 `?lang=zh-CN`、`?theme=light`、`?signedIn=0` 或 `?empty=1`。
 
 | 命令 | 用途 |
 | --- | --- |
-| `npm run dev` | 启动 Vite UI 预览。 |
-| `npm run dev:tauri` | 运行带 Tauri 命令的完整桌面应用。 |
-| `npm run typecheck` | 检查 React/TypeScript UI 类型。 |
-| `npm test` | 运行 Vitest 测试。 |
-| `cargo test --manifest-path src-tauri/Cargo.toml` | 运行 Rust 测试。 |
-| `npm run build:web` | 将 Web UI 构建到 `dist`。 |
-| `npm run build` | 构建 Tauri 应用。 |
-| `npm run check:release` | 运行 TypeScript、Vitest 和 Rust 发布前检查。 |
-| `npm run version:check` | 检查 npm、Tauri 和 Cargo 版本元数据是否一致。 |
-| `npm run version:update -- patch` | 一次更新所有应用版本引用。也可传 `minor`、`major` 或精确版本号。 |
-| `npm run release:portable:win` | 将当前 Windows release 构建打包为便携 EXE 和解包 ZIP。 |
-| `npm run release:win` | 运行发布检查，然后构建 Windows NSIS 安装包、便携 EXE 和解包 ZIP。 |
-| `npm run release:win:fast` | 不重复运行检查，直接构建 Windows 发布产物。 |
+| `npm run dev` | 以热重载方式运行桌面应用。 |
+| `npm run dev:web` | 在浏览器中用模拟数据预览界面。 |
+| `npm run typecheck` | 对渲染进程以及主进程、preload、测试代码做类型检查。 |
+| `npm test` | 运行 Vitest 单元测试、边界测试和安全测试。 |
+| `npm run test:e2e` | 构建后让真实应用连接模拟 Iwara 服务器进行端到端冒烟测试（Linux 下用 `xvfb-run -a` 包裹）。 |
+| `npm run build` | 将主进程、preload 和渲染进程构建到 `out/`。 |
+| `npm start` | 运行最近一次构建。 |
+| `npm run pack` | 在 `release/` 中生成未打包安装程序的应用目录，便于本地检查。 |
+| `npm run dist:win` / `dist:mac` / `dist:linux` | 使用 electron-builder 生成安装包。 |
+| `npm run check:release` | 版本检查、类型检查和单元测试。 |
+| `npm run version:update -- patch` | 同步更新 `package.json` 和 `package-lock.json` 中的版本号，也可使用 `minor`、`major` 或具体版本号。 |
 
-带内置 MPV 的 Windows 打包：
+打包内置 MPV 的 Windows 版本：
 
 ```bash
 npm run mpv:update
 npm run dist:win
 ```
 
-Release 构建会启用 Rust LTO、单 codegen unit、符号剥离和 panic abort。Tauri devtools 只会通过 `npm run dev:tauri` 启用，因此打包版本不会带上开发工具特性。Windows 发布会生成 NSIS 安装包，以及 `release/IwaraTV_<version>_x64-portable.exe` 和 `release/IwaraTV_<version>_x64-unpacked.zip`。
+Windows 会生成 `IwaraTV_<version>_x64-setup.exe`、`IwaraTV_<version>_x64-portable.exe` 和 `IwaraTV_<version>_x64-unpacked.zip`；macOS 生成 `.dmg`；Linux 生成 `.deb` 和 `.AppImage`。
 
 ## 架构
 
-`main` 分支是 Tauri/Rust 桌面应用。旧的 Electron 实现已废弃，只应保留在历史分支中。
+- `src/main` — Electron 主进程：Iwara API 客户端、Iwara 浏览器会话、下载、播放器启动、设置与收藏存储、IPC 处理。
+- `src/preload` — 页面唯一的桥接层：带白名单的 `window.iwaraTV.invoke/on`。
+- `src/renderer` — React 界面（视图、组件、状态、多语言、样式）。
+- `src/shared` — 两端共用的类型、IPC 约定、错误码和工具函数。
+- `tests` — 单元、边界和安全测试；`tests/e2e` 为冒烟测试和模拟服务器。
 
-- `src-tauri/src` 负责原生端工作：Iwara API、认证、会话捕获、设置、下载、播放器启动、X-Version、诊断和系统集成。
-- `src` 是 Vite/React UI 入口。
-- `src/lib` 包含浏览器安全的 UI 类型和辅助函数。
-- `src/tauri` 包含 Web 到 Rust 的命令 API。
-- `tests` 覆盖 UI 辅助函数和命令边界预期。
+渲染进程运行在沙箱中，启用上下文隔离且无法访问 Node.js，通过私有的 `app://` 协议加载并启用严格的 Content-Security-Policy，只能调用 `src/shared/ipc.ts` 中声明的通道。Iwara 页面（登录和验证）在独立的沙箱窗口中打开，使用单独的会话且不加载 preload。打包后的应用关闭了 Electron 的 RunAsNode、`NODE_OPTIONS` 和调试器相关 fuse。
+
+从 Tauri 版本升级：首次启动时会自动导入设置、收藏和下载记录，需要重新登录一次。
 
 ## 发布
 
-发版前使用 `npm run version:update -- patch`，让 `package.json`、`package-lock.json`、`src-tauri/tauri.conf.json`、`src-tauri/Cargo.toml` 和 `src-tauri/Cargo.lock` 保持一致。需要只检查不修改时，运行 `npm run version:check`。
+发布前运行 `npm run version:update -- <major|minor|patch|x.y.z>`；`npm run version:check` 可检查 `package.json` 与 `package-lock.json` 的版本是否一致。
 
-`Build` 工作流会在 pull request 上运行检查；当 `main` 上的包版本变化时编译发布产物，也支持手动构建。类似 `v1.0.0` 的版本标签会发布 GitHub Release，并附带生成的安装包和校验和。
+`Build` 工作流会在每个 Pull Request 和推送上运行版本检查、类型检查、单元测试和端到端冒烟测试。当 `main` 上的版本号变化时，会为该提交创建标签；标签构建会打包 Windows、macOS 和 Linux 产物，并发布附带校验和的 GitHub Release。
 
 ## 许可证
 
-IwaraTV 基于 [MIT License](LICENSE) 发布。
+IwaraTV 以 [MIT License](LICENSE) 发布。

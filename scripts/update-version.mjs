@@ -6,12 +6,10 @@ const PROJECT_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), 
 const VERSION_PATTERN = /^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(?:-[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*)?(?:\+[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*)?$/;
 const BUMP_TYPES = new Set(["major", "minor", "patch"]);
 
+// The Electron app keeps its version in one place; electron-builder reads it from package.json.
 const files = {
   packageJson: "package.json",
-  packageLock: "package-lock.json",
-  tauriConfig: path.join("src-tauri", "tauri.conf.json"),
-  cargoManifest: path.join("src-tauri", "Cargo.toml"),
-  cargoLock: path.join("src-tauri", "Cargo.lock")
+  packageLock: "package-lock.json"
 };
 
 async function main() {
@@ -146,12 +144,6 @@ async function buildUpdates(version) {
   }
   packageLock.packages[""].version = version;
 
-  const tauriConfig = await readJson(files.tauriConfig);
-  tauriConfig.version = version;
-
-  const cargoManifest = await readText(files.cargoManifest);
-  const cargoLock = await readText(files.cargoLock);
-
   return [
     {
       file: files.packageJson,
@@ -162,21 +154,6 @@ async function buildUpdates(version) {
       file: files.packageLock,
       raw: await readText(files.packageLock),
       next: `${JSON.stringify(packageLock, null, 2)}\n`
-    },
-    {
-      file: files.tauriConfig,
-      raw: await readText(files.tauriConfig),
-      next: `${JSON.stringify(tauriConfig, null, 2)}\n`
-    },
-    {
-      file: files.cargoManifest,
-      raw: cargoManifest,
-      next: replaceCargoPackageVersion(cargoManifest, version, files.cargoManifest)
-    },
-    {
-      file: files.cargoLock,
-      raw: cargoLock,
-      next: replaceCargoLockPackageVersion(cargoLock, version, files.cargoLock)
     }
   ];
 }
@@ -184,9 +161,6 @@ async function buildUpdates(version) {
 async function collectVersions() {
   const packageJson = await readJson(files.packageJson);
   const packageLock = await readJson(files.packageLock);
-  const tauriConfig = await readJson(files.tauriConfig);
-  const cargoManifest = await readText(files.cargoManifest);
-  const cargoLock = await readText(files.cargoLock);
 
   return [
     { label: "package.json", file: files.packageJson, version: packageJson.version },
@@ -195,10 +169,7 @@ async function collectVersions() {
       label: "package-lock.json packages root",
       file: files.packageLock,
       version: packageLock.packages?.[""]?.version
-    },
-    { label: "tauri.conf.json", file: files.tauriConfig, version: tauriConfig.version },
-    { label: "Cargo.toml package", file: files.cargoManifest, version: readCargoPackageVersion(cargoManifest, files.cargoManifest) },
-    { label: "Cargo.lock iwaratv", file: files.cargoLock, version: readCargoLockPackageVersion(cargoLock, files.cargoLock) }
+    }
   ];
 }
 
@@ -224,50 +195,6 @@ function printChanges(versions, targetVersion, dryRun) {
     const next = entry.version === targetVersion ? "unchanged" : `${entry.version ?? "missing"} -> ${targetVersion}`;
     console.log(`- ${entry.label}: ${next}`);
   }
-}
-
-function readCargoPackageVersion(raw, file) {
-  const match = raw.match(/^\[package\][\s\S]*?^version\s*=\s*"([^"]+)"/m);
-  if (!match) {
-    throw new Error(`Could not find package version in ${file}.`);
-  }
-  return match[1];
-}
-
-function replaceCargoPackageVersion(raw, version, file) {
-  let replaced = false;
-  const next = raw.replace(/(^\[package\][\s\S]*?^version\s*=\s*")([^"]+)(")/m, (_match, prefix, _oldVersion, suffix) => {
-    replaced = true;
-    return `${prefix}${version}${suffix}`;
-  });
-
-  if (!replaced) {
-    throw new Error(`Could not update package version in ${file}.`);
-  }
-
-  return next;
-}
-
-function readCargoLockPackageVersion(raw, file) {
-  const match = raw.match(/^\[\[package\]\]\r?\nname = "iwaratv"\r?\nversion = "([^"]+)"/m);
-  if (!match) {
-    throw new Error(`Could not find iwaratv package version in ${file}.`);
-  }
-  return match[1];
-}
-
-function replaceCargoLockPackageVersion(raw, version, file) {
-  let replaced = false;
-  const next = raw.replace(/(^\[\[package\]\]\r?\nname = "iwaratv"\r?\nversion = ")([^"]+)(")/m, (_match, prefix, _oldVersion, suffix) => {
-    replaced = true;
-    return `${prefix}${version}${suffix}`;
-  });
-
-  if (!replaced) {
-    throw new Error(`Could not update iwaratv package version in ${file}.`);
-  }
-
-  return next;
 }
 
 function assertVersion(version, source) {

@@ -137,13 +137,13 @@ function createMainWindow(userDataPath: string): void {
 
   const contents = window.webContents;
   contents.setWindowOpenHandler(({ url }) => {
-    void openIfWebUrl(url);
+    openLinkInBrowser(url);
     return { action: "deny" };
   });
   contents.on("will-navigate", (event, url) => {
     if (!isAppUrl(url)) {
       event.preventDefault();
-      void openIfWebUrl(url);
+      openLinkInBrowser(url);
     }
   });
   contents.on("context-menu", (_event, params) => {
@@ -230,6 +230,10 @@ function isTrustedSender(event: IpcMainInvokeEvent): boolean {
 /** Hands http(s) links to the system browser; anything else is dropped. */
 function openIfWebUrl(url: string): Promise<void> {
   return /^https?:\/\//i.test(url) ? shell.openExternal(url) : Promise.resolve();
+}
+
+function openLinkInBrowser(url: string): void {
+  openIfWebUrl(url).catch((error: unknown) => console.warn("Could not open link:", error));
 }
 
 function emit<E extends EventChannel>(channel: E, payload: IpcEventContract[E]): void {

@@ -1,6 +1,6 @@
 import path from "node:path";
 import { mkdir } from "node:fs/promises";
-import { buildMediaHostCandidates, mediaUrlHost, replaceMediaUrlHost } from "../../shared/media-hosts";
+import { buildMediaHostCandidates, isIwaraUrl, mediaUrlHost, replaceMediaUrlHost } from "../../shared/media-hosts";
 import { normalizeTagList } from "../../shared/tags";
 import type {
   AuthorFollowRequest,
@@ -694,7 +694,12 @@ export class IwaraClient {
   // ---------------------------------------------------------------------------
   // Downloads
 
-  async prepareDownload(request: DownloadVideoRequest, download: DownloadSettings, speed: MediaSpeedSettings): Promise<DownloadPlan> {
+  async prepareDownload(
+    request: DownloadVideoRequest,
+    download: DownloadSettings,
+    speed: MediaSpeedSettings,
+    inUse: ReadonlySet<string> = new Set()
+  ): Promise<DownloadPlan> {
     let video = await this.getVideo(request.videoId);
     video = this.routeVideoFormats(video, speed);
     const requestedQuality = request.quality ?? download.defaultQuality;
@@ -708,7 +713,7 @@ export class IwaraClient {
     const directory = path.resolve(download.directory);
     await mkdir(directory, { recursive: true });
     return {
-      path: await uniqueDownloadPath(directory, video.title, video.id, format),
+      path: await uniqueDownloadPath(directory, video.title, video.id, format, inUse),
       format,
       video,
       fallbackFrom: requestedQuality && requestedQuality !== format.id ? requestedQuality : undefined
@@ -732,7 +737,8 @@ export class IwaraClient {
   async sniffXVersionSalt(): Promise<XVersionSaltReport> {
     const checkedAt = new Date().toISOString();
     const home = await this.fetchText(`${WEB_BASE}/`, "text/html");
-    for (const sourceUrl of scriptUrlsFromHtml(home, `${WEB_BASE}/`)) {
+    // Third-party scripts (analytics, Cloudflare) never carry the salt.
+    for (const sourceUrl of scriptUrlsFromHtml(home, `${WEB_BASE}/`).filter(isIwaraUrl)) {
       const script = await this.fetchText(sourceUrl, "application/javascript,text/javascript,*/*");
       const salt = extractXVersionSaltFromScript(script);
       if (salt) {
@@ -905,6 +911,10 @@ export class IwaraClient {
     init: { method?: "GET" | "POST" | "DELETE"; headers?: Record<string, string>; body?: string } = {}
   ): Promise<JsonResponse> {
     const method = init.method ?? "GET";
+    if (!isIwaraUrl(url)) {
+      // e.g. a fileUrl from the API pointing elsewhere: never send it the token.
+      throw new AppError("INVALID_RESPONSE", "Iwara returned a link outside iwara.tv.", { url: safeUrl(url) });
+    }
     const sessionToken = await this.session.token();
     const headers = mergeHeaders(
       {
@@ -969,12 +979,15 @@ export class IwaraClient {
     return { status, data };
   }
 
+  /** Public pages and scripts; these need no session token. */
   private async fetchText(url: string, accept: string): Promise<string> {
-    const token = await this.session.token();
+    if (!isIwaraUrl(url)) {
+      throw new AppError("INVALID_RESPONSE", "Refusing to fetch a page outside iwara.tv.", { url: safeUrl(url) });
+    }
     let response: Response;
     try {
       response = await this.fetch(url, {
-        headers: { Accept: accept, Referer: `${WEB_BASE}/`, ...(token ? { Authorization: `Bearer ${token}` } : {}) },
+        headers: { Accept: accept, Referer: `${WEB_BASE}/` },
         signal: withTimeout(undefined, REQUEST_TIMEOUT_MS)
       });
     } catch (error) {

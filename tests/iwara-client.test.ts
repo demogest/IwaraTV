@@ -269,6 +269,25 @@ describe("IwaraClient comments, follows and salt", () => {
     await expect(client([]).client.setAuthorFollowing({ authorId: "u1", following: true })).rejects.toMatchObject({ code: "LOGIN_REQUIRED" });
   });
 
+  it("never sends the session token outside iwara.tv", async () => {
+    const token = makeJwt({ exp: Math.floor(Date.now() / 1000) + 3600 });
+    const { client: api, calls } = client(
+      [
+        ["POST https://api.iwara.tv/user/token", () => json({ accessToken: token })],
+        ["GET https://api.iwara.tv/video/abcdef123", () => json({ ...rawVideo({ id: "abcdef123" }), fileUrl: "https://evil.example/file/x?expires=1&hash=h" })],
+        ["GET https://www.iwara.tv/", () => new Response(`<script src="https://static.cloudflareinsights.com/beacon.min.js"></script><script src="/main.js"></script>`)],
+        ["GET https://www.iwara.tv/main.js", () => new Response(`const fileUrl = 1; const s = "AbCdEfGhIjKlMnOpQrStUvWx12345678"; headers["X-Version"] = s;`)]
+      ],
+      { token }
+    );
+    await expect(api.getVideo("abcdef123")).rejects.toMatchObject({ code: "INVALID_RESPONSE" });
+    await api.sniffXVersionSalt();
+    const offsite = calls.filter((call) => !call.url.hostname.endsWith("iwara.tv"));
+    expect(offsite).toEqual([]);
+    // Public pages and scripts are fetched without credentials.
+    expect(calls.filter((call) => call.url.hostname === "www.iwara.tv").every((call) => !call.init.headers?.Authorization)).toBe(true);
+  });
+
   it("sniffs the X-Version salt from the website", async () => {
     const salt = "AbCdEfGhIjKlMnOpQrStUvWx12345678";
     const { client: api } = client([

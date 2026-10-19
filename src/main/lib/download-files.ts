@@ -59,13 +59,17 @@ export function sanitizeFileStem(value: string): string {
   return [...stem].slice(0, 150).join("").trim();
 }
 
+// Only video containers: a server-chosen extension like .bat or .hta would
+// otherwise run when the user clicks "Play file".
+const VIDEO_EXTENSIONS = new Set(["mp4", "m4v", "webm", "mkv", "mov"]);
+
 function isSafeExtension(value: string): boolean {
-  return /^[a-z0-9]{1,8}$/i.test(value);
+  return VIDEO_EXTENSIONS.has(value.toLowerCase());
 }
 
 export function downloadExtension(format: VideoFormat): string {
   if (format.ext && isSafeExtension(format.ext)) {
-    return format.ext;
+    return format.ext.toLowerCase();
   }
   try {
     const name = new URL(format.url).pathname.split("/").at(-1) ?? "";
@@ -92,13 +96,20 @@ async function exists(filePath: string): Promise<boolean> {
  * `Title [id] - 1080.mp4`, then `Title [id] - 1080 (1).mp4`, ... The name is
  * deterministic so a retry lands on the same `.part` files and resumes.
  */
-export async function uniqueDownloadPath(directory: string, title: string, videoId: string, format: VideoFormat): Promise<string> {
+export async function uniqueDownloadPath(
+  directory: string,
+  title: string,
+  videoId: string,
+  format: VideoFormat,
+  inUse: ReadonlySet<string> = new Set()
+): Promise<string> {
   const extension = downloadExtension(format);
   const stem = sanitizeFileStem(`${title} [${videoId}] - ${format.label}`);
   for (let index = 0; index < 1000; index += 1) {
     const fileName = index === 0 ? `${stem}.${extension}` : `${stem} (${index}).${extension}`;
     const candidate = path.join(directory, fileName);
-    if (!(await exists(candidate))) {
+    // Paths of running downloads are taken even before their file exists.
+    if (!inUse.has(candidate) && !(await exists(candidate))) {
       return candidate;
     }
   }

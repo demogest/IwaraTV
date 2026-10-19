@@ -127,6 +127,17 @@ describe("Electron hardening", () => {
     expect(session).toContain('IWARA_PARTITION = "persist:iwara"');
   });
 
+  it("keeps hidden Iwara windows from opening the browser and blocks off-site redirects", () => {
+    expect(session.match(/hardenRemoteWindow\(window, \{ forwardLinks: (true|false) \}\)/g)).toEqual([
+      "hardenRemoteWindow(window, { forwardLinks: true })",
+      "hardenRemoteWindow(window, { forwardLinks: false })",
+      "hardenRemoteWindow(window, { forwardLinks: false })"
+    ]);
+    expect(session).toContain('"will-redirect"');
+    // The token is stripped from any main-process request that leaves iwara.tv, including redirects.
+    expect(session).toContain('withoutHeader(details.requestHeaders, "authorization")');
+  });
+
   it("only opens http(s) links in the system browser", () => {
     for (const source of [main, session]) {
       for (const match of source.matchAll(/shell\.openExternal\(([^)]*)\)/g)) {

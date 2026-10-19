@@ -1,5 +1,6 @@
+import path from "node:path";
 import { describe, expect, it } from "vitest";
-import { downloadExtension, downloadSegments, sanitizeFileStem, totalBytesFromContentRange } from "../src/main/lib/download-files";
+import { downloadExtension, downloadSegments, sanitizeFileStem, totalBytesFromContentRange, uniqueDownloadPath } from "../src/main/lib/download-files";
 import {
   chooseVideoFormat,
   durationSeconds,
@@ -129,6 +130,13 @@ describe("Iwara response mapping", () => {
       ["540", 540, "https://a.iwara.tv/540"],
       ["preview", 1, "https://a.iwara.tv/p"]
     ]);
+    // Formats outside https://*.iwara.tv never reach the player or get the session token.
+    expect(formatsFromJson([
+      { name: "Source", src: { view: "https://evil.example/v.mp4" } },
+      { name: "540", src: { view: "http://a.iwara.tv/540" } },
+      { name: "360", src: { view: "--script=x.lua" } },
+      { name: "720", src: { view: "https://iwara.tv.evil.example/v" } }
+    ])).toEqual([]);
     expect(chooseVideoFormat(formats, "540")?.label).toBe("540");
     expect(chooseVideoFormat(formats, "2160")?.label).toBe("Source");
     expect(summarizeJsonResponse(`{"results":[]}`).responseShape).toBe("object(results)");
@@ -176,6 +184,13 @@ describe("download planning", () => {
     expect(totalBytesFromContentRange("bytes 0-0/*")).toBeUndefined();
   });
 
+  it("skips paths that running downloads have claimed", async () => {
+    const format = { id: "Source", label: "Source", url: "https://a.iwara.tv/v.mp4", qualityRank: 4000 };
+    const first = await uniqueDownloadPath("/downloads", "Title", "abc", format);
+    expect(first).toBe(path.join("/downloads", "Title [abc] - Source.mp4"));
+    expect(await uniqueDownloadPath("/downloads", "Title", "abc", format, new Set([first]))).toBe(path.join("/downloads", "Title [abc] - Source (1).mp4"));
+  });
+
   it("produces safe file names", () => {
     expect(sanitizeFileStem(`a<b>:c"d/e\\f|g?h*i`)).toBe("a_b__c_d_e_f_g_h_i");
     expect(sanitizeFileStem("...")).toBe("Iwara Video");
@@ -183,6 +198,11 @@ describe("download planning", () => {
     expect([...sanitizeFileStem("长".repeat(300))]).toHaveLength(150);
     expect(downloadExtension({ id: "x", label: "x", url: "https://a.iwara.tv/v.webm?x=1", qualityRank: 0 })).toBe("webm");
     expect(downloadExtension({ id: "x", label: "x", url: "https://a.iwara.tv/v", ext: "../exe", qualityRank: 0 })).toBe("mp4");
+    // Only video containers: a server-chosen .bat/.hta would run when opened.
+    for (const name of ["x.bat", "x.hta", "x.scr", "x.command", "x.exe"]) {
+      expect(downloadExtension({ id: "x", label: "x", url: `https://a.iwara.tv/${name}`, qualityRank: 0 })).toBe("mp4");
+    }
+    expect(downloadExtension({ id: "x", label: "x", url: "https://a.iwara.tv/v", ext: "WEBM", qualityRank: 0 })).toBe("webm");
   });
 });
 

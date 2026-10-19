@@ -74,12 +74,10 @@ export function splitTemplateArgs(template: string): string[] {
   return args;
 }
 
+/** Fills the placeholders in one pass, so text inside a title or URL is never expanded again. */
 export function buildExternalPlayerArgs(template: string, values: PlayerTemplateValues): string[] {
   return splitTemplateArgs(template).map((arg) =>
-    arg
-      .replaceAll("{url}", values.url)
-      .replaceAll("{title}", values.title)
-      .replaceAll("{headers}", values.headers)
+    arg.replace(/\{(url|title|headers)\}/g, (_match, name: keyof PlayerTemplateValues) => values[name])
   );
 }
 

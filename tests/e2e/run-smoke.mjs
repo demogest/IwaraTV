@@ -85,7 +85,7 @@ try {
     executablePath: packaged ? path.resolve(packaged) : electronPath,
     args: [
       ...(process.platform === "linux" && (runsAsRoot || process.env.CI) ? ["--no-sandbox"] : []),
-      `--host-resolver-rules=MAP *.iwara.tv 127.0.0.1:${mock.port}, MAP iwara.tv 127.0.0.1:${mock.port}`,
+      `--host-resolver-rules=MAP *.iwara.tv 127.0.0.1:${mock.port}, MAP iwara.tv 127.0.0.1:${mock.port}, MAP outside.example 127.0.0.1:${mock.port}`,
       "--ignore-certificate-errors",
       "--no-proxy-server",
       ...(packaged ? [] : [root])
@@ -209,6 +209,21 @@ try {
     const authors = new Set(await view.locator(".video-card__author").allInnerTexts());
     expect(authors.size === 1, `subscription authors ${[...authors]}`);
     await shot("06-subscriptions");
+  });
+
+  await step("keeps the session token on iwara.tv across redirects", async () => {
+    mock.state.redirectVideosTo = "https://outside.example/collect";
+    try {
+      await view.getByRole("button", { name: "Refresh" }).click();
+      const leaked = await waitFor(() => mock.state.requests.find((request) => request.host === "outside.example"), "the redirected request");
+      const iwaraRequest = mock.state.requests.findLast((request) => request.host === "api.iwara.tv" && request.path === "/videos");
+      expect(Boolean(iwaraRequest.headers.authorization), "the original request should be signed in");
+      expect(!leaked.headers.authorization, "Authorization was forwarded to a non-Iwara host");
+    } finally {
+      mock.state.redirectVideosTo = undefined;
+    }
+    await view.getByRole("button", { name: "Refresh" }).click();
+    await waitFor(async () => (await cards.count()) > 0, "subscription feed after the redirect test");
   });
 
   const other = VIDEOS[1];

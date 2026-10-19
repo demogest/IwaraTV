@@ -1,4 +1,5 @@
 import { BrowserWindow, session as electronSession, shell, type Session } from "electron";
+import { isIwaraUrl } from "../../shared/media-hosts";
 import type { IwaraNetworkCapture, IwaraNetworkEntry } from "../../shared/types";
 import { parseIwaraVideoId } from "../../shared/video-id";
 import { AppError, errorMessage } from "../lib/app-error";
@@ -29,14 +30,7 @@ export interface SessionSnapshot {
   verificationWindowOpen: boolean;
 }
 
-export function isIwaraUrl(url: string): boolean {
-  try {
-    const { protocol, hostname } = new URL(url);
-    return protocol === "https:" && (hostname === "iwara.tv" || hostname.endsWith(".iwara.tv"));
-  } catch {
-    return false;
-  }
-}
+export { isIwaraUrl };
 
 function isApiHost(url: string): boolean {
   try {
@@ -61,17 +55,26 @@ export class IwaraSessionService implements IwaraSessionBridge {
   private cached?: { token: CapturedToken; checkedAt: number };
   private capturing?: Promise<CapturedToken | undefined>;
   private readonly listeners = new Set<() => void>();
+  /** Bumped on sign-out so work started before it can't restore the old session. */
+  private generation = 0;
+  private helperPending?: BrowserWindow;
 
   constructor(private readonly parentWindow: () => BrowserWindow | undefined) {
     this.session = electronSession.fromPartition(IWARA_PARTITION);
     this.session.setUserAgent(browserUserAgent(this.session.getUserAgent()), ACCEPT_LANGUAGES);
     this.session.setPermissionRequestHandler((_contents, _permission, callback) => callback(false));
     this.session.setPermissionCheckHandler(() => false);
-    // Main-process API requests have no page, so Chromium won't let us set
-    // Referer/Origin directly. Add the values Iwara's own frontend sends.
-    this.session.webRequest.onBeforeSendHeaders({ urls: ["https://*.iwara.tv/*"] }, (details, callback) => {
+    // Main-process requests have no page, so Chromium won't let us set
+    // Referer/Origin directly: add the values Iwara's own frontend sends.
+    // This also runs for every redirect hop, so the session token is
+    // stripped if a main-process request ever leaves iwara.tv.
+    this.session.webRequest.onBeforeSendHeaders((details, callback) => {
       if (details.webContentsId !== undefined) {
         callback({ requestHeaders: details.requestHeaders });
+        return;
+      }
+      if (!isIwaraUrl(details.url)) {
+        callback({ requestHeaders: withoutHeader(details.requestHeaders, "authorization") });
         return;
       }
       callback({
@@ -92,8 +95,10 @@ export class IwaraSessionService implements IwaraSessionBridge {
   /** Requests through the Iwara session: shared cookies, Cloudflare clearance, browser TLS. */
   readonly fetch: HttpFetch = (url: string, init: HttpRequestInit = {}) => {
     const headers: Record<string, string> = {};
+    const toIwara = isIwaraUrl(url);
     for (const [key, value] of Object.entries(init.headers ?? {})) {
-      if (!NETWORK_MANAGED_HEADERS.has(key.toLowerCase())) {
+      const name = key.toLowerCase();
+      if (!NETWORK_MANAGED_HEADERS.has(name) && (toIwara || name !== "authorization")) {
         headers[key] = value;
       }
     }
@@ -148,7 +153,8 @@ export class IwaraSessionService implements IwaraSessionBridge {
       autoHideMenuBar: true,
       webPreferences: remoteWebPreferences(this.session)
     });
-    hardenRemoteWindow(window);
+    // The only visible Iwara window: links the user clicks go to the browser.
+    hardenRemoteWindow(window, { forwardLinks: true });
     this.verificationWindow = window;
     window.on("closed", () => {
       this.stopCapturePolling();
@@ -169,6 +175,10 @@ export class IwaraSessionService implements IwaraSessionBridge {
   /** Re-runs a request inside a www.iwara.tv page, as the site itself would. */
   async pageFetch(url: string, init: { method: string; headers: Record<string, string>; body?: string }): Promise<PageFetchResult> {
     const window = isLive(this.verificationWindow) ? this.verificationWindow : await this.ensureHelperWindow();
+    if (!isIwaraUrl(window.webContents.getURL())) {
+      // The request carries the session token; only run it in an Iwara page.
+      throw new AppError("CLOUDFLARE_CHALLENGE", "The Iwara page isn't available for this request.");
+    }
     const headers = Object.entries(init.headers).filter(([name]) => !FORBIDDEN_PAGE_FETCH_HEADERS.has(name.toLowerCase()));
     const payload = JSON.stringify({ url, method: init.method, headers, body: init.body ?? null });
     const result = await executeWithTimeout<{ status: number; headers: Array<[string, string]>; text: string }>(
@@ -196,7 +206,7 @@ export class IwaraSessionService implements IwaraSessionBridge {
     }
     const pageUrl = `https://www.iwara.tv/video/${videoId}`;
     const window = new BrowserWindow({ show: false, width: 1180, height: 820, webPreferences: remoteWebPreferences(this.session) });
-    hardenRemoteWindow(window);
+    hardenRemoteWindow(window, { forwardLinks: false });
     window.webContents.setAudioMuted(true);
 
     const entries = new Map<string, IwaraNetworkEntry>();
@@ -240,14 +250,16 @@ export class IwaraSessionService implements IwaraSessionBridge {
 
   /** Clears cookies, storage and cache for the Iwara partition. */
   async signOut(): Promise<void> {
+    this.generation += 1;
     this.stopCapturePolling();
-    for (const window of [this.verificationWindow, this.helperWindow]) {
+    for (const window of [this.verificationWindow, this.helperWindow, this.helperPending]) {
       if (isLive(window)) {
         window.destroy();
       }
     }
     this.verificationWindow = undefined;
     this.helperWindow = undefined;
+    this.helperPending = undefined;
     this.helperLoading = undefined;
     this.cached = undefined;
     await this.session.clearStorageData();
@@ -278,6 +290,7 @@ export class IwaraSessionService implements IwaraSessionBridge {
   }
 
   private async captureTokenNow(): Promise<CapturedToken | undefined> {
+    const generation = this.generation;
     const previous = this.cached?.token;
     let target: BrowserWindow | undefined = isLive(this.verificationWindow) ? this.verificationWindow : undefined;
     if (!target) {
@@ -288,14 +301,14 @@ export class IwaraSessionService implements IwaraSessionBridge {
       try {
         target = await this.ensureHelperWindow();
       } catch {
-        return previous && !isJwtExpired(previous.value, 0) ? previous : undefined;
+        return generation === this.generation && previous && !isJwtExpired(previous.value, 0) ? previous : undefined;
       }
     }
 
     let token = await readStorageToken(target);
     if (token === null) {
       // The page couldn't be read (still loading or challenged); keep a valid previous token.
-      return previous && !isJwtExpired(previous.value, 0) ? previous : undefined;
+      return generation === this.generation && previous && !isJwtExpired(previous.value, 0) ? previous : undefined;
     }
     if (token && isJwtExpired(token.value, 30) && target === this.helperWindow) {
       // Let the site refresh its access token, then read again.
@@ -303,6 +316,10 @@ export class IwaraSessionService implements IwaraSessionBridge {
       token = (await readStorageToken(target)) ?? undefined;
     }
 
+    if (generation !== this.generation) {
+      // Signed out while this capture was running.
+      return undefined;
+    }
     this.cached = token ? { token, checkedAt: Date.now() } : undefined;
     if (previous?.value !== token?.value) {
       this.notify();
@@ -316,15 +333,26 @@ export class IwaraSessionService implements IwaraSessionBridge {
       return Promise.resolve(this.helperWindow);
     }
     this.helperLoading ??= (async () => {
+      const generation = this.generation;
       const window = new BrowserWindow({ show: false, width: 960, height: 640, webPreferences: remoteWebPreferences(this.session) });
-      hardenRemoteWindow(window);
+      hardenRemoteWindow(window, { forwardLinks: false });
       window.webContents.setAudioMuted(true);
+      this.helperPending = window;
       window.on("closed", () => {
         if (this.helperWindow === window) {
           this.helperWindow = undefined;
         }
       });
       await loadAndWait(window, IWARA_HOME);
+      if (this.helperPending === window) {
+        this.helperPending = undefined;
+      }
+      if (generation !== this.generation || window.isDestroyed()) {
+        if (!window.isDestroyed()) {
+          window.destroy();
+        }
+        throw new AppError("LOGIN_REQUIRED", "The Iwara session was reset.");
+      }
       this.helperWindow = window;
       this.touchHelper();
       return window;
@@ -352,7 +380,7 @@ export class IwaraSessionService implements IwaraSessionBridge {
         return;
       }
       const token = await readStorageToken(window);
-      if (token) {
+      if (token && isLive(window) && window === this.verificationWindow) {
         this.cached = { token, checkedAt: Date.now() };
         this.notify();
         this.stopCapturePolling();
@@ -395,26 +423,42 @@ function remoteWebPreferences(session: Session): Electron.WebPreferences {
   };
 }
 
-/** Keeps remote windows on Iwara; everything else opens in the system browser. */
-function hardenRemoteWindow(window: BrowserWindow): void {
+/**
+ * Keeps remote windows on Iwara. Only the visible sign-in window hands other
+ * links to the system browser; hidden helpers drop them silently.
+ */
+function hardenRemoteWindow(window: BrowserWindow, options: { forwardLinks: boolean }): void {
   const contents = window.webContents;
+  const forward = (url: string) => {
+    if (options.forwardLinks && /^https?:\/\//i.test(url)) {
+      shell.openExternal(url).catch(() => undefined);
+    }
+  };
   contents.setWindowOpenHandler(({ url }) => {
     if (isIwaraUrl(url)) {
-      void window.loadURL(url).catch(() => undefined);
-    } else if (/^https?:\/\//i.test(url)) {
-      void shell.openExternal(url);
+      window.loadURL(url).catch(() => undefined);
+    } else {
+      forward(url);
     }
     return { action: "deny" };
   });
   contents.on("will-navigate", (event, url) => {
     if (!isIwaraUrl(url)) {
       event.preventDefault();
-      if (/^https?:\/\//i.test(url)) {
-        void shell.openExternal(url);
-      }
+      forward(url);
+    }
+  });
+  // Server redirects skip will-navigate; keep the main frame on Iwara too.
+  contents.on("will-redirect", (event) => {
+    if (event.isMainFrame && !isIwaraUrl(event.url)) {
+      event.preventDefault();
     }
   });
   contents.on("will-attach-webview", (event) => event.preventDefault());
+}
+
+function withoutHeader(headers: Record<string, string>, name: string): Record<string, string> {
+  return Object.fromEntries(Object.entries(headers).filter(([key]) => key.toLowerCase() !== name));
 }
 
 async function loadAndWait(window: BrowserWindow, url: string): Promise<void> {

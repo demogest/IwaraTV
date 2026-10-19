@@ -1,6 +1,7 @@
 // Maps raw Iwara API JSON into the app's data shapes. Every function here is
 // defensive: the API is undocumented and fields come and go.
 
+import { isIwaraUrl } from "../../shared/media-hosts";
 import type { VideoComment, VideoFormat, VideoSummary } from "../../shared/types";
 import { usernameFromJwt } from "./jwt";
 
@@ -84,8 +85,11 @@ export function mapVideoFormat(raw: Json): VideoFormat | undefined {
     ?? valueToString(field(raw, "quality"))
     ?? valueToString(field(raw, "height"))
     ?? "unknown";
-  const url = formatUrl(raw);
-  if (!url) {
+  const rawUrl = formatUrl(raw);
+  const url = rawUrl ? normalizeMediaUrl(rawUrl) : undefined;
+  // Media requests carry the session token and the URL goes to a local
+  // player, so anything that isn't an https Iwara link is dropped.
+  if (!url || !isIwaraUrl(url)) {
     return undefined;
   }
   const mimeType = valueToString(field(raw, "type"));
@@ -94,7 +98,7 @@ export function mapVideoFormat(raw: Json): VideoFormat | undefined {
   return compact({
     id: label,
     label,
-    url: normalizeMediaUrl(url),
+    url,
     mimeType,
     ext: formatToExtension(mimeType),
     height,

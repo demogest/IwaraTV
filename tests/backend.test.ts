@@ -153,7 +153,7 @@ describe("Backend auth and system", () => {
   it("refuses to open downloads that do not exist", async () => {
     const { backend } = setup();
     await expect(backend.openDownloadFile("missing")).rejects.toMatchObject({ code: "FILE_NOT_FOUND" });
-    expect(() => backend.showDownloadInFolder("missing")).toThrow(expect.objectContaining({ code: "FILE_NOT_FOUND" }));
+    await expect(backend.showDownloadInFolder("missing")).rejects.toMatchObject({ code: "FILE_NOT_FOUND" });
   });
 
   it("pushes change events to the renderer", () => {

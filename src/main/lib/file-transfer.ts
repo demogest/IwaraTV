@@ -208,8 +208,10 @@ async function writeBody(
   return bytesWritten;
 }
 
+/** Joins the segments into `.part` first, so an interrupted merge never looks like a finished file. */
 async function mergeSegments(filePath: string, segments: DownloadSegment[]): Promise<void> {
-  const output = createWriteStream(filePath);
+  const mergedPath = partialDownloadPath(filePath);
+  const output = createWriteStream(mergedPath);
   try {
     for (const segment of segments) {
       await pipeline(createReadStream(segmentPartPath(filePath, segment.index)), output, { end: false });
@@ -217,6 +219,7 @@ async function mergeSegments(filePath: string, segments: DownloadSegment[]): Pro
   } finally {
     await new Promise<void>((resolve, reject) => output.end((error?: Error | null) => (error ? reject(error) : resolve())));
   }
+  await rename(mergedPath, filePath);
   for (const segment of segments) {
     await rm(segmentPartPath(filePath, segment.index), { force: true });
   }

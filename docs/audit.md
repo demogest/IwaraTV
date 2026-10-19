@@ -9,7 +9,7 @@ This report covers the port from Tauri to Electron, the redesigned interface, an
 - The Rust backend (about 7,300 lines in 16 files) was ported to a TypeScript main process. The single 4,205-line `App.tsx` was replaced by a React renderer split into views, components, state and i18n modules. All user-facing features carried over: feeds, search, subscriptions, the video page, comments, following, favorites, downloads, history, settings, MPV and external players, sign-in and verification, diagnostics, CDN speed tests and X-Version salt detection.
 - Security posture improved on every boundary. The old main webview ran with **no Content-Security-Policy** (`"csp": null`) and with `withGlobalTauri: true`, so any script that ran in the page had the full command API. The new renderer is sandboxed and context-isolated, has no Node.js, runs under a strict CSP on a private `app://` scheme, and reaches the backend only through 37 allowlisted, runtime-validated IPC channels that check the sender.
 - The UI was redesigned around a sidebar, a single search-or-open bar, and a video page with clear primary actions. It is now available in English and Simplified Chinese (the old UI was Chinese-only), in light and dark themes, and with full keyboard support. Errors map to specific, actionable messages.
-- Six functional bugs from the Tauri version were fixed along the way (see [Bugs fixed](#bugs-fixed-from-the-tauri-version)). Verification: 117 unit, boundary and security tests, a 13-step end-to-end smoke test (run against both the build output and a packaged Linux build), live checks against iwara.tv, and screenshot review.
+- Six functional bugs from the Tauri version were fixed along the way (see [Bugs fixed](#bugs-fixed-from-the-tauri-version)). An independent review of the new main process found ten more issues, all fixed before release (R-1 to R-10). Verification: 123 unit, boundary and security tests, a 14-step end-to-end smoke test (run against both the build output and a packaged Linux build), live checks against iwara.tv, and screenshot review.
 
 ## Method
 
@@ -19,6 +19,7 @@ This report covers the port from Tauri to Electron, the redesigned interface, an
 4. **Packaged-build checks:** an electron-builder Linux build with fuses read back from the binary, launched with hostile `ELECTRON_RUN_AS_NODE` and `NODE_OPTIONS` values and inspected over CDP.
 5. **UI review:** screenshots of every view in both themes and languages, at narrow widths, in empty, loading and error states, with menus, dialogs, focus rings and active downloads. Screenshots use synthetic thumbnails only.
 6. **Dependencies:** `npm audit`.
+7. **Independent review:** a separate reviewer audited the new main process (IPC, session, downloads, players, protocol handler) without seeing this report. Its findings are listed as R-1 to R-10, each checked against the code before being fixed.
 
 ## Architecture: before and after
 
@@ -51,8 +52,8 @@ This report covers the port from Tauri to Electron, the redesigned interface, an
 | Navigation and popups denied; only `http(s)` links go to the system browser; `<webview>` blocked; every permission request denied (both sessions); single-instance lock | `index.ts`, `hardenRemoteWindow` | boundary test |
 | Iwara windows: own partition, no preload, no app IPC, muted hidden helpers that close after 5 minutes idle | `iwara-session.ts` | boundary test, e2e sign-in |
 | Players: arguments passed as an argv array (no shell); MPV gets `--` before the URL; external templates require `{url}` | `player-service.ts` | `tests/player.test.ts`, e2e |
-| Downloads: names sanitized (reserved Windows names, separators, control characters, length); files written only inside the chosen folder; deleting a record removes only files the app created and no other record uses | `download-files.ts`, `download-manager.ts` | `tests/downloads.test.ts` |
-| Token never leaves the main process except to Iwara hosts; the CDN host pool accepts only `*.iwara.tv`; diagnostics strip signed query strings | `iwara-client.ts`, `settings-store.ts`, `safeUrl` | `tests/stores.test.ts`, `tests/main-lib.test.ts` |
+| Downloads: names sanitized (reserved Windows names, separators, control characters, length); video extensions only; files written only inside the chosen folder; deleting a record removes only files the app created and that no other record or running download uses | `download-files.ts`, `download-manager.ts` | `tests/downloads.test.ts` |
+| The token never reaches the renderer, and only goes to `https://*.iwara.tv`: API calls refuse other URLs, media and file-list URLs from the API are filtered, the session strips `Authorization` from any main-process request that leaves iwara.tv (including redirect hops), the CDN pool accepts only `*.iwara.tv`, and diagnostics strip signed query strings | `iwara-client.ts`, `iwara-parse.ts`, `iwara-session.ts`, `settings-store.ts` | `tests/iwara-client.test.ts`, `tests/main-lib.test.ts`, e2e redirect step |
 | Fuses: RunAsNode, `NODE_OPTIONS` and CLI inspector off; app loads only from the asar; no extra `file://` privileges | `electron-builder.yml` | `@electron/fuses read` and a hostile-environment launch |
 
 ### Findings
@@ -70,6 +71,21 @@ This report covers the port from Tauri to Electron, the redesigned interface, an
 | S-9 | Info | **Session data at rest.** Cookies and site storage in `Partitions/iwara` are stored like a normal browser profile. The cookie-encryption fuse is off because unsigned macOS builds would show a keychain prompt after every update. | **Open**: enable with code signing. |
 | S-10 | Info | **No auto-update.** Users update by downloading releases, so old Electron versions may stay in use. | **Open**: `electron-updater` once builds are signed. |
 | S-11 | Info | **Legacy keyring entry.** The Tauri app's token in the OS keyring (service `IwaraTV`) is not migrated or removed; users sign in again. | Accepted; documented in the README and user manual. |
+
+### Findings from the independent review of the new code
+
+| ID | Severity | Finding | Fix |
+| --- | --- | --- | --- |
+| R-1 | Medium-high | **Session token could reach non-Iwara hosts.** API requests added `Authorization` to any URL, including a `fileUrl`, file-list `src` URLs and every `<script>` on the home page used for salt detection. Testing also showed that Chromium's `session.fetch` **keeps `Authorization` on cross-origin redirects**. | API calls accept only `https://*.iwara.tv`; format URLs elsewhere are dropped; scripts and pages are fetched without the token, and only from iwara.tv; a `webRequest` guard strips `Authorization` from any main-process request (or redirect hop) that leaves iwara.tv. The e2e step "keeps the session token on iwara.tv across redirects" fails without the guard. |
+| R-2 | Medium | **Executable download extensions.** With no MIME type, the extension came from the URL path (any 1–8 characters), so a `.bat`, `.hta` or `.command` file could be saved and run via "Play file", with no Mark-of-the-Web prompt. | Only mp4, m4v, webm, mkv and mov; anything else becomes `.mp4`. |
+| R-3 | Medium | **Data loss on record removal.** Removing an old failed record deleted the `.part` files a new download of the same video was resuming. Two qualities that fall back to the same format could also write to the same file at once. | Files used by running downloads are never removed, and new downloads skip paths that running ones have claimed (re-checked after preparing). |
+| R-4 | Low-medium | **External-player option injection and double expansion.** The URL wasn't validated before becoming an argument, and chained `replaceAll` calls expanded `{title}` or `{headers}` text found inside the title or URL. | URLs are validated (R-1), and placeholders are substituted in a single pass. |
+| R-5 | Low-medium | **Hidden windows could open the browser.** Scripts in the invisible helper or capture windows could open system-browser tabs. | Only the visible sign-in window forwards links; hidden windows drop them. |
+| R-6 | Low | **Off-site redirects and page fetch.** Server redirects bypass `will-navigate`, and the page-context fetch didn't check the page's origin before running with the token. | `will-redirect` keeps remote windows on iwara.tv, and page-context fetches run only on an Iwara origin. |
+| R-7 | Low | **Merge interruption.** Segments were merged directly into the final file name, so a crash or a full disk left a truncated file that looked complete. | Merge into `.part`, then rename. |
+| R-8 | Low | **Sign-out races.** A helper window still loading, or a token capture in progress, could restore the old session after sign-out. | A sign-out generation counter discards stale results and destroys the loading window. |
+| R-9 | Low | **Unhandled rejections** from `openPath` and `openExternal` in the main process. | Awaited or caught. |
+| R-10 | Low | **Windows `.cmd`/`.bat` players** were offered in the picker, but they can't start without a shell (and adding one would allow command injection through titles). | The picker offers `.exe` only. |
 
 ## UI/UX audit
 
@@ -119,9 +135,9 @@ This report covers the port from Tauri to Electron, the redesigned interface, an
 | Check | Result |
 | --- | --- |
 | `npm run typecheck` (renderer, plus main, preload and tests) | Pass |
-| `npm test` | 10 files, 117 tests pass |
-| `npm run test:e2e` (13 steps: feed and thumbnails, feeds and paging, search, open by link with salt detection, MPV launch arguments, favorite, segmented download with SHA-256 check, favorites and history, sign-in window, subscriptions, follow and comment, MPV detection and test, sign-out, no renderer errors) | 13/13 against `out/`, and 13/13 against the packaged `release/linux-unpacked` build |
-| Packaged Linux build with fuses | Fuses read back as configured; ignores `ELECTRON_RUN_AS_NODE` and `NODE_OPTIONS`; renders the feed from the asar over `app://` |
+| `npm test` | 10 files, 123 tests pass |
+| `npm run test:e2e` (14 steps: feed and thumbnails, feeds and paging, search, open by link with salt detection, MPV launch arguments, favorite, segmented download with SHA-256 check, favorites and history, sign-in window and subscriptions, token kept on iwara.tv across a redirect, follow and comment, MPV detection and test, sign-out, no renderer errors) | 14/14 against `out/`. The packaged `release/linux-unpacked` build (without fuses, since Playwright attaches through the inspector) passed all 13 steps that existed before the review fixes |
+| Packaged Linux build with fuses (rebuilt after the review fixes) | Fuses read back as configured; ignores `ELECTRON_RUN_AS_NODE` and `NODE_OPTIONS`; renders the feed from the asar over `app://`, with no `require` or `process` in the page |
 | `npm audit --omit=dev` | 0 vulnerabilities (S-7 covers the dev tooling) |
 | Live iwara.tv (read-only) | Feeds, search, video formats, comments, salt detection, host discovery and speed test, a real download, and network capture all worked |
 

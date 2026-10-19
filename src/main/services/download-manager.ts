@@ -17,7 +17,8 @@ const EMIT_INTERVAL_MS = 200;
 const SPEED_WINDOW_MS = 1000;
 
 export interface DownloadEngine {
-  prepare(request: DownloadVideoRequest, signal: AbortSignal): Promise<DownloadPlan>;
+  /** `inUse` lists the target paths of other running downloads, which must not be reused. */
+  prepare(request: DownloadVideoRequest, signal: AbortSignal, inUse: ReadonlySet<string>): Promise<DownloadPlan>;
   transfer(plan: DownloadPlan, onProgress: ProgressCallback, signal: AbortSignal): Promise<number>;
 }
 
@@ -135,10 +136,14 @@ export class DownloadManager {
       if (request.deleteFile && removed.path) {
         // Unfinished records may share a path with a later successful
         // download of the same video, so they only own their .part files.
+        // A running download may be resuming the same .part files.
         const stillReferenced = this.history.some((task) => task.path === removed.path);
-        await (removed.status === "completed" && !stillReferenced
-          ? removeDownloadArtifacts(removed.path)
-          : removePartialArtifacts(removed.path));
+        const inUse = this.active.some((task) => task.path === removed.path);
+        if (!inUse) {
+          await (removed.status === "completed" && !stillReferenced
+            ? removeDownloadArtifacts(removed.path)
+            : removePartialArtifacts(removed.path));
+        }
       }
       this.persist();
       this.emitNow();
@@ -192,8 +197,17 @@ export class DownloadManager {
     const controller = new AbortController();
     this.controllers.set(id, controller);
     try {
-      const plan = await this.engine.prepare({ videoId: task.videoId, quality: task.requestedQuality }, controller.signal);
+      const request = { videoId: task.videoId, quality: task.requestedQuality };
+      let plan = await this.engine.prepare(request, controller.signal, this.pathsInUse(id));
       controller.signal.throwIfAborted();
+      if (this.pathsInUse(id).has(plan.path)) {
+        // Another download claimed the same name while this one was preparing.
+        plan = await this.engine.prepare(request, controller.signal, this.pathsInUse(id));
+        controller.signal.throwIfAborted();
+        if (this.pathsInUse(id).has(plan.path)) {
+          throw new AppError("DOWNLOAD_FAILED", "Another download is already writing this file.");
+        }
+      }
       this.update(id, {
         status: "downloading",
         video: summaryOf(plan.video),
@@ -227,6 +241,10 @@ export class DownloadManager {
       this.controllers.delete(id);
       this.speedWindows.delete(id);
     }
+  }
+
+  private pathsInUse(exceptId: string): Set<string> {
+    return new Set(this.active.filter((task) => task.id !== exceptId && task.path).map((task) => task.path!));
   }
 
   private progress(id: string, bytesWritten: number, totalBytes: number | undefined): void {

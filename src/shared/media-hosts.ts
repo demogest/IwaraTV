@@ -1,5 +1,15 @@
 const IWARA_MEDIA_HOST_PATTERN = /^[a-z0-9-]+\.iwara\.tv$/i;
 
+/** True for https URLs on iwara.tv or one of its subdomains — the only hosts that may see the session token. */
+export function isIwaraUrl(url: string): boolean {
+  try {
+    const { protocol, hostname } = new URL(url);
+    return protocol === "https:" && (hostname === "iwara.tv" || hostname.endsWith(".iwara.tv"));
+  } catch {
+    return false;
+  }
+}
+
 /** Normalizes user- or API-provided media hosts to bare `*.iwara.tv` hostnames. */
 export function normalizeMediaHostList(hosts: readonly string[]): string[] {
   const cleaned = hosts

@@ -106,10 +106,10 @@ export class Backend {
       salt: () => this.settings.get().iwara.xVersionSalt
     });
     this.downloads = new DownloadManager(options.userDataPath, {
-      prepare: async (request) => {
+      prepare: async (request, _signal, inUse) => {
         await this.maybeSniffSalt();
         const settings = this.settings.get();
-        const plan = await this.client.prepareDownload(request, settings.download, settings.mediaSpeed);
+        const plan = await this.client.prepareDownload(request, settings.download, settings.mediaSpeed, inUse);
         this.rememberHosts(plan.video.formats);
         return plan;
       },
@@ -267,7 +267,7 @@ export class Backend {
     await this.platform.openPath(filePath);
   }
 
-  showDownloadInFolder(id: string): void {
+  async showDownloadInFolder(id: string): Promise<void> {
     const task = this.downloads.task(id);
     const filePath = task?.path;
     if (filePath && existsSync(filePath)) {
@@ -278,7 +278,7 @@ export class Backend {
     if (!directory || !existsSync(directory)) {
       throw new AppError("FILE_NOT_FOUND", "The download folder no longer exists.");
     }
-    void this.platform.openPath(directory);
+    await this.platform.openPath(directory);
   }
 
   async openDownloadDirectory(): Promise<void> {
@@ -391,7 +391,8 @@ export class Backend {
 
   async selectExecutable(request: SelectPathRequest): Promise<SelectPathResult> {
     const filters = this.platform.platform === "win32"
-      ? [{ name: "Programs", extensions: ["exe", "cmd", "bat"] }, { name: "All Files", extensions: ["*"] }]
+      // Players are started without a shell, so .cmd/.bat scripts can't be used.
+      ? [{ name: "Programs", extensions: ["exe"] }, { name: "All Files", extensions: ["*"] }]
       : [{ name: "All Files", extensions: ["*"] }];
     const selected = await this.platform.pickFile({
       title: request.title,

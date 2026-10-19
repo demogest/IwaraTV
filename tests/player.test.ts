@@ -86,6 +86,11 @@ describe("PlayerService diagnostics", () => {
     expect(service.requirePlayer("external", playerSettings({ externalPlayerPath: external }))).toBe(external);
   });
 
+  it("fills template placeholders only once", () => {
+    const args = service.buildArgs("external", playerSettings({ externalPlayerArgs: "--title={title} {url}" }), "https://a.iwara.tv/v?x={title}", "{url} {headers}");
+    expect(args).toEqual(["--title={url} {headers}", "https://a.iwara.tv/v?x={title}"]);
+  });
+
   it("ends MPV options before the URL", () => {
     const args = service.buildArgs("mpv", playerSettings(), "--script=evil.lua", "Title");
     expect(args.slice(-2)).toEqual(["--", "--script=evil.lua"]);

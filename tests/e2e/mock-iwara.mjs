@@ -84,7 +84,8 @@ export async function startMockIwara() {
     comments: new Map(),
     postedComments: [],
     followRequests: [],
-    signedIn: false
+    /** When set, `GET /videos` answers with a redirect here (to test token scoping). */
+    redirectVideosTo: undefined
   };
   const userToken = makeJwt({ id: VIEWER.id, username: VIEWER.username, type: "refresh_token", exp: Math.floor(Date.now() / 1000) + 7200 });
   const mediaToken = makeJwt({ id: VIEWER.id, type: "access_token", exp: Math.floor(Date.now() / 1000) + 3600 });
@@ -147,6 +148,10 @@ export async function startMockIwara() {
   async function api(request, url, response) {
     const { pathname } = url;
     if (pathname === "/videos" && request.method === "GET") {
+      if (state.redirectVideosTo) {
+        response.writeHead(302, { location: state.redirectVideosTo });
+        return response.end();
+      }
       return videoList(request, url, response);
     }
     if (pathname === "/search" && request.method === "GET") {

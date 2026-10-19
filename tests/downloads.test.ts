@@ -91,6 +91,8 @@ describe("transferToFile", () => {
     for (let index = 0; index < 8; index += 1) {
       expect(existsSync(segmentPartPath(filePath, index))).toBe(false);
     }
+    // Segments are merged into .part and renamed, so no merge leftovers remain.
+    expect(existsSync(partialDownloadPath(filePath))).toBe(false);
   });
 
   it("resumes segments from existing part files", async () => {
@@ -259,6 +261,51 @@ describe("DownloadManager", () => {
     await expect(manager.delete({ id: "missing", deleteFile: true })).resolves.toBeDefined();
     await manager.delete({ id: completed.id, deleteFile: false });
     expect(existsSync(completed.path!)).toBe(true);
+  });
+
+  it("never deletes partial files that a running download is resuming", async () => {
+    const dir = tempDir("manager-resume-delete");
+    let attempts = 0;
+    const { engine, release } = fakeEngine(dir, { hold: true, fail: () => ++attempts === 1 });
+    const manager = new DownloadManager(dir, engine);
+    const first = manager.start({ videoId: "a" });
+    await waitFor(manager, (state) => state.active[0]?.status === "downloading");
+    release("a");
+    await waitFor(manager, (state) => state.history[0]?.status === "failed");
+    // Downloading again resumes the same .part file; removing the old record must not delete it.
+    manager.start({ videoId: "a" });
+    const running = await waitFor(manager, (state) => state.active[0]?.status === "downloading");
+    writeFileSync(partialDownloadPath(running.active[0]!.path!), "in progress");
+    await manager.delete({ id: first.id, deleteFile: true });
+    expect(existsSync(partialDownloadPath(running.active[0]!.path!))).toBe(true);
+    release("a");
+    await waitFor(manager, (state) => state.history[0]?.status === "completed");
+  });
+
+  it("gives concurrent downloads of the same file different paths", async () => {
+    const dir = tempDir("manager-same-path");
+    const releases: Array<() => void> = [];
+    const engine: DownloadEngine = {
+      async prepare(request, _signal, inUse) {
+        // Both qualities fall back to the same format, as a real engine would.
+        const base = path.join(dir, "a - Source.mp4");
+        const target = inUse.has(base) ? path.join(dir, "a - Source (1).mp4") : base;
+        await new Promise((resolve) => setTimeout(resolve, 5));
+        return { path: target, format: format(), video: { id: request.videoId, title: "A", tags: [], numViews: 0, numLikes: 0, numComments: 0, formats: [format()] } };
+      },
+      async transfer(plan) {
+        await new Promise<void>((resolve) => releases.push(resolve));
+        writeFileSync(plan.path, "video");
+        return 5;
+      }
+    };
+    const manager = new DownloadManager(dir, engine);
+    manager.start({ videoId: "a", quality: "1080" });
+    manager.start({ videoId: "a", quality: "Source" });
+    const state = await waitFor(manager, (current) => current.active.filter((task) => task.status === "downloading").length === 2);
+    expect(new Set(state.active.map((task) => task.path)).size).toBe(2);
+    releases.forEach((resolve) => resolve());
+    await waitFor(manager, (current) => current.history.length === 2);
   });
 
   it("refuses to delete active downloads and records them as canceled on shutdown", async () => {

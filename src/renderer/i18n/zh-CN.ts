@@ -334,6 +334,46 @@ export const zhCN: Translation<Dictionary> = {
     fullscreen: "全屏",
     mute: "静音或取消静音"
   },
+  updates: {
+    available: "有可用更新",
+    downloadingShort: "正在下载 {percent}%",
+    ready: "更新已就绪",
+    restart: "重启以更新",
+    title: "IwaraTV {version}",
+    meta: "当前版本 {current}",
+    released: "发布于 {date}",
+    breakingTitle: "不兼容更新",
+    breakingBody: "此版本改变了 IwaraTV 的工作方式或运行要求。请先阅读更新说明——此类更新不会自动安装。",
+    notes: "更新内容",
+    noNotes: "此版本未在应用内提供更新说明。",
+    fullNotes: "在 GitHub 查看",
+    download: "下载",
+    downloadSize: "下载 · {size}",
+    downloading: "正在下载…",
+    progress: "{received} / {total}",
+    openInstaller: "打开安装程序",
+    openDiskImage: "打开磁盘映像",
+    showFile: "在文件夹中显示",
+    viewRelease: "打开 GitHub",
+    skip: "跳过此版本",
+    later: "稍后",
+    skipped: "不再提醒版本 {version}。",
+    toastAvailable: "IwaraTV {version} 已发布",
+    toastReady: "IwaraTV {version} 已就绪",
+    toastReadyDetail: "重启 IwaraTV 即可完成更新。",
+    details: "详情",
+    readyAutomatic: "已下载并通过校验。IwaraTV 将重启并安装，数据保持不变。",
+    noFile: "此版本没有适用于当前安装方式的文件，请从 GitHub 下载。",
+    howTo: {
+      nsis: "已下载并通过校验。IwaraTV 将重启并安装。",
+      appimage: "已保存在当前 AppImage 旁边。请关闭 IwaraTV，删除旧文件后启动新文件。",
+      portable: "已保存在当前程序旁边。请关闭 IwaraTV 并启动新文件。",
+      archive: "请关闭 IwaraTV，然后将压缩包解压覆盖当前的 IwaraTV 文件夹。",
+      deb: "系统软件安装器会打开该软件包，可能需要输入密码。",
+      dmg: "在打开的窗口中把 IwaraTV 拖到“应用程序”替换当前版本，然后重新打开。",
+      dev: "开发版本不会安装更新。"
+    }
+  },
   settings: {
     title: "设置",
     subtitle: "所有更改会自动保存",
@@ -344,6 +384,7 @@ export const zhCN: Translation<Dictionary> = {
       downloads: "下载",
       content: "内容过滤",
       network: "网络线路",
+      updates: "更新",
       advanced: "高级"
     },
     general: {
@@ -478,6 +519,43 @@ export const zhCN: Translation<Dictionary> = {
       runtime: "运行环境",
       dataFolder: "数据文件夹",
       migrated: "已从旧版本导入设置、收藏和下载记录。"
+    },
+    updates: {
+      upToDate: "IwaraTV 已是最新版本",
+      checking: "正在检查更新…",
+      notChecked: "尚未检查",
+      lastChecked: "版本 {version} · 上次检查：{date}",
+      currentVersion: "版本 {version}",
+      available: "版本 {version} 已发布",
+      availableSkipped: "版本 {version} 已发布（已跳过）",
+      downloading: "正在下载版本 {version}…",
+      ready: "版本 {version} 已下载",
+      failed: "检查更新失败",
+      checkNow: "立即检查",
+      details: "详情",
+      autoCheck: "自动检查更新",
+      autoCheckDesc: "在启动时以及每 6 小时检查一次。只访问 github.com，不发送 Cookie 或任何标识。",
+      autoDownload: "在后台下载更新",
+      autoDownloadDesc: "可通过重启安装的更新会在发现后立即下载。不兼容更新始终等待你确认。",
+      autoDownloadUnavailable: "当前安装方式下由你决定何时下载。",
+      installType: "安装方式",
+      kinds: {
+        nsis: "Windows 安装版",
+        portable: "Windows 便携版",
+        archive: "解压版",
+        appimage: "AppImage",
+        deb: "Debian 软件包",
+        dmg: "macOS 应用",
+        dev: "开发版本"
+      },
+      strategies: {
+        automatic: "更新在重启时自动安装。",
+        assisted: "IwaraTV 下载并校验更新，由你完成安装。",
+        none: "IwaraTV 会提示新版本，请从 GitHub 下载。"
+      },
+      verification: "校验方式",
+      signed: "只接受使用本应用内置密钥签名的版本",
+      checksums: "通过 HTTPS 校验 SHA-256（此版本未内置签名密钥）"
     }
   },
   errors: {
@@ -504,6 +582,9 @@ export const zhCN: Translation<Dictionary> = {
     FILE_NOT_FOUND: { title: "找不到文件", detail: "文件已被移动或删除。" },
     SALT_NOT_FOUND: { title: "未识别到盐值", detail: "Iwara 网页中没有可识别的 X-Version 盐值，将继续使用已保存的值。" },
     FAVORITES_FILE_INVALID: { title: "无法导入该文件", detail: "请选择由 IwaraTV 导出的 JSON 文件。" },
+    UPDATE_CHECK_FAILED: { title: "无法检查更新", detail: "{message}" },
+    UPDATE_INVALID: { title: "已拒绝该更新", detail: "{message} 未安装任何内容。" },
+    UPDATE_INSTALL_FAILED: { title: "无法安装更新", detail: "{message}" },
     UNKNOWN: { title: "出了点问题", detail: "{message}" }
   },
   actions: {

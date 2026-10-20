@@ -256,6 +256,11 @@ jobs:
         with:
           fetch-depth: 0
 
+      - name: Setup Node
+        uses: actions/setup-node@v6
+        with:
+          node-version-file: .node-version
+
       - name: Download build artifacts
         uses: actions/download-artifact@v7
         with:
@@ -268,6 +273,20 @@ jobs:
         run: |
           mkdir -p release-assets
           find artifacts -type f -exec cp '{}' release-assets/ \;
+
+      # update.json tells installed apps about this release. It's signed when the
+      # UPDATE_SIGNING_KEY secret is set, and must be once build/update-public-key.pem
+      # is committed (see docs/auto-update.md).
+      - name: Create update manifest
+        env:
+          TAG_NAME: ${{ needs.version.outputs.tag }}
+          UPDATE_SIGNING_KEY: ${{ secrets.UPDATE_SIGNING_KEY }}
+        run: |
+          node scripts/update-manifest.mjs --tag "$TAG_NAME" --dir release-assets
+          cat release-assets/update.json
+
+      - name: Write checksums
+        run: |
           (cd release-assets && sha256sum * > SHA256SUMS.txt)
           ls -lah release-assets
 

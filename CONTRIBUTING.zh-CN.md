@@ -14,8 +14,8 @@ IwaraTV 是基于 electron-vite 构建的 Electron 应用：
   - `index.ts` — 应用生命周期、`app://` 协议、窗口创建与加固、系统集成。
   - `backend.ts` — 组装各个存储和服务，每个 IPC 通道对应一个方法。
   - `ipc-handlers.ts` / `ipc.ts` — 通道到处理函数、通道到参数校验函数的映射表，以及注册逻辑。
-  - `services/` — `iwara-client`（API、文件列表、评论、关注、测速）、`iwara-session`（`persist:iwara` 浏览器会话、登录窗口、页面上下文请求、网络抓包）、`download-manager`、`player-service`、`settings-store`、`favorite-store`。
-  - `lib/` — 不依赖 Electron 的工具：X-Version、JWT 识别、响应解析、文件传输、JSON 文件读写、旧版数据迁移。
+  - `services/` — `iwara-client`（API、文件列表、评论、关注、测速）、`iwara-session`（`persist:iwara` 浏览器会话、登录窗口、页面上下文请求、网络抓包）、`download-manager`、`player-service`、`settings-store`、`favorite-store`、`update-service`（自动更新）。
+  - `lib/` — 不依赖 Electron 的工具：X-Version、JWT 识别、响应解析、文件传输、JSON 文件读写、旧版数据迁移、版本比较以及更新清单与安装。
 - `src/preload/index.ts` — 暴露 `window.iwaraTV`，`invoke` 与 `on` 均为白名单。
 - `src/renderer` — React 界面：`views/`、`components/`、`state/`（应用状态、导航、提示、确认对话框）、`hooks/`、`i18n/`（`en.ts`、`zh-CN.ts`）、`styles/`，以及用于浏览器预览的 `dev/mock-bridge.ts`。
 - `src/shared` — 两个进程共用的类型、IPC 约定（`ipc.ts`）、错误码、CSP 和工具函数。
@@ -48,7 +48,7 @@ npm run test:e2e        # Linux：xvfb-run -a npm run test:e2e
 npm run check:release
 ```
 
-单元测试覆盖：基于假 fetch 的 Iwara 客户端、基于本地 Range 服务器的下载、各存储、播放器服务、IPC 参数校验、翻译，以及静态边界/安全规则（`tests/boundaries.test.ts`）。冒烟测试会构建应用，并针对 `tests/e2e/mock-iwara.mjs` 依次验证浏览、悬停预览、搜索与最近搜索、快捷键列表、MPV 播放（使用 MPV 替身）、使用真实片段（`tests/e2e/fixtures/sample.mp4`）的内置播放器（含全屏、续播和继续观看）、相关视频、下载、收藏、登录、订阅、关注、评论、设置和退出登录，截图保存在 `test-results/e2e/`。设置 `IWARATV_E2E_EXECUTABLE` 可针对打包后的应用运行（仅适用于未关闭调试器 fuse 的构建，因为 Playwright 依赖它连接）。
+单元测试覆盖：基于假 fetch 的 Iwara 客户端、基于本地 Range 服务器的下载、各存储、播放器服务、自动更新（`tests/updates.test.ts`）、IPC 参数校验、翻译，以及静态边界/安全规则（`tests/boundaries.test.ts`）。冒烟测试会构建应用，并针对 `tests/e2e/mock-iwara.mjs` 依次验证浏览、悬停预览、搜索与最近搜索、快捷键列表、MPV 播放（使用 MPV 替身）、使用真实片段（`tests/e2e/fixtures/sample.mp4`）的内置播放器（含全屏、续播和继续观看）、相关视频、下载、收藏、登录、订阅、关注、评论、设置、从本地文件夹提供的已签名更新和退出登录，截图保存在 `test-results/e2e/`。设置 `IWARATV_E2E_EXECUTABLE` 可针对打包后的应用运行（仅适用于未关闭调试器 fuse 的构建，因为 Playwright 依赖它连接）。
 
 ## 编码约定
 
@@ -81,4 +81,6 @@ npm run check:release
 
 使用 `npm run version:update -- patch`（或 `minor`、`major`、具体的语义化版本号如 `1.2.3`）。脚本会更新 `package.json` 和 `package-lock.json`，electron-builder 从中读取版本号。`npm run version:check` 用于确认两者一致。
 
-GitHub 的 `Build` 工作流会在 Pull Request 和推送时运行检查。在 `main` 上，版本号变化会创建 `v*` 标签并触发标签构建，打包 Windows（NSIS 安装包、便携版 EXE、ZIP）、macOS（DMG）和 Linux（DEB、AppImage），并发布附带 `SHA256SUMS.txt` 的 GitHub Release。
+GitHub 的 `Build` 工作流会在 Pull Request 和推送时运行检查。在 `main` 上，版本号变化会创建 `v*` 标签并触发标签构建，打包 Windows（NSIS 安装包、便携版 EXE、ZIP）、macOS（DMG）和 Linux（DEB、AppImage），并发布附带 `SHA256SUMS.txt` 和 `update.json`（应用内更新读取的清单）的 GitHub Release。
+
+更新签名由维护者配置一次：运行 `npm run update:keygen`，把它写到仓库外的私钥保存为 `UPDATE_SIGNING_KEY` 机密，并提交 `build/update-public-key.pem`。此后发布任务会为 `update.json` 签名，密钥缺失或不匹配时拒绝发布；从该提交构建的应用只接受已签名的更新。除非私钥丢失或泄露，不要替换已提交的公钥，否则已安装的应用会拒绝之后的所有更新。要在开发版本中试用更新，可将 `IWARATV_UPDATE_URL` 指向一个本地文件夹，其中放有由 `scripts/update-manifest.mjs` 生成的清单，详见 [docs/auto-update.md](docs/auto-update.md#testing)。

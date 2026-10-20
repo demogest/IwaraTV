@@ -27,6 +27,7 @@ import type {
   SelectPathResult,
   SendVideoCommentRequest,
   SettingsPatch,
+  UpdateState,
   VideoComment,
   VideoCommentsResult,
   VideoDetail,
@@ -81,6 +82,13 @@ export interface IpcInvokeContract {
   "auth:open-verification": { args: []; result: AuthState };
   "auth:sign-out": { args: []; result: AuthState };
 
+  "updates:state": { args: []; result: UpdateState };
+  "updates:check": { args: []; result: UpdateState };
+  "updates:download": { args: []; result: UpdateState };
+  /** Installs a downloaded update (restarting the app) or opens the downloaded file. */
+  "updates:install": { args: []; result: UpdateState };
+  "updates:skip": { args: [version: string]; result: UpdateState };
+
   "system:select-executable": { args: [request: SelectPathRequest]; result: SelectPathResult };
   "system:select-directory": { args: [request: SelectPathRequest]; result: SelectPathResult };
   "system:open-external": { args: [url: string]; result: void };
@@ -98,6 +106,7 @@ export interface IpcEventContract {
   "favorites:changed": FavoriteState;
   /** Asks the window to show a section, e.g. after clicking a notification. */
   "app:navigate": AppNavigateRequest;
+  "updates:changed": UpdateState;
 }
 
 export type InvokeChannel = keyof IpcInvokeContract;
@@ -145,6 +154,11 @@ const invokeChannelRecord = {
   "auth:state": true,
   "auth:open-verification": true,
   "auth:sign-out": true,
+  "updates:state": true,
+  "updates:check": true,
+  "updates:download": true,
+  "updates:install": true,
+  "updates:skip": true,
   "system:select-executable": true,
   "system:select-directory": true,
   "system:open-external": true,
@@ -158,7 +172,8 @@ const eventChannelRecord = {
   "auth:changed": true,
   "settings:changed": true,
   "favorites:changed": true,
-  "app:navigate": true
+  "app:navigate": true,
+  "updates:changed": true
 } as const satisfies Record<EventChannel, true>;
 
 export const INVOKE_CHANNELS = Object.keys(invokeChannelRecord) as InvokeChannel[];

@@ -12,6 +12,7 @@ import type {
   PlaybackProgress,
   PlayRequest,
   SettingsPatch,
+  UpdateState,
   VideoComment,
   VideoDetail,
   VideoSummary
@@ -249,6 +250,47 @@ function simulateDownload(task: DownloadTask): void {
 
 const delay = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
+// `?update=1` shows an available update, `?update=breaking` a breaking one.
+const updateMode = params.get("update");
+const mockUpdateVersion = updateMode === "breaking" ? "3.0.0" : "2.1.0";
+let updateState: UpdateState = {
+  status: updateMode ? "available" : "up-to-date",
+  currentVersion: "2.0.0",
+  installKind: "nsis",
+  strategy: "automatic",
+  signedOnly: true,
+  checkedAt: new Date().toISOString(),
+  update: updateMode
+    ? {
+        version: mockUpdateVersion,
+        tag: `v${mockUpdateVersion}`,
+        publishedAt: new Date(Date.now() - 86_400_000).toISOString(),
+        breaking: updateMode === "breaking",
+        skipped: false,
+        notes: [
+          `## IwaraTV ${mockUpdateVersion}`,
+          "",
+          "- **Updates inside the app**: IwaraTV now tells you about new versions and installs them with a restart.",
+          "- Faster startup and smoother scrolling on long lists.",
+          "- Fixed a crash when a download folder was removed while the app was open.",
+          "",
+          "### Notes",
+          "",
+          "Signed releases are verified with `Ed25519` before anything is installed."
+        ].join("\n"),
+        fileName: `IwaraTV_${mockUpdateVersion}_x64-setup.exe`,
+        size: 146_000_000,
+        releaseUrl: `https://github.com/demogest/IwaraTV/releases/tag/v${mockUpdateVersion}`
+      }
+    : undefined
+};
+
+function setUpdateState(next: UpdateState): UpdateState {
+  updateState = next;
+  emit("updates:changed", updateState);
+  return updateState;
+}
+
 async function handle<C extends InvokeChannel>(channel: C, args: InvokeArgs<C>): Promise<unknown> {
   const [first] = args as unknown[];
   switch (channel) {
@@ -407,6 +449,24 @@ async function handle<C extends InvokeChannel>(channel: C, args: InvokeArgs<C>):
     case "system:select-executable":
     case "system:select-directory":
       return { canceled: true };
+    case "updates:state":
+      return updateState;
+    case "updates:check":
+      setUpdateState({ ...updateState, status: "checking" });
+      await delay(700);
+      return setUpdateState({ ...updateState, status: updateState.update ? "available" : "up-to-date", checkedAt: new Date().toISOString() });
+    case "updates:download": {
+      const total = updateState.update?.size ?? 1;
+      for (let received = 0; received < total; received += total / 12) {
+        setUpdateState({ ...updateState, status: "downloading", progress: { received, total } });
+        await delay(250);
+      }
+      return setUpdateState({ ...updateState, status: "ready", progress: undefined });
+    }
+    case "updates:install":
+      return updateState;
+    case "updates:skip":
+      return setUpdateState({ ...updateState, update: updateState.update && { ...updateState.update, skipped: true } });
     case "system:app-info":
       return { name: "IwaraTV", version: "preview", electron: "—", chrome: navigator.userAgent.match(/Chrome\/([\d.]+)/)?.[1] ?? "—", node: "—", platform: "web", arch: "—", userDataPath: "~/.config/IwaraTV", systemLocale: navigator.language };
     default:

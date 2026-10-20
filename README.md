@@ -23,6 +23,7 @@ This project is independently made and is not affiliated with, sponsored by, or 
 - [User Manual](docs/user-manual.en.md) / [用户手册](docs/user-manual.zh-CN.md)
 - [Developer Contribution Guide](CONTRIBUTING.md) / [开发者贡献参考](CONTRIBUTING.zh-CN.md)
 - [UI/UX and security audit](docs/audit.md)
+- [Auto-update design](docs/auto-update.md)
 
 ## Highlights
 
@@ -37,6 +38,7 @@ This project is independently made and is not affiliated with, sponsored by, or 
 - Sign in on Iwara's own page in a separate window; the app never sees your password.
 - English and Simplified Chinese, light and dark themes, large or compact cards, keyboard shortcuts (press `?`), collapsible sidebar.
 - Troubleshooting tools: compare formats with the website, speed-test CDN hosts, refresh the X-Version salt.
+- Updates itself from GitHub Releases: checks signatures and checksums, installs with a restart where it can (Windows installer, AppImage) and hands you the verified file where the system installs it. Breaking releases always ask first.
 
 ## Requirements
 
@@ -66,6 +68,7 @@ npm run dev
 | `npm run dist:win` / `dist:mac` / `dist:linux` | Build installers with electron-builder. |
 | `npm run check:release` | Version check, typecheck and unit tests. |
 | `npm run version:update -- patch` | Bump the version in `package.json` and `package-lock.json`. Also accepts `minor`, `major` or an exact version. |
+| `npm run update:keygen` | Create the key pair that signs update manifests (maintainers, once). |
 
 Windows packaging with bundled MPV:
 
@@ -92,7 +95,7 @@ Upgrading from the Tauri version: settings, favorites and download history are i
 
 Use `npm run version:update -- <major|minor|patch|x.y.z>` before a release; `npm run version:check` verifies that `package.json` and `package-lock.json` agree.
 
-The `Build` workflow runs the version check, typecheck, unit tests and the end-to-end smoke test on every pull request and push. When the version changes on `main` it tags the commit; the tag build packages Windows, macOS and Linux artifacts and publishes a GitHub Release with checksums.
+The `Build` workflow runs the version check, typecheck, unit tests and the end-to-end smoke test on every pull request and push. When the version changes on `main` it tags the commit; the tag build packages Windows, macOS and Linux artifacts and publishes a GitHub Release with checksums and the `update.json` manifest the in-app updater reads. Once `build/update-public-key.pem` and the `UPDATE_SIGNING_KEY` secret are set up, the manifest is signed and apps accept only signed updates; see [docs/auto-update.md](docs/auto-update.md).
 
 ## License
 

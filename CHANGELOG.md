@@ -2,6 +2,13 @@
 
 All notable changes to IwaraTV. Versions follow [semantic versioning](https://semver.org/); a major version marks breaking changes. Full notes for each release, including upgrade steps, are in [`docs/release-notes/`](docs/release-notes/) and on the [Releases page](https://github.com/demogest/IwaraTV/releases).
 
+## Unreleased
+
+### Added
+
+- In-app updates. IwaraTV checks GitHub Releases on start and every 6 hours, verifies the release's `update.json` (Ed25519-signed once the project's key is set up) and each file's size and SHA-256, and then installs with a restart (Windows installer, AppImage) or hands over the verified file (portable, ZIP, `.deb`, macOS). Breaking releases are never installed automatically. New **Settings → Updates** page and a sidebar notice. See [docs/auto-update.md](docs/auto-update.md).
+- Release job publishes `update.json` (and `update.json.sig` when signing is set up); `npm run update:keygen` creates the signing key pair.
+
 ## 2.0.0 — 2026-10-20 · ⚠️ Breaking
 
 IwaraTV rebuilt on Electron with a redesigned interface. See the [2.0.0 release notes](docs/release-notes/v2.0.0.md) for upgrade steps.

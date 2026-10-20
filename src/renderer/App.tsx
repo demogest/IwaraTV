@@ -5,6 +5,7 @@ import { openShortcuts, ShortcutsDialog } from "./components/ShortcutsDialog";
 import { StateMessage } from "./components/primitives";
 import { Sidebar } from "./components/Sidebar";
 import { ToastRegion } from "./components/Toasts";
+import { UpdateDialog } from "./components/UpdateDialog";
 import { useHotkeys } from "./hooks/useHotkeys";
 import { useI18n } from "./i18n";
 import { hasBridge } from "./lib/api";
@@ -133,6 +134,7 @@ export function App() {
       </div>
       <ToastRegion />
       <ShortcutsDialog />
+      <UpdateDialog />
     </div>
   );
 }

@@ -263,6 +263,50 @@ export interface FavoriteImportResult {
   state: FavoriteState;
 }
 
+export interface UpdateSettings {
+  /** Look for updates on start and every few hours. */
+  autoCheck: boolean;
+  /** Download non-breaking updates in the background where the app can install them itself. */
+  autoDownload: boolean;
+  /** A version the user chose to skip. */
+  skippedVersion?: string;
+  lastCheckedAt?: string;
+}
+
+/** How this copy of the app was installed, which decides how it can update. "archive" is an unpacked folder (Windows ZIP or similar). */
+export type UpdateInstallKind = "nsis" | "portable" | "archive" | "appimage" | "deb" | "dmg" | "dev";
+/** automatic: downloads and installs itself · assisted: downloads, the user installs · none: only points to the release. */
+export type UpdateStrategy = "automatic" | "assisted" | "none";
+export type UpdateStatus = "idle" | "checking" | "up-to-date" | "available" | "downloading" | "ready" | "error";
+
+export interface UpdateInfo {
+  version: string;
+  tag: string;
+  publishedAt?: string;
+  notes?: string;
+  /** Major version change or a release marked breaking: never installed silently. */
+  breaking: boolean;
+  /** The user chose to skip this version: no reminders, but it can still be installed from Settings. */
+  skipped: boolean;
+  /** The file for this install type; absent when the release has none. */
+  fileName?: string;
+  size?: number;
+  releaseUrl: string;
+}
+
+export interface UpdateState {
+  status: UpdateStatus;
+  currentVersion: string;
+  installKind: UpdateInstallKind;
+  strategy: UpdateStrategy;
+  /** True when this build only accepts signed update manifests. */
+  signedOnly: boolean;
+  update?: UpdateInfo;
+  progress?: { received: number; total: number };
+  error?: { code: AppErrorCode; message: string };
+  checkedAt?: string;
+}
+
 export interface AppSettings {
   player: PlayerSettings;
   iwara: IwaraRuntimeSettings;
@@ -270,6 +314,7 @@ export interface AppSettings {
   download: DownloadSettings;
   tagPreferences: TagPreferences;
   ui: UiSettings;
+  updates: UpdateSettings;
   history: PlaybackHistoryItem[];
 }
 

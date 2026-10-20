@@ -331,6 +331,46 @@ export const en = {
     fullscreen: "Fullscreen",
     mute: "Mute or unmute"
   },
+  updates: {
+    available: "Update available",
+    downloadingShort: "Downloading {percent}%",
+    ready: "Update ready",
+    restart: "Restart to update",
+    title: "IwaraTV {version}",
+    meta: "You have {current}",
+    released: "Released {date}",
+    breakingTitle: "Breaking release",
+    breakingBody: "This version changes how IwaraTV works or what it needs. Read the notes first — it is never installed automatically.",
+    notes: "What's new",
+    noNotes: "This release has no notes in the app.",
+    fullNotes: "Release on GitHub",
+    download: "Download",
+    downloadSize: "Download · {size}",
+    downloading: "Downloading…",
+    progress: "{received} of {total}",
+    openInstaller: "Open installer",
+    openDiskImage: "Open disk image",
+    showFile: "Show in folder",
+    viewRelease: "Open GitHub",
+    skip: "Skip this version",
+    later: "Later",
+    skipped: "You won't be reminded about {version}.",
+    toastAvailable: "IwaraTV {version} is available",
+    toastReady: "IwaraTV {version} is ready",
+    toastReadyDetail: "Restart IwaraTV to finish updating.",
+    details: "Details",
+    readyAutomatic: "Downloaded and verified. IwaraTV restarts to install it; your data stays as it is.",
+    noFile: "This release has no download for your copy of IwaraTV. Get it from GitHub.",
+    howTo: {
+      nsis: "Downloaded and verified. IwaraTV restarts to install it.",
+      appimage: "Saved next to your AppImage. Close IwaraTV, delete the old file and start the new one.",
+      portable: "Saved next to this app. Close IwaraTV and start the new file.",
+      archive: "Close IwaraTV, then unpack the archive over your current IwaraTV folder.",
+      deb: "Your software installer opens the package and may ask for your password.",
+      dmg: "In the window that opens, drag IwaraTV onto Applications to replace this copy, then reopen it.",
+      dev: "Development builds don't install updates."
+    }
+  },
   settings: {
     title: "Settings",
     subtitle: "Preferences are saved automatically",
@@ -341,6 +381,7 @@ export const en = {
       downloads: "Downloads",
       content: "Content filters",
       network: "Network",
+      updates: "Updates",
       advanced: "Advanced"
     },
     general: {
@@ -475,6 +516,43 @@ export const en = {
       runtime: "Runtime",
       dataFolder: "Data folder",
       migrated: "Settings, favorites and download history were imported from the previous version."
+    },
+    updates: {
+      upToDate: "IwaraTV is up to date",
+      checking: "Checking for updates…",
+      notChecked: "Not checked yet",
+      lastChecked: "Version {version} · last checked {date}",
+      currentVersion: "Version {version}",
+      available: "Version {version} is available",
+      availableSkipped: "Version {version} is available (skipped)",
+      downloading: "Downloading version {version}…",
+      ready: "Version {version} is downloaded",
+      failed: "Couldn't check for updates",
+      checkNow: "Check now",
+      details: "Details",
+      autoCheck: "Check for updates automatically",
+      autoCheckDesc: "When IwaraTV starts and every 6 hours. Only github.com is contacted, without cookies or identifiers.",
+      autoDownload: "Download updates in the background",
+      autoDownloadDesc: "Updates that install with a restart are downloaded as soon as they're found. Breaking releases always wait for you.",
+      autoDownloadUnavailable: "On this copy of IwaraTV you choose when to download.",
+      installType: "Install type",
+      kinds: {
+        nsis: "Windows installer",
+        portable: "Windows portable app",
+        archive: "Unpacked folder",
+        appimage: "AppImage",
+        deb: "Debian package",
+        dmg: "macOS app",
+        dev: "Development build"
+      },
+      strategies: {
+        automatic: "Updates install with a restart.",
+        assisted: "IwaraTV downloads and checks updates; you finish installing them.",
+        none: "IwaraTV tells you about updates; download them from GitHub."
+      },
+      verification: "Verification",
+      signed: "Only releases signed with the key built into this app",
+      checksums: "SHA-256 checksums over HTTPS (this build has no signing key)"
     }
   },
   errors: {
@@ -501,6 +579,9 @@ export const en = {
     FILE_NOT_FOUND: { title: "File not found", detail: "The file was moved or deleted." },
     SALT_NOT_FOUND: { title: "Salt not detected", detail: "Iwara's website didn't contain a recognizable X-Version salt. The saved value is still used." },
     FAVORITES_FILE_INVALID: { title: "Can't import that file", detail: "Choose a JSON file exported from IwaraTV." },
+    UPDATE_CHECK_FAILED: { title: "Couldn't check for updates", detail: "{message}" },
+    UPDATE_INVALID: { title: "Update rejected", detail: "{message} Nothing was installed." },
+    UPDATE_INSTALL_FAILED: { title: "Couldn't install the update", detail: "{message}" },
     UNKNOWN: { title: "Something went wrong", detail: "{message}" }
   },
   actions: {

@@ -32,7 +32,8 @@
     "version:check": "node scripts/update-version.mjs --check",
     "version:update": "node scripts/update-version.mjs",
     "icons:build": "node scripts/generate-icons.mjs",
-    "mpv:update": "node scripts/install-mpv.mjs"
+    "mpv:update": "node scripts/install-mpv.mjs",
+    "update:keygen": "node scripts/update-keygen.mjs"
   },
   "devDependencies": {
     "@types/node": "^25.6.0",

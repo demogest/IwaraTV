@@ -7,6 +7,7 @@ import { AppStateProvider } from "./state/app-state";
 import { ConfirmProvider } from "./state/confirm";
 import { NavigationProvider } from "./state/navigation";
 import { ToastProvider } from "./state/toasts";
+import { UpdatesProvider } from "./state/updates";
 import "./styles/tokens.css";
 import "./styles/base.css";
 import "./styles/components.css";
@@ -63,7 +64,9 @@ function Root() {
                 setTheme(ui.theme);
               }}
             >
-              <App />
+              <UpdatesProvider>
+                <App />
+              </UpdatesProvider>
             </AppStateProvider>
           </NavigationProvider>
         </ConfirmProvider>

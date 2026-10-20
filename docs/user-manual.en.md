@@ -12,7 +12,7 @@ IwaraTV runs on Windows 10 or later (64-bit), macOS 13 Ventura or later on Apple
 
 1. Download the latest build from [GitHub Releases](https://github.com/demogest/IwaraTV/releases):
    - Windows: `IwaraTV_<version>_x64-setup.exe` (installer), `…-portable.exe` (no install) or `…-unpacked.zip`.
-   - macOS: the `.dmg`. The app isn't notarized, so the first time, right-click the app and choose **Open**.
+   - macOS: the `.dmg`. The app isn't notarized, so the first time you open it, go to **System Settings → Privacy & Security** and click **Open Anyway** (on macOS 13 and 14 you can instead right-click the app and choose **Open**).
    - Linux: the `.deb` or the `.AppImage` (make it executable first).
 2. Start IwaraTV. The Browse page opens straight away; signing in is optional.
 3. Press **Play here** on any video — the built-in player needs nothing else. If you prefer MPV, Windows builds include it; on macOS and Linux install it (`brew install mpv`, `sudo apt install mpv`, …) and choose it in **Settings → Playback**.

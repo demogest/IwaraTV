@@ -8,6 +8,8 @@ This project is independent and is not affiliated with, sponsored by, or endorse
 
 ## Install And Start
 
+IwaraTV runs on Windows 10 or later (64-bit), macOS 13 Ventura or later on Apple Silicon, and 64-bit Linux.
+
 1. Download the latest build from [GitHub Releases](https://github.com/demogest/IwaraTV/releases):
    - Windows: `IwaraTV_<version>_x64-setup.exe` (installer), `…-portable.exe` (no install) or `…-unpacked.zip`.
    - macOS: the `.dmg`. The app isn't notarized, so the first time, right-click the app and choose **Open**.

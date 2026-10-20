@@ -40,6 +40,7 @@ This project is independently made and is not affiliated with, sponsored by, or 
 
 ## Requirements
 
+- To run IwaraTV: Windows 10 or later (64-bit), macOS 13 Ventura or later on Apple Silicon, or 64-bit Linux.
 - Node.js 24.14.1+ and npm 11.11.0+ (see `.node-version`).
 - Nothing extra for playback: the built-in player works everywhere. MPV is optional (bundled in Windows release builds).
 

@@ -2,152 +2,152 @@
 
 [简体中文](user-manual.zh-CN.md) | English
 
-IwaraTV is a desktop companion for browsing Iwara.tv, opening video detail pages, launching local playback, and downloading videos. It runs locally; Iwara account access, Cloudflare verification, player paths, playback history, and downloads remain on your machine.
+IwaraTV is a desktop app for browsing Iwara.tv and watching videos — in its own built-in player, in MPV, or in another player on your computer. Everything it stores — settings, favorites, history, downloads and your Iwara session — stays on your machine.
 
 This project is independent and is not affiliated with, sponsored by, or endorsed by Iwara.
 
 ## Install And Start
 
-1. Download the latest build from [GitHub Releases](https://github.com/demogest/IwaraTV/releases).
-2. Install the package for your platform, or use the Windows portable build if available.
-3. Start IwaraTV.
-4. Open **Settings** before the first playback and check the MPV or external-player status.
+1. Download the latest build from [GitHub Releases](https://github.com/demogest/IwaraTV/releases):
+   - Windows: `IwaraTV_<version>_x64-setup.exe` (installer), `…-portable.exe` (no install) or `…-unpacked.zip`.
+   - macOS: the `.dmg`. The app isn't notarized, so the first time, right-click the app and choose **Open**.
+   - Linux: the `.deb` or the `.AppImage` (make it executable first).
+2. Start IwaraTV. The Browse page opens straight away; signing in is optional.
+3. Press **Play here** on any video — the built-in player needs nothing else. If you prefer MPV, Windows builds include it; on macOS and Linux install it (`brew install mpv`, `sudo apt install mpv`, …) and choose it in **Settings → Playback**.
 
-Windows release builds can include bundled MPV. On macOS and Linux, install MPV separately or configure another player in **Settings**.
+Upgrading from an older (Tauri-based) IwaraTV: your settings, favorites and download history are imported automatically on the first start, and **Settings → Advanced** confirms it. Sign in again once — sessions can't be carried over. Your default player stays MPV (or your external player); switch to **Built-in** in **Settings → Playback** if you like.
 
-## Main Navigation
+## The Window
 
-- **Browse**: Recent, trending, popular, followed-tag, and author-filtered feeds.
-- **Search**: Keyword search with sort options for relevance, newest, views, or likes.
-- **Subscriptions**: Videos from subscribed authors after login/session verification.
-- **Favorites**: Local saved videos with backup, export, and import tools.
-- **Downloads**: Active download queue, progress, retry, open file/folder, and history.
-- **History**: Recently played videos stored locally.
-- **Settings**: Account/session state, player paths, download defaults, media-host routing, X-Version handling, and tag preferences.
+- **Sidebar**: Browse, Search, Subscriptions (Discover) and Favorites, Downloads, History (Library); Settings and your account at the bottom. The button next to the logo collapses the sidebar; it collapses automatically in narrow windows. A badge on Downloads shows active downloads.
+- **Top bar**: type words and press Enter to search, or paste an Iwara link or video ID to open the video. When the text could be either, the suggestion list offers both. With the box empty, it suggests your recent searches (remove one with its **×** or `Delete`, or clear them all) and, if you copied an Iwara video link, offers to open it.
+- **Back**: the Back button, `Esc`, `Alt+←` or the mouse back button return to where you were, including your scroll position.
 
-## Open Videos
+Keyboard shortcuts (press `?` or the keyboard button in the top bar to see them in the app):
 
-Use any of these entry points:
+| Keys | Action |
+| --- | --- |
+| `/`, `Ctrl+K` or `Ctrl+L` (`⌘` on macOS) | Focus the top bar |
+| `Ctrl+1` … `Ctrl+6` | Browse, Search, Subscriptions, Favorites, Downloads, History |
+| `Ctrl+,` | Open Settings |
+| `Esc`, `Alt+←`, mouse back | Go back |
+| `Ctrl+Enter` in a comment box | Send |
+| `?` | Show the shortcut list |
+| `Space` or `K` | Built-in player: play or pause |
+| `←` / `→` | Built-in player: back or forward 5 seconds |
+| `F` / `M` | Built-in player: fullscreen / mute |
+| Arrow keys, `Home`, `End` | Move between tabs, quality options and menu items |
 
-- Click a video card in a feed or search result.
-- Paste an Iwara video ID into the top bar.
-- Paste an Iwara video URL into the top bar.
-- Open an author from a detail page to browse that author's feed.
+## Browsing And Searching
 
-The detail page lists the available qualities. Choose a quality, then use **Play**, **External**, or **Download** depending on your preferred action.
+- **Browse** has four feeds: Latest, Trending, Popular and Followed tags. The rating switch (All / General / Ecchi) applies to all of them; set its default in **Settings → General**. Add tag filters to narrow a feed.
+- **Search** searches all of Iwara and sorts by relevance, newest, views or likes.
+- **Subscriptions** shows new videos from authors you follow on Iwara (sign-in required). Filter by author with the chips at the top.
+- Rest the pointer on a video card to preview it: the thumbnail steps through frames from the video, and quick actions appear (play, download, favorite). Click the author's name to open their page.
+- **Continue watching** at the top of Browse lists videos you started in the built-in player but didn't finish; a bar under each thumbnail shows how far you got, and **Resume** carries on from there.
+- **Settings → General → Card size** switches to smaller cards to fit more videos on each row.
+- Lists remember their page and scroll position while you move around.
 
-## Playback
+## Watching
 
-IwaraTV supports two playback modes:
+Open a video to see its details. Choose a **Quality** (best first), then:
 
-- **MPV**: Preferred default. The app looks for a configured MPV path, a bundled Windows MPV, `vendor/mpv/mpv.exe` in development, or MPV on `PATH`.
-- **External player**: Configure an executable path and argument template. The template must include `{url}` so the player receives the media URL.
+- **Play here** (or **Play in MPV** / your external player, depending on your default). The arrow next to it picks another player for this one time.
+- **Download** saves the chosen quality.
+- **Favorite** saves the video locally.
+- **⋯** opens the video on Iwara or copies its link.
 
-Useful external-player placeholders:
+If the chosen quality isn't available, IwaraTV uses the best one there is and tells you. The page also shows the description, tags and comments, plus **More from** the author and **Related videos** in the side column. Each tag has a menu to browse it, follow it or block it.
 
-- `{url}`: Direct media URL.
-- `{title}`: Video title.
-- `{headers}`: HTTP header string with the Iwara referrer.
+### The built-in player
 
-If your selected quality is unavailable, IwaraTV falls back to the best available format and reports the fallback.
+**Play here** plays the video right on its page, with the usual controls, fullscreen and keyboard shortcuts (`Space`/`K`, `←`/`→`, `F`, `M`). The volume is remembered.
 
-## Login And Verification
+- Switching **Quality** while watching continues at the same moment.
+- IwaraTV remembers where you stopped. Next time it continues from there and shows **Start over** in case you'd rather begin again. Finished videos start from the beginning.
+- Leaving the page stops playback. The **×** in the corner closes the player and brings back the thumbnail.
+- If a video can't be played (for example an expired link), the player offers **Try again**; MPV may still work from the arrow menu.
 
-Some actions require an Iwara account or a browser session:
+### Players
 
-- Subscribed-author feeds.
-- Following or unfollowing authors.
-- Commenting or replying.
-- Accessing videos that require Iwara session cookies or a site token.
+Pick the default player and preferred quality in **Settings → Playback**. If MPV or your external player can't be found, the error message offers **Play here instead**.
 
-Open **Settings**, then use the Iwara verification action. Complete login or Cloudflare verification in the embedded window. When IwaraTV captures a usable site token, the window closes automatically and later requests reuse the token and cookies.
+- **MPV**: found automatically (bundled copy, your system's MPV, or a path you choose). **Test MPV** confirms it starts.
+- **External player**: choose the executable and its arguments. The arguments must contain `{url}`; you can also use `{title}` and `{headers}` (the Iwara referrer header). The preview shows the exact command.
 
-Credential notes:
+## Signing In
 
-- API login tokens are stored through the operating system keyring when available.
-- Web session data is handled through the app's WebView session.
-- If secure storage is unavailable, the app warns that login persistence may be limited.
+Subscriptions, following authors, commenting and some private videos need an Iwara account.
 
-## Search, Tags, And Feeds
+1. Click **Sign in with Iwara** on the Subscriptions page or in **Settings → Account** (the account button at the bottom of the sidebar opens it).
+2. Iwara's own sign-in page opens in a separate window. Sign in there, and complete a browser check if Iwara asks for one. Your password goes to Iwara only; IwaraTV never sees it.
+3. The window closes by itself once IwaraTV detects the session, and the sidebar shows your name.
 
-Browse feeds can combine text and tag filtering. Tag preferences in **Settings** apply across list views:
+The same window is used when Iwara asks to verify the browser ("Browser check needed"). **Settings → Account → Sign out** clears Iwara's cookies and site data from IwaraTV; favorites, history and downloads are kept.
 
-- **Followed tags** power the followed-tag feed.
-- **Blocked tags** hide matching videos and take priority over followed tags.
-- **Scan pages** controls how many list pages the app scans for multi-tag or blocked-tag filtering.
-- **Request delay** adds a pause between scanned pages to reduce request bursts.
+## Authors, Tags And Comments
 
-Search results use Iwara search plus local filtering for tags and blocked tags.
+- **Follow** an author from the video page or their author page. New videos appear in Subscriptions.
+- **Followed tags** fill the Followed tags feed; **blocked tags** hide matching videos everywhere (blocking a tag also unfollows it). Manage both from a tag's menu or **Settings → Content filters**, which also sets how many pages to scan when filtering and the pause between pages.
+- **Comments** load on the video page with replies; when signed in, you can comment and reply.
 
-## Comments And Authors
+## Favorites And History
 
-The video detail page can load comments and replies. After login/session verification, you can post a top-level comment or reply.
+Favorites are saved on this computer, not on your Iwara account. Click the star to add or remove a video; removing shows **Undo**. In **Favorites** you can filter, sort, and:
 
-Author controls appear on video detail pages and author feeds. Follow/unfollow requires login/session verification.
+- **Back up**: write a copy next to the app's data.
+- **Export…**: save a JSON file anywhere.
+- **Import…**: merge a JSON file exported from IwaraTV; duplicates are merged and the earliest date is kept.
 
-## Favorites
-
-Use the star/favorite action on video cards or the detail page to save a video locally. The **Favorites** view keeps saved videos available for quick reopening, playback, and downloads.
-
-Favorites are local data, not an Iwara server-side favorite list. The view includes:
-
-- **Backup**: Writes a backup JSON file next to the app's local favorites data.
-- **Export**: Lets you choose a JSON destination for sharing or manual backup.
-- **Import**: Merges a JSON favorites file into the current local list, deduplicating by video ID.
-
-Imported favorites preserve existing local notes when possible and fill in missing metadata from the imported file.
+**History** lists videos you played, grouped by day, with the quality, the player used and how much you watched in the built-in player. **Resume** (or **Play again**), remove single entries or clear everything.
 
 ## Downloads
 
-Set the download directory and default quality in **Settings**. Detail-page downloads use the currently selected quality; video-card downloads use the default quality.
+Choose the folder, default quality, parallel connections and split threshold in **Settings → Downloads**. The default folder is `IwaraTV` inside your Downloads folder.
 
-The download manager supports:
+- The video page downloads the quality you selected; quick actions on cards use the default quality.
+- Large files are fetched in parallel ranges when the server allows it.
+- **Cancel** keeps the partial file; **Resume** continues where it stopped, also after restarting the app.
+- Finished items offer **Play file** and **Show in folder**; the **⋯** menu removes the entry, and for finished downloads asks whether to delete the file too.
+- Tabs filter active, completed and interrupted (failed or canceled) downloads; **Clear list** removes finished entries (files are kept).
+- Progress also shows on the taskbar or Dock icon. When a download finishes or fails while IwaraTV is in the background, a system notification tells you; click it to open Downloads. Turn this off with **Notify when downloads finish**.
 
-- Active task status and progress.
-- Preferred-quality fallback.
-- Resume-friendly partial files.
-- Segmented downloads when the file is large enough and the server supports range requests.
-- Retry for failed history items.
-- Opening the downloaded file or its folder.
-- Deleting history records, with an option to delete local files.
+## Network And Troubleshooting
 
-Download history is stored locally in the app data directory.
+**Settings → Network** manages the CDN host pool. **Run speed test** downloads a small sample from each host; with **Use the fastest host** on, playback and download links are rewritten to the top-ranked host. Turn it off if you get HTTP 403 errors.
 
-## Media Hosts And Diagnostics
+On a video page, **Troubleshooting** offers:
 
-Iwara media URLs may resolve through different hostnames. In **Settings**, you can:
+- **Compare with website**: opens the video in a hidden Iwara page and compares the formats the website gets with what IwaraTV sees — useful when only low qualities appear.
+- **Speed-test CDN hosts** using this video.
 
-- Maintain a candidate media-host list.
-- Run a speed test with the current video as the sample.
-- Enable automatic testing when no ranked hosts exist.
-- Replace playback links with the fastest ranked host.
+**Settings → Advanced** shows the X-Version salt Iwara uses to sign file-list requests. IwaraTV detects it from Iwara's website at most once a day; **Detect now** refreshes it.
 
-If playback fails with host replacement enabled, disable replacement and retry with the original media URL.
+Errors appear as messages with a suggested fix, such as **Sign in**, **Open settings** or **Try again**.
 
-Diagnostics tools help investigate format and session issues:
+| Problem | What to do |
+| --- | --- |
+| "MPV not found" | Install MPV or choose its executable in **Settings → Playback**, or switch to an external player. |
+| External player doesn't open | Check the executable path and that the arguments include `{url}`. |
+| "Browser check needed" | Click **Open Iwara window** and complete the check. |
+| "Sign-in required" / "Session expired" | Sign in again. |
+| Only low qualities appear | Sign in, then use **Troubleshooting → Compare with website**. |
+| HTTP 403 when playing or downloading | Turn off **Use the fastest host** in **Settings → Network**. |
+| Downloads fail or stall | **Resume** the download, lower parallel connections, or choose another quality. |
+| Favorites import skips items | Use a JSON file exported from IwaraTV. |
 
-- **X-Version sniffing** refreshes the salt used for Iwara API requests.
-- **Video diagnostics** checks available formats and, when possible, captures Iwara network responses from an embedded page.
-- **Media speed reports** show per-host success, latency, and throughput.
+## Where Your Data Lives
 
-## Local Data
+| | Windows | macOS | Linux |
+| --- | --- | --- | --- |
+| App data | `%APPDATA%\IwaraTV` | `~/Library/Application Support/IwaraTV` | `~/.config/IwaraTV` |
 
-IwaraTV writes local state in the app data directory:
+The app data folder (also shown in **Settings → Advanced**) contains:
 
-- `settings.json`: Player, download, Iwara, media-host, tag, and history settings.
-- `downloads.json`: Download history.
-- `favorites.json`: Local favorites.
-- Keyring entry: Persisted API token when the OS keyring is available.
+- `settings.json` — preferences, tag lists, host ranking and playback history (including where you stopped in the built-in player).
+- `favorites.json` and `favorites.backup.json` — favorites and the latest backup.
+- `downloads.json` — the download list.
+- `window-state.json` — window size and position.
+- `Partitions/iwara` — the Iwara browser session (cookies and site storage), like a browser profile.
 
-Downloaded videos are saved to the configured download folder, which defaults to an `IwaraTV` folder under the system Downloads directory when available.
-
-## Troubleshooting
-
-- **"Tauri API is not available"**: You are likely running the Vite web preview. Use the packaged desktop app or `npm run dev:tauri` for development.
-- **MPV not found**: Select `mpv.exe` or `mpv` in **Settings**, install MPV on `PATH`, or use an external player.
-- **External player does not open**: Confirm the executable exists and the argument template includes `{url}`.
-- **Subscribed feed or comments fail**: Complete the embedded Iwara verification flow and refresh the app state.
-- **Only low-quality formats appear**: Use video diagnostics after logging in; session-only formats may require captured browser credentials.
-- **Downloads fail or stall**: Retry from the download history, lower max connections, disable host replacement, or choose another quality.
-- **403 after host replacement**: Disable media-host replacement and use the original link.
-- **Favorites import skips items**: Confirm the JSON came from IwaraTV export or contains valid video IDs.
+Files imported from the previous version are kept with a `.pre-migration.json` suffix if they replaced newer ones. Downloaded videos are stored in the download folder you chose.

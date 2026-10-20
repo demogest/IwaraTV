@@ -106,23 +106,6 @@ jobs:
           node-version-file: .node-version
           cache: npm
 
-      - name: Setup Rust
-        uses: dtolnay/rust-toolchain@stable
-
-      - name: Cache Rust
-        uses: Swatinem/rust-cache@v2
-        with:
-          workspaces: src-tauri -> target
-
-      - name: Install Linux dependencies
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y \
-            libwebkit2gtk-4.1-dev \
-            libayatana-appindicator3-dev \
-            librsvg2-dev \
-            patchelf
-
       - name: Install npm dependencies
         run: npm ci
 
@@ -132,11 +115,24 @@ jobs:
       - name: Typecheck
         run: npm run typecheck
 
-      - name: Frontend tests
+      - name: Unit tests
         run: npm test
 
-      - name: Rust tests
-        run: cargo test --manifest-path src-tauri/Cargo.toml
+      - name: Build
+        run: npm run build
+
+      - name: End-to-end smoke test
+        run: |
+          command -v xvfb-run >/dev/null || { sudo apt-get update && sudo apt-get install -y xvfb; }
+          xvfb-run -a node tests/e2e/run-smoke.mjs
+
+      - name: Upload smoke test screenshots
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: e2e-screenshots
+          path: test-results/e2e
+          if-no-files-found: ignore
 
   create-release-tag:
     name: Create release tag
@@ -196,25 +192,25 @@ jobs:
         include:
           - name: Windows
             os: windows-latest
-            bundles: nsis
+            script: dist:win
             artifact_name: IwaraTV-windows
             artifact_path: |
-              src-tauri/target/release/bundle/nsis/*.exe
+              release/IwaraTV_*_x64-setup.exe
               release/IwaraTV_*_x64-portable.exe
               release/IwaraTV_*_x64-unpacked.zip
           - name: macOS
             os: macos-latest
-            bundles: dmg
+            script: dist:mac
             artifact_name: IwaraTV-macos
             artifact_path: |
-              src-tauri/target/release/bundle/dmg/*.dmg
+              release/*.dmg
           - name: Linux
             os: ubuntu-22.04
-            bundles: deb,appimage
+            script: dist:linux
             artifact_name: IwaraTV-linux
             artifact_path: |
-              src-tauri/target/release/bundle/deb/*.deb
-              src-tauri/target/release/bundle/appimage/*.AppImage
+              release/*.deb
+              release/*.AppImage
 
     steps:
       - name: Checkout
@@ -226,40 +222,16 @@ jobs:
           node-version-file: .node-version
           cache: npm
 
-      - name: Setup Rust
-        uses: dtolnay/rust-toolchain@stable
-
-      - name: Cache Rust
-        uses: Swatinem/rust-cache@v2
-        with:
-          workspaces: src-tauri -> target
-
-      - name: Install Linux dependencies
-        if: runner.os == 'Linux'
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y \
-            libwebkit2gtk-4.1-dev \
-            libayatana-appindicator3-dev \
-            librsvg2-dev \
-            patchelf
-
       - name: Install npm dependencies
         run: npm ci
 
-      - name: Generate icons
-        run: npm run icons:build
-
-      - name: Install bundled MPV
-        if: runner.os == 'Windows'
-        run: npm run mpv:update
-
-      - name: Build Tauri app
-        run: npm run build:tauri -- --bundles ${{ matrix.bundles }}
-
-      - name: Package Windows portable artifacts
-        if: runner.os == 'Windows'
-        run: npm run release:portable:win
+      # Icons, the bundled MPV (Windows) and the renderer build are part of each dist script.
+      - name: Package with electron-builder
+        run: npm run ${{ matrix.script }}
+        env:
+          # Unsigned builds: don't let electron-builder pick up a random keychain identity.
+          CSC_IDENTITY_AUTO_DISCOVERY: "false"
+          GH_TOKEN: ${{ github.token }}
 
       - name: Upload bundle artifacts
         uses: actions/upload-artifact@v7
@@ -336,12 +308,17 @@ jobs:
           fi
 
           {
+            # Hand-written notes for this version, if any, go first.
+            if [[ -f "docs/release-notes/${TAG_NAME}.md" ]]; then
+              cat "docs/release-notes/${TAG_NAME}.md"
+              echo
+            fi
             echo "## Assets"
             echo
             echo "- Windows installer: \`IwaraTV_${VERSION}_x64-setup.exe\`"
             echo "- Windows portable package: \`IwaraTV_${VERSION}_x64-portable.exe\`"
             echo "- Windows unpacked archive: \`IwaraTV_${VERSION}_x64-unpacked.zip\`"
-            echo "- macOS disk image: \`*.dmg\`"
+            echo "- macOS disk image (Apple Silicon): \`*.dmg\`"
             echo "- Linux packages: \`*.deb\` and \`*.AppImage\`"
             echo "- Checksums: \`SHA256SUMS.txt\`"
             echo

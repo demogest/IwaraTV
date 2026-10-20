@@ -260,6 +260,8 @@ jobs:
         uses: actions/download-artifact@v7
         with:
           path: artifacts
+          # Only the platform bundles; the run also holds e2e screenshots.
+          pattern: IwaraTV-*
           merge-multiple: true
 
       - name: Collect release assets

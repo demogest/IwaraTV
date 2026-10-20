@@ -85,7 +85,7 @@ Windows 会生成 `IwaraTV_<version>_x64-setup.exe`、`IwaraTV_<version>_x64-por
 
 渲染进程运行在沙箱中，启用上下文隔离且无法访问 Node.js，通过私有的 `app://` 协议加载并启用严格的 Content-Security-Policy，只能调用 `src/shared/ipc.ts` 中声明的通道。内置播放器通过私有的 `iwara-media://` 协议播放：主进程使用 Iwara 会话（Range 请求、Referer、令牌）获取媒体，并且只服务于它自己签发的播放流。Iwara 页面（登录和验证）在独立的沙箱窗口中打开，使用单独的会话且不加载 preload。打包后的应用关闭了 Electron 的 RunAsNode、`NODE_OPTIONS` 和调试器相关 fuse。
 
-从 Tauri 版本升级：首次启动时会自动导入设置、收藏和下载记录，需要重新登录一次。默认播放器仍保持为 MPV（或外部播放器）；新安装默认使用内置播放器。
+从 Tauri 版本升级：首次启动时会自动导入设置、收藏和下载记录，需要重新登录一次。默认播放器仍保持为 MPV（或外部播放器）；新安装默认使用内置播放器。Windows 上请先卸载 1.x 并保留应用数据；`.deb` 会直接升级 1.x 软件包。详见 [2.0 发布说明](docs/release-notes/v2.0.0.md)。
 
 ## 发布
 

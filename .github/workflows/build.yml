@@ -308,12 +308,17 @@ jobs:
           fi
 
           {
+            # Hand-written notes for this version, if any, go first.
+            if [[ -f "docs/release-notes/${TAG_NAME}.md" ]]; then
+              cat "docs/release-notes/${TAG_NAME}.md"
+              echo
+            fi
             echo "## Assets"
             echo
             echo "- Windows installer: \`IwaraTV_${VERSION}_x64-setup.exe\`"
             echo "- Windows portable package: \`IwaraTV_${VERSION}_x64-portable.exe\`"
             echo "- Windows unpacked archive: \`IwaraTV_${VERSION}_x64-unpacked.zip\`"
-            echo "- macOS disk image: \`*.dmg\`"
+            echo "- macOS disk image (Apple Silicon): \`*.dmg\`"
             echo "- Linux packages: \`*.deb\` and \`*.AppImage\`"
             echo "- Checksums: \`SHA256SUMS.txt\`"
             echo

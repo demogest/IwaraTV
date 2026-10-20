@@ -1,9 +1,10 @@
 {
   "name": "iwara-tv-local-player",
   "productName": "IwaraTV",
-  "version": "1.0.2",
+  "desktopName": "iwaratv.desktop",
+  "version": "2.0.0",
   "private": true,
-  "description": "Local Iwara.tv browser and MPV launcher.",
+  "description": "Desktop Iwara.tv browser and player.",
   "author": "Demogest",
   "license": "MIT",
   "homepage": "https://github.com/demogest/IwaraTV",

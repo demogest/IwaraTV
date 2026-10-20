@@ -85,7 +85,7 @@ Windows builds produce `IwaraTV_<version>_x64-setup.exe`, `IwaraTV_<version>_x64
 
 The renderer runs sandboxed with context isolation and no Node.js access, is served from a private `app://` scheme under a strict Content-Security-Policy, and can only call the channels declared in `src/shared/ipc.ts`. The built-in player streams from a private `iwara-media://` scheme: the main process fetches the media through the Iwara session (Range requests, referrer, token) and only for streams it handed out itself. Iwara pages (sign-in and verification) open in separate sandboxed windows with their own session and no preload. Packaged builds disable Electron's run-as-Node, `NODE_OPTIONS` and inspector fuses.
 
-Upgrading from the Tauri version: settings, favorites and download history are imported automatically on first launch. You need to sign in again. Your default player stays MPV (or your external player); new installs default to the built-in player.
+Upgrading from the Tauri version: settings, favorites and download history are imported automatically on first launch. You need to sign in again. Your default player stays MPV (or your external player); new installs default to the built-in player. On Windows, uninstall 1.x first and keep its app data; the `.deb` upgrades the 1.x package in place. See the [2.0 release notes](docs/release-notes/v2.0.0.md).
 
 ## Releases
 

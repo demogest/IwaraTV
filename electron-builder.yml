@@ -53,6 +53,11 @@ portable:
 mac:
   icon: build/icons/icon.icns
   category: public.app-category.entertainment
+  # No Developer ID yet: sign ad hoc so Apple Silicon will launch the app
+  # (flipping fuses invalidates Electron's original signature). Hardened
+  # runtime would reject Electron's frameworks under an ad-hoc signature.
+  identity: "-"
+  hardenedRuntime: false
   target:
     - dmg
 
@@ -61,12 +66,16 @@ linux:
   icon: build/icons/icon.png
   category: AudioVideo
   maintainer: Demogest
-  synopsis: Local Iwara.tv browser and MPV launcher
+  synopsis: Desktop Iwara.tv browser and player
+  syncDesktopName: true
   target:
     - deb
     - AppImage
 
 deb:
+  # Same package name as the 1.x (Tauri) .deb, so 2.0 upgrades it in place
+  # instead of clashing over /usr/bin/iwaratv and the icon.
+  packageName: iwara-tv
   recommends:
     - mpv
 

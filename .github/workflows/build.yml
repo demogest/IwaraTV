@@ -247,6 +247,9 @@ jobs:
       - build
       - version
     if: startsWith(github.ref, 'refs/tags/v') && needs.version.outputs.publish == 'true'
+    # The update signing key is a secret of this environment, which only v* tags
+    # may use, so a workflow run from any branch can't read it.
+    environment: release
     permissions:
       contents: write
 
@@ -275,8 +278,8 @@ jobs:
           find artifacts -type f -exec cp '{}' release-assets/ \;
 
       # update.json tells installed apps about this release. It's signed when the
-      # UPDATE_SIGNING_KEY secret is set, and must be once build/update-public-key.pem
-      # is committed (see docs/auto-update.md).
+      # release environment's UPDATE_SIGNING_KEY secret is set, and must be once
+      # build/update-public-key.pem is committed (see docs/auto-update.md).
       - name: Create update manifest
         env:
           TAG_NAME: ${{ needs.version.outputs.tag }}

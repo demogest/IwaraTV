@@ -95,7 +95,7 @@ Upgrading from the Tauri version: settings, favorites and download history are i
 
 Use `npm run version:update -- <major|minor|patch|x.y.z>` before a release; `npm run version:check` verifies that `package.json` and `package-lock.json` agree.
 
-The `Build` workflow runs the version check, typecheck, unit tests and the end-to-end smoke test on every pull request and push. When the version changes on `main` it tags the commit; the tag build packages Windows, macOS and Linux artifacts and publishes a GitHub Release with checksums and the `update.json` manifest the in-app updater reads. Once `build/update-public-key.pem` and the `UPDATE_SIGNING_KEY` secret are set up, the manifest is signed and apps accept only signed updates; see [docs/auto-update.md](docs/auto-update.md).
+The `Build` workflow runs the version check, typecheck, unit tests and the end-to-end smoke test on every pull request and push. When the version changes on `main` it tags the commit; the tag build packages Windows, macOS and Linux artifacts and publishes a GitHub Release with checksums and the `update.json` manifest the in-app updater reads. Once `build/update-public-key.pem` and the `release` environment's `UPDATE_SIGNING_KEY` secret are set up, the manifest is signed and apps accept only signed updates; see [docs/auto-update.md](docs/auto-update.md).
 
 ## License
 

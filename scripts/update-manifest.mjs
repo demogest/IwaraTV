@@ -3,7 +3,8 @@
 //
 //   node scripts/update-manifest.mjs --tag v2.1.0 --dir release-assets [--notes <file>]
 //
-// UPDATE_SIGNING_KEY: the Ed25519 private key (PEM) from `npm run update:keygen`.
+// UPDATE_SIGNING_KEY: the Ed25519 private key (PEM) from `npm run update:keygen`,
+// stored as a secret of the `release` environment.
 // When build/update-public-key.pem is committed, the key is required and must match it.
 
 import { createHash, createPrivateKey, createPublicKey, sign, verify } from "node:crypto";
@@ -116,7 +117,7 @@ const privateKeyText = process.env.UPDATE_SIGNING_KEY?.trim();
 const publicKeyText = existsSync(publicKeyFile) ? readFileSync(publicKeyFile, "utf8") : undefined;
 if (!privateKeyText) {
   if (publicKeyText) {
-    fail(`${publicKeyFile} is committed, so apps only accept signed updates, but UPDATE_SIGNING_KEY is not set.`);
+    fail(`${publicKeyFile} is committed, so apps only accept signed updates, but UPDATE_SIGNING_KEY is not set (it belongs to the "release" environment).`);
   }
   console.log("No UPDATE_SIGNING_KEY: update.json is unsigned (apps without a pinned key still accept it).");
   process.exit(0);

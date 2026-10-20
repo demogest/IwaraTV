@@ -75,12 +75,43 @@ The release job runs `scripts/update-manifest.mjs` after collecting the platform
 
 ## Trust: signed manifests
 
-- `npm run update:keygen` creates an Ed25519 key pair on the maintainer's machine. The **public key** goes into `build/update-public-key.pem` (committed). The **private key** is written outside the repository with owner-only permissions; it belongs in the repository secret `UPDATE_SIGNING_KEY` and an offline backup, nowhere else. The script refuses to write the private key inside the repository, and refuses to replace an existing public key unless forced.
-- When the secret exists, the release job signs the exact bytes of `update.json` and uploads `update.json.sig` (base64).
+- `npm run update:keygen` creates an Ed25519 key pair on the maintainer's machine. The **public key** goes into `build/update-public-key.pem` (committed). The **private key** is written outside the repository with owner-only permissions; it belongs in the `UPDATE_SIGNING_KEY` secret of the `release` environment and an offline backup, nowhere else. The script refuses to write the private key inside the repository, and refuses to replace an existing public key unless forced.
+- The release job runs in the `release` environment, which only `v*` tags may use, so a workflow pushed to any branch can't read the key. When the secret exists, the job signs the exact bytes of `update.json` and uploads `update.json.sig` (base64). Only that one step receives the secret.
 - When `build/update-public-key.pem` exists at build time, `electron.vite.config.mts` compiles it into the main process (the build fails if it isn't an Ed25519 key) and the app **rejects any manifest without a valid signature**. The release job also refuses to publish if the key is committed but the secret is missing, or if the secret doesn't match the committed key, so a signed app line can never be left without updates.
 - Without a pinned key the app still updates, but trust rests on HTTPS to github.com plus the SHA-256 values in the manifest. Settings → Updates shows which mode the build is in.
 
 Because the per-file SHA-256 values are inside the signed manifest, a valid signature vouches for the installers as well, even without platform code signing.
+
+### Setting up signing
+
+Once, on the maintainer's machine, with the [GitHub CLI](https://cli.github.com/) signed in as a repository admin:
+
+```bash
+# 1. Create the key pair. The private key lands in ~/.iwaratv/update-signing-key.pem.
+npm run update:keygen
+
+# 2. Create the release environment and allow only v* tags to use it.
+gh api -X PUT repos/demogest/IwaraTV/environments/release \
+  -F 'deployment_branch_policy[protected_branches]=false' \
+  -F 'deployment_branch_policy[custom_branch_policies]=true'
+gh api -X POST repos/demogest/IwaraTV/environments/release/deployment-branch-policies \
+  -f name='v*' -f type=tag
+
+# 3. Store the private key as an environment secret (not a repository secret).
+gh secret set UPDATE_SIGNING_KEY --env release --repo demogest/IwaraTV < ~/.iwaratv/update-signing-key.pem
+
+# 4. Commit the public key.
+git add build/update-public-key.pem && git commit -m "Pin the update signing key"
+```
+
+The same can be done on GitHub under **Settings → Environments → New environment** (`release`; **Deployment branches and tags** → **Selected branches and tags** → add the tag rule `v*`; then add the secret there).
+
+Then:
+
+- Keep an offline copy of the private key, for example in a password manager. GitHub never shows a secret again, and without the key no installed app can be updated.
+- Don't also store the key as a repository secret: repository secrets are readable from any branch's workflows.
+- Optional hardening: a tag ruleset that lets only admins create `v*` tags, so nobody else can start a run that may use the environment. **Required reviewers** on the environment add a manual approval before each signing run.
+- If the job references the environment before it has been created, GitHub creates it automatically with no rules and no secret. Releases are then unsigned until the steps above are done, or fail if the public key is already committed.
 
 ## Install types and strategies
 
@@ -138,6 +169,7 @@ The renderer gets the state through `updates:state` and the `updates:changed` ev
 | Renderer compromise triggers an install | IPC carries no URLs or paths; installation only runs files the main process verified, re-checked just before use. |
 | File swapped on disk after download | The file is hashed again right before it is installed or opened. |
 | Disk filling or stalled downloads | 600 MB cap, the manifest's size enforced while streaming, a 60-second stall timeout, one download at a time; failed files are removed. |
+| Signing key read by a modified workflow | The key is a secret of the `release` environment, which only `v*` tags may use; workflows on other branches can't access it, and only the signing step receives it. |
 | Signing key lost or mismatched | The release job refuses to publish when the secret is missing or doesn't match the committed key; `update:keygen` refuses to replace a committed key without `--force`. |
 | Update testing hooks abused in production | `IWARATV_UPDATE_URL`, `IWARATV_UPDATE_PUBLIC_KEY` and `IWARATV_UPDATE_INSTALL_KIND` are read only by unpackaged development builds. |
 
@@ -151,5 +183,5 @@ The renderer gets the state through `updates:state` and the `updates:changed` ev
 ## Rollout
 
 1. The first release with the updater attaches `update.json`. Users on 2.0.0 install it manually once; from then on updates find them.
-2. The maintainer runs `npm run update:keygen`, adds the `UPDATE_SIGNING_KEY` secret (`gh secret set UPDATE_SIGNING_KEY < <private key file>`) and commits `build/update-public-key.pem`. The next release is signed, and apps built from it only accept signed updates. Doing this before the first updater release means every updating app is signed-only from the start.
+2. The maintainer follows [Setting up signing](#setting-up-signing): creates the key pair, the `release` environment and its `UPDATE_SIGNING_KEY` secret, and commits `build/update-public-key.pem`. The next release is signed, and apps built from it only accept signed updates. Doing this before the first updater release means every updating app is signed-only from the start.
 3. When code-signing certificates are available, keep the manifest signature anyway: it also protects the assisted macOS and Linux paths, which platform signing doesn't cover.

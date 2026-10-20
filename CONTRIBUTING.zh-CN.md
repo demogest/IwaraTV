@@ -83,4 +83,4 @@ npm run check:release
 
 GitHub 的 `Build` 工作流会在 Pull Request 和推送时运行检查。在 `main` 上，版本号变化会创建 `v*` 标签并触发标签构建，打包 Windows（NSIS 安装包、便携版 EXE、ZIP）、macOS（DMG）和 Linux（DEB、AppImage），并发布附带 `SHA256SUMS.txt` 和 `update.json`（应用内更新读取的清单）的 GitHub Release。
 
-更新签名由维护者配置一次：运行 `npm run update:keygen`，把它写到仓库外的私钥保存为 `UPDATE_SIGNING_KEY` 机密，并提交 `build/update-public-key.pem`。此后发布任务会为 `update.json` 签名，密钥缺失或不匹配时拒绝发布；从该提交构建的应用只接受已签名的更新。除非私钥丢失或泄露，不要替换已提交的公钥，否则已安装的应用会拒绝之后的所有更新。要在开发版本中试用更新，可将 `IWARATV_UPDATE_URL` 指向一个本地文件夹，其中放有由 `scripts/update-manifest.mjs` 生成的清单，详见 [docs/auto-update.md](docs/auto-update.md#testing)。
+更新签名由维护者配置一次：运行 `npm run update:keygen`，把它写到仓库外的私钥保存为 `release` 环境（仅允许 `v*` 标签使用）的 `UPDATE_SIGNING_KEY` 机密，并提交 `build/update-public-key.pem`（详细步骤见 [docs/auto-update.md](docs/auto-update.md#setting-up-signing)）。此后发布任务会为 `update.json` 签名，密钥缺失或不匹配时拒绝发布；从该提交构建的应用只接受已签名的更新。除非私钥丢失或泄露，不要替换已提交的公钥，否则已安装的应用会拒绝之后的所有更新。要在开发版本中试用更新，可将 `IWARATV_UPDATE_URL` 指向一个本地文件夹，其中放有由 `scripts/update-manifest.mjs` 生成的清单，详见 [docs/auto-update.md](docs/auto-update.md#testing)。

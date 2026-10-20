@@ -95,7 +95,7 @@ Windows 会生成 `IwaraTV_<version>_x64-setup.exe`、`IwaraTV_<version>_x64-por
 
 发布前运行 `npm run version:update -- <major|minor|patch|x.y.z>`；`npm run version:check` 可检查 `package.json` 与 `package-lock.json` 的版本是否一致。
 
-`Build` 工作流会在每个 Pull Request 和推送上运行版本检查、类型检查、单元测试和端到端冒烟测试。当 `main` 上的版本号变化时，会为该提交创建标签；标签构建会打包 Windows、macOS 和 Linux 产物，并发布附带校验和以及应用内更新所需 `update.json` 清单的 GitHub Release。配置好 `build/update-public-key.pem` 和 `UPDATE_SIGNING_KEY` 机密后，清单会被签名，应用只接受已签名的更新，详见 [docs/auto-update.md](docs/auto-update.md)。
+`Build` 工作流会在每个 Pull Request 和推送上运行版本检查、类型检查、单元测试和端到端冒烟测试。当 `main` 上的版本号变化时，会为该提交创建标签；标签构建会打包 Windows、macOS 和 Linux 产物，并发布附带校验和以及应用内更新所需 `update.json` 清单的 GitHub Release。配置好 `build/update-public-key.pem` 和 `release` 环境的 `UPDATE_SIGNING_KEY` 机密后，清单会被签名，应用只接受已签名的更新，详见 [docs/auto-update.md](docs/auto-update.md)。
 
 ## 许可证
 

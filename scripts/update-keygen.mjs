@@ -5,7 +5,8 @@
 //
 // The public key goes to build/update-public-key.pem (commit it). The private
 // key is written outside the repository with owner-only permissions; store it
-// as the UPDATE_SIGNING_KEY repository secret and keep an offline backup.
+// as the UPDATE_SIGNING_KEY secret of the `release` environment and keep an
+// offline backup.
 
 import { generateKeyPairSync } from "node:crypto";
 import { chmodSync, existsSync, mkdirSync, writeFileSync } from "node:fs";
@@ -55,8 +56,12 @@ writeFileSync(PUBLIC_KEY_FILE, publicKey);
 console.log(`Public key:  ${path.relative(process.cwd(), PUBLIC_KEY_FILE)} (commit this file)`);
 console.log(`Private key: ${privateKeyFile} (never commit or share it)`);
 console.log("");
-console.log("Next steps:");
-console.log(`  1. gh secret set UPDATE_SIGNING_KEY --repo demogest/IwaraTV < "${privateKeyFile}"`);
-console.log("  2. Commit build/update-public-key.pem. Releases from then on are signed, and apps built");
+console.log("Next steps (see docs/auto-update.md#setting-up-signing):");
+console.log("  1. Create the release environment, usable only from v* tags:");
+console.log("       gh api -X PUT repos/demogest/IwaraTV/environments/release \\");
+console.log("         -F 'deployment_branch_policy[protected_branches]=false' -F 'deployment_branch_policy[custom_branch_policies]=true'");
+console.log("       gh api -X POST repos/demogest/IwaraTV/environments/release/deployment-branch-policies -f name='v*' -f type=tag");
+console.log(`  2. gh secret set UPDATE_SIGNING_KEY --env release --repo demogest/IwaraTV < "${privateKeyFile}"`);
+console.log("  3. Commit build/update-public-key.pem. Releases from then on are signed, and apps built");
 console.log("     with the key accept only signed updates.");
-console.log("  3. Back the private key up offline (a password manager works), then consider deleting this copy.");
+console.log("  4. Back the private key up offline (a password manager works), then consider deleting this copy.");

@@ -1,7 +1,7 @@
 import { createContext, useContext, useMemo, useState, type ReactNode } from "react";
 
 export type Section = "browse" | "search" | "subscriptions" | "favorites" | "downloads" | "history" | "settings";
-export type SettingsSection = "general" | "account" | "playback" | "downloads" | "content" | "network" | "advanced";
+export type SettingsSection = "general" | "account" | "playback" | "downloads" | "content" | "network" | "updates" | "advanced";
 
 export interface AuthorRef {
   id: string;

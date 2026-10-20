@@ -2,7 +2,9 @@
 // Iwara server and walks through the main flows. Run with `npm run test:e2e`
 // (on Linux CI wrap it in `xvfb-run -a`). Screenshots land in test-results/e2e.
 
-import { createHash } from "node:crypto";
+import { execFileSync } from "node:child_process";
+import { createHash, generateKeyPairSync } from "node:crypto";
+import http from "node:http";
 import { chmodSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -25,10 +27,48 @@ mkdirSync(userData, { recursive: true });
 mkdirSync(binDir, { recursive: true });
 
 // Start from English and small split thresholds so the download is segmented.
+// Automatic update checks are off so the scheduled check can't race the steps.
 writeFileSync(path.join(userData, "settings.json"), JSON.stringify({
   ui: { language: "en", theme: "dark", rating: "all" },
-  download: { directory: downloads, minSplitBytes: 1024 * 1024, maxConnections: 4 }
+  download: { directory: downloads, minSplitBytes: 1024 * 1024, maxConnections: 4 },
+  updates: { autoCheck: false }
 }));
+
+// A signed release one minor version ahead, built with the release job's own
+// manifest script and served from a local folder.
+const appVersion = JSON.parse(readFileSync(path.join(root, "package.json"), "utf8")).version;
+const [major, minor] = appVersion.split(".").map(Number);
+const updateVersion = `${major}.${minor + 1}.0`;
+const updateDir = path.join(home, "release");
+mkdirSync(updateDir);
+for (const suffix of ["x64-setup.exe", "x64-portable.exe", "x64-unpacked.zip", "arm64.dmg", "x86_64.AppImage", "amd64.deb"]) {
+  writeFileSync(path.join(updateDir, `IwaraTV_${updateVersion}_${suffix}`), `IwaraTV ${updateVersion} ${suffix}\n`.repeat(40_000));
+}
+const updateNotes = path.join(home, "update-notes.md");
+writeFileSync(updateNotes, `## IwaraTV ${updateVersion}\n\n- **Updates inside the app** — new versions are found, verified and installed for you.\n- Smoother scrolling on long lists.\n`);
+const updateKeys = generateKeyPairSync("ed25519", {
+  publicKeyEncoding: { type: "spki", format: "pem" },
+  privateKeyEncoding: { type: "pkcs8", format: "pem" }
+});
+const updatePublicKeyFile = path.join(home, "update-public-key.pem");
+writeFileSync(updatePublicKeyFile, updateKeys.publicKey);
+execFileSync(process.execPath, [
+  path.join(root, "scripts", "update-manifest.mjs"),
+  "--tag", `v${updateVersion}`, "--dir", updateDir, "--notes", updateNotes, "--public-key", updatePublicKeyFile
+], { env: { ...process.env, UPDATE_SIGNING_KEY: updateKeys.privateKey }, stdio: "inherit" });
+const updateKind = { linux: "appimage", win32: "nsis", darwin: "dmg" }[process.platform];
+const updateFile = `IwaraTV_${updateVersion}_${{ appimage: "x86_64.AppImage", nsis: "x64-setup.exe", dmg: "arm64.dmg" }[updateKind]}`;
+const updateRequests = [];
+const updateServer = http.createServer((request, response) => {
+  updateRequests.push({ path: request.url, cookie: request.headers.cookie });
+  const file = path.join(updateDir, path.basename(decodeURIComponent(request.url ?? "/")));
+  if (!existsSync(file)) {
+    response.writeHead(404).end();
+    return;
+  }
+  response.writeHead(200, { "content-type": "application/octet-stream" }).end(readFileSync(file));
+});
+await new Promise((resolve) => updateServer.listen(0, "127.0.0.1", resolve));
 
 // A stand-in MPV that records its arguments.
 const mpvStub = path.join(binDir, "mpv");
@@ -96,7 +136,10 @@ try {
       XDG_CONFIG_HOME: configHome,
       XDG_DATA_HOME: path.join(home, ".local", "share"),
       LANG: "en_US.UTF-8",
-      PATH: `${binDir}${path.delimiter}${process.env.PATH ?? ""}`
+      PATH: `${binDir}${path.delimiter}${process.env.PATH ?? ""}`,
+      IWARATV_UPDATE_URL: `http://127.0.0.1:${updateServer.address().port}/`,
+      IWARATV_UPDATE_PUBLIC_KEY: updateKeys.publicKey,
+      IWARATV_UPDATE_INSTALL_KIND: updateKind
     }
   });
 
@@ -344,6 +387,39 @@ try {
     await shot("08-settings");
   });
 
+  await step("finds, verifies and downloads a signed update", async () => {
+    await page.locator(".settings__nav").getByRole("button", { name: "Updates" }).click();
+    await view.getByText("Only releases signed with the key built into this app").waitFor();
+    await view.getByRole("button", { name: "Check now" }).click();
+    const notice = page.locator(".nav-item--update");
+    if (updateKind === "dmg") {
+      // macOS updates are assisted: the user starts the download.
+      await notice.getByText("Update available").waitFor({ timeout: 20_000 });
+      await notice.click();
+      await page.locator(".update-dialog").getByRole("button", { name: /^Download/ }).click();
+    }
+    await notice.getByText(updateKind === "dmg" ? "Update ready" : "Restart to update").waitFor({ timeout: 20_000 });
+    const downloaded = path.join(userData, "updates", updateFile);
+    expect(existsSync(downloaded), `${updateFile} was not downloaded`);
+    const expected = createHash("sha256").update(readFileSync(path.join(updateDir, updateFile))).digest("hex");
+    expect(createHash("sha256").update(readFileSync(downloaded)).digest("hex") === expected, "downloaded file differs");
+    const paths = updateRequests.map((request) => request.path);
+    expect(["/update.json", "/update.json.sig", `/${updateFile}`].every((wanted) => paths.includes(wanted)), `update requests: ${paths.join(", ")}`);
+    expect(updateRequests.every((request) => !request.cookie), "update requests carried cookies");
+    await view.getByText(`Version ${updateVersion} is downloaded`).waitFor();
+
+    if (updateKind !== "dmg") {
+      await toast(`IwaraTV ${updateVersion} is ready`);
+      await notice.click();
+    }
+    const dialog = page.locator(".update-dialog");
+    await dialog.locator("#update-title", { hasText: `IwaraTV ${updateVersion}` }).waitFor();
+    expect(await dialog.locator(".release-notes h4").count() === 0, "the notes repeat the dialog title");
+    await dialog.getByText("Updates inside the app").waitFor();
+    await shot("09-update");
+    await dialog.getByRole("button", { name: "Later" }).click();
+  });
+
   await step("signs out", async () => {
     await page.locator(".settings__nav").getByRole("button", { name: "Account" }).click();
     await view.getByRole("button", { name: "Sign out…" }).click();
@@ -360,6 +436,7 @@ try {
 } finally {
   await app?.close().catch(() => undefined);
   await mock.close();
+  updateServer.close();
 }
 
 const failed = results.filter((result) => !result.ok);

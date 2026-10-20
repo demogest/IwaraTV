@@ -45,6 +45,10 @@ export function createDefaultSettings(): AppSettings {
       rating: "all",
       density: "comfortable"
     },
+    updates: {
+      autoCheck: true,
+      autoDownload: true
+    },
     history: []
   };
 }

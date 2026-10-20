@@ -23,6 +23,7 @@ IwaraTV 是一个用于浏览 Iwara.tv 的桌面应用，可以用内置播放�
 - [用户手册](docs/user-manual.zh-CN.md) / [User Manual](docs/user-manual.en.md)
 - [开发者贡献参考](CONTRIBUTING.zh-CN.md) / [Developer Contribution Guide](CONTRIBUTING.md)
 - [UI/UX 与安全审计报告（英文）](docs/audit.md)
+- [自动更新设计（英文）](docs/auto-update.md)
 
 ## 功能亮点
 
@@ -37,6 +38,7 @@ IwaraTV 是一个用于浏览 Iwara.tv 的桌面应用，可以用内置播放�
 - 在独立窗口中通过 Iwara 官方页面登录，应用不会接触你的密码。
 - 支持简体中文和英文、浅色和深色主题、大/小两种卡片尺寸、键盘快捷键（按 `?` 查看）和可折叠侧边栏。
 - 故障排查工具：与网页版对比清晰度、CDN 线路测速、刷新 X-Version 盐值。
+- 通过 GitHub Releases 自动更新：校验签名和校验和；能自行安装时（Windows 安装版、AppImage）重启即可完成更新，其他情况交给系统安装已校验的文件。不兼容更新始终先征求你的同意。
 
 ## 环境要求
 
@@ -66,6 +68,7 @@ npm run dev
 | `npm run dist:win` / `dist:mac` / `dist:linux` | 使用 electron-builder 生成安装包。 |
 | `npm run check:release` | 版本检查、类型检查和单元测试。 |
 | `npm run version:update -- patch` | 同步更新 `package.json` 和 `package-lock.json` 中的版本号，也可使用 `minor`、`major` 或具体版本号。 |
+| `npm run update:keygen` | 生成用于签名更新清单的密钥对（维护者只需执行一次）。 |
 
 打包内置 MPV 的 Windows 版本：
 
@@ -92,7 +95,7 @@ Windows 会生成 `IwaraTV_<version>_x64-setup.exe`、`IwaraTV_<version>_x64-por
 
 发布前运行 `npm run version:update -- <major|minor|patch|x.y.z>`；`npm run version:check` 可检查 `package.json` 与 `package-lock.json` 的版本是否一致。
 
-`Build` 工作流会在每个 Pull Request 和推送上运行版本检查、类型检查、单元测试和端到端冒烟测试。当 `main` 上的版本号变化时，会为该提交创建标签；标签构建会打包 Windows、macOS 和 Linux 产物，并发布附带校验和的 GitHub Release。
+`Build` 工作流会在每个 Pull Request 和推送上运行版本检查、类型检查、单元测试和端到端冒烟测试。当 `main` 上的版本号变化时，会为该提交创建标签；标签构建会打包 Windows、macOS 和 Linux 产物，并发布附带校验和以及应用内更新所需 `update.json` 清单的 GitHub Release。配置好 `build/update-public-key.pem` 和 `release` 环境的 `UPDATE_SIGNING_KEY` 机密后，清单会被签名，应用只接受已签名的更新，详见 [docs/auto-update.md](docs/auto-update.md)。
 
 ## 许可证
 

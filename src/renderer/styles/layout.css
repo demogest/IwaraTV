@@ -535,3 +535,25 @@
   background: var(--color-surface-active);
   color: var(--color-text);
 }
+
+/* Update notice above Settings */
+.nav-item--update {
+  background: var(--color-accent-soft);
+  color: var(--color-accent-text);
+}
+
+.nav-item--update:hover {
+  background: var(--color-accent-soft);
+  color: var(--color-accent-text);
+  filter: brightness(1.12);
+}
+
+.nav-item__version {
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+  opacity: 0.8;
+}
+
+.shell--collapsed .nav-item__version {
+  display: none;
+}

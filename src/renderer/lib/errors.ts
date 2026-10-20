@@ -21,6 +21,7 @@ const RECOVERY: Partial<Record<AppErrorCode, RecoveryAction>> = {
   EXTERNAL_PLAYER_TEMPLATE: "settings-playback",
   DOWNLOAD_DIRECTORY_REQUIRED: "settings-downloads",
   NETWORK_ERROR: "retry",
+  UPDATE_CHECK_FAILED: "retry",
   HTTP_ERROR: "retry",
   INVALID_RESPONSE: "retry"
 };

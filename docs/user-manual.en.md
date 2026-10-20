@@ -137,6 +137,22 @@ Errors appear as messages with a suggested fix, such as **Sign in**, **Open sett
 | HTTP 403 when playing or downloading | Turn off **Use the fastest host** in **Settings → Network**. |
 | Downloads fail or stall | **Resume** the download, lower parallel connections, or choose another quality. |
 | Favorites import skips items | Use a JSON file exported from IwaraTV. |
+| "Update rejected" | The file didn't match what the release published, so nothing was installed. Try again later, or download the release from GitHub. |
+
+## Updates
+
+IwaraTV checks GitHub for a new version 20 seconds after it starts and every 6 hours after that. When one is out, an item appears above **Settings** in the sidebar; click it to read what's new.
+
+How the update is installed depends on how you installed IwaraTV:
+
+- **Windows installer and AppImage:** the update downloads in the background. Click **Restart to update** when it suits you; IwaraTV closes, installs it and starts again. Your data stays as it is.
+- **Windows portable app and ZIP:** click **Download**. IwaraTV saves the new file (next to the portable app when it can) and shows it in its folder; close IwaraTV and start the new file, or unpack the ZIP over your IwaraTV folder.
+- **Linux `.deb`:** click **Download**, then **Open installer**. Your software installer asks for your password.
+- **macOS:** click **Download**, then **Open disk image**, and drag IwaraTV onto Applications to replace the old copy.
+
+Every file is checked against the checksums published with the release before it is used, and releases can be signed so IwaraTV accepts only files from this project; **Settings → Updates** shows which check your copy uses. **Breaking releases**, which change how IwaraTV works or what it needs, are never downloaded or installed by themselves: the update window shows a warning and you decide. **Skip this version** stops the reminders until a newer version is out.
+
+In **Settings → Updates** you can check now, turn automatic checks off, and choose whether updates download in the background. Update checks contact only github.com, without cookies or anything that identifies you.
 
 ## Where Your Data Lives
 
@@ -151,5 +167,7 @@ The app data folder (also shown in **Settings → Advanced**) contains:
 - `downloads.json` — the download list.
 - `window-state.json` — window size and position.
 - `Partitions/iwara` — the Iwara browser session (cookies and site storage), like a browser profile.
+
+Updates for the Windows installer are downloaded to `%LOCALAPPDATA%\IwaraTV-updates` and removed by the first update check after they're installed; other updates go to your Downloads folder (or next to the portable app or AppImage).
 
 Files imported from the previous version are kept with a `.pre-migration.json` suffix if they replaced newer ones. Downloaded videos are stored in the download folder you chose.

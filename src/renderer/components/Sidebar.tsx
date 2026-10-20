@@ -1,8 +1,9 @@
-import { Bell, Compass, Download, History, PanelLeftClose, PanelLeftOpen, Search, Settings, Star, type LucideIcon } from "lucide-react";
+import { Bell, CircleArrowUp, Compass, Download, History, PanelLeftClose, PanelLeftOpen, Search, Settings, Star, type LucideIcon } from "lucide-react";
 import logoUrl from "../assets/iwara-tv-mark.svg";
 import { useI18n, type TranslationKey } from "../i18n";
 import { useAppState, useDownloads } from "../state/app-state";
 import { useNavigation, type Section } from "../state/navigation";
+import { useUpdates } from "../state/updates";
 import { Avatar } from "./primitives";
 
 interface NavEntry {
@@ -28,6 +29,7 @@ export function Sidebar({ collapsed, onToggle }: { collapsed: boolean; onToggle:
   const navigation = useNavigation();
   const app = useAppState();
   const downloads = useDownloads();
+  const updates = useUpdates();
   const activeCount = downloads.active.length;
 
   const item = ({ section, label, Icon }: NavEntry) => {
@@ -62,6 +64,13 @@ export function Sidebar({ collapsed, onToggle }: { collapsed: boolean; onToggle:
         ? t("account.verified")
         : t("account.anonymous");
   const name = app.auth.status === "signed-in" ? app.auth.username ?? t("account.signedIn") : t("account.guest");
+  const progress = updates.state.progress;
+  const updateLabel = updates.state.status === "downloading"
+    ? t("updates.downloadingShort", { percent: progress?.total ? Math.round((progress.received / progress.total) * 100) : 0 })
+    : updates.state.status === "ready"
+      ? updates.state.strategy === "automatic" ? t("updates.restart") : t("updates.ready")
+      : t("updates.available");
+  const updateTitle = updates.state.update ? `${updateLabel} · ${updates.state.update.version}` : updateLabel;
 
   return (
     <aside className="sidebar">
@@ -89,6 +98,20 @@ export function Sidebar({ collapsed, onToggle }: { collapsed: boolean; onToggle:
       </nav>
 
       <div className="sidebar__footer">
+        {updates.visible && (
+          <button
+            aria-haspopup="dialog"
+            aria-label={updateTitle}
+            className="nav-item nav-item--update"
+            onClick={updates.openDialog}
+            title={updateTitle}
+            type="button"
+          >
+            <CircleArrowUp aria-hidden="true" size={19} />
+            <span className="nav-item__label">{updateLabel}</span>
+            <span className="nav-item__version">{updates.state.update?.version}</span>
+          </button>
+        )}
         {item({ section: "settings", label: "nav.settings", Icon: Settings })}
         <button
           aria-label={`${name} — ${status}. ${t("account.manage")}`}

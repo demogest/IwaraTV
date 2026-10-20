@@ -1,4 +1,5 @@
 import {
+  CircleArrowUp,
   CircleCheck,
   Copy,
   Download,
@@ -41,11 +42,13 @@ import { openShortcuts } from "../components/ShortcutsDialog";
 import { Avatar, PageHeader, Segmented, Spinner, Switch, View } from "../components/primitives";
 import { useI18n, type TranslationKey } from "../i18n";
 import { invoke } from "../lib/api";
+import { describeErrorCode } from "../lib/errors";
 import { formatBytes, formatDateTime, formatSpeed, qualityLabel } from "../lib/format";
 import { playerName, PLAYER_MODES } from "../lib/player";
 import { useAppState } from "../state/app-state";
 import { useNavigation, type SettingsSection } from "../state/navigation";
 import { useToasts } from "../state/toasts";
+import { useUpdates } from "../state/updates";
 
 const SECTIONS: Array<{ id: SettingsSection; Icon: LucideIcon }> = [
   { id: "general", Icon: Palette },
@@ -54,6 +57,7 @@ const SECTIONS: Array<{ id: SettingsSection; Icon: LucideIcon }> = [
   { id: "downloads", Icon: Download },
   { id: "content", Icon: Tag },
   { id: "network", Icon: Network },
+  { id: "updates", Icon: CircleArrowUp },
   { id: "advanced", Icon: Wrench }
 ];
 
@@ -88,6 +92,7 @@ export function SettingsView({ active }: { active: boolean }) {
           {section === "downloads" && <DownloadsSection />}
           {section === "content" && <ContentSection />}
           {section === "network" && <NetworkSection />}
+          {section === "updates" && <UpdatesSection />}
           {section === "advanced" && <AdvancedSection />}
         </div>
       </div>
@@ -795,6 +800,102 @@ function NetworkSection() {
         </div>
       </Card>
     </>
+  );
+}
+
+function UpdatesSection() {
+  const { t, locale } = useI18n();
+  const app = useAppState();
+  const updates = useUpdates();
+  const { state } = updates;
+  const preferences = app.settings.updates;
+  const update = state.update;
+  const current = state.currentVersion || app.appInfo?.version || "";
+  const automatic = state.strategy === "automatic";
+  const error = state.status === "error" && state.error ? describeErrorCode(state.error.code, state.error.message, t) : undefined;
+
+  const status = (() => {
+    switch (state.status) {
+      case "checking":
+        return t("settings.updates.checking");
+      case "up-to-date":
+        return t("settings.updates.upToDate");
+      case "available":
+        return t(update?.skipped ? "settings.updates.availableSkipped" : "settings.updates.available", { version: update?.version });
+      case "downloading":
+        return t("settings.updates.downloading", { version: update?.version });
+      case "ready":
+        return t("settings.updates.ready", { version: update?.version });
+      case "error":
+        return t("settings.updates.failed");
+      default:
+        return t("settings.updates.currentVersion", { version: current });
+    }
+  })();
+
+  return (
+    <Card title={t("settings.sections.updates")}>
+      <Setting
+        description={state.checkedAt
+          ? t("settings.updates.lastChecked", { version: current, date: formatDateTime(state.checkedAt, locale) })
+          : t("settings.updates.notChecked")}
+        label={status}
+      >
+        <div className="setting__actions">
+          {update && (
+            <button className="button" onClick={updates.openDialog} type="button">
+              {t("settings.updates.details")}
+            </button>
+          )}
+          <button
+            className="button"
+            disabled={updates.busy || ["checking", "downloading", "ready"].includes(state.status)}
+            onClick={() => void updates.check()}
+            type="button"
+          >
+            {state.status === "checking" ? <Spinner /> : <RefreshCw aria-hidden="true" size={16} />}
+            {t("settings.updates.checkNow")}
+          </button>
+        </div>
+      </Setting>
+      {error && (
+        <div className="setting setting--stacked">
+          <div className="inline-notice inline-notice--danger" role="alert">
+            <TriangleAlert aria-hidden="true" size={16} />
+            <span>
+              <strong>{error.title}.</strong> {error.detail}
+            </span>
+          </div>
+        </div>
+      )}
+      <Setting description={t("settings.updates.autoCheckDesc")} label={t("settings.updates.autoCheck")}>
+        <Switch
+          checked={preferences.autoCheck}
+          label={t("settings.updates.autoCheck")}
+          onChange={(autoCheck) => void app.updateSettings({ updates: { autoCheck } })}
+        />
+      </Setting>
+      <Setting
+        description={automatic ? t("settings.updates.autoDownloadDesc") : t("settings.updates.autoDownloadUnavailable")}
+        label={t("settings.updates.autoDownload")}
+      >
+        <Switch
+          checked={automatic && preferences.autoDownload}
+          disabled={!automatic}
+          label={t("settings.updates.autoDownload")}
+          onChange={(autoDownload) => void app.updateSettings({ updates: { autoDownload } })}
+        />
+      </Setting>
+      <Setting description={t(`settings.updates.strategies.${state.strategy}` as TranslationKey)} label={t("settings.updates.installType")}>
+        <span>{t(`settings.updates.kinds.${state.installKind}` as TranslationKey)}</span>
+      </Setting>
+      <Setting label={t("settings.updates.verification")}>
+        <span className={state.signedOnly ? "setting__status setting__status--ok" : "setting__status"}>
+          <ShieldCheck aria-hidden="true" size={15} />
+          {state.signedOnly ? t("settings.updates.signed") : t("settings.updates.checksums")}
+        </span>
+      </Setting>
+    </Card>
   );
 }
 

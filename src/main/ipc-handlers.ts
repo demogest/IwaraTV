@@ -65,6 +65,12 @@ export function createHandlers(backend: Backend): Handlers {
     "auth:open-verification": () => backend.openVerification(),
     "auth:sign-out": () => backend.signOut(),
 
+    "updates:state": () => backend.updateState(),
+    "updates:check": () => backend.checkForUpdates(),
+    "updates:download": () => backend.downloadUpdate(),
+    "updates:install": () => backend.installUpdate(),
+    "updates:skip": (version) => backend.skipUpdate(version),
+
     "system:select-executable": (request) => backend.selectExecutable(request),
     "system:select-directory": (request) => backend.selectDirectory(request),
     "system:open-external": (url) => backend.openExternal(url),
@@ -190,7 +196,7 @@ function settingsPatch(value: unknown): SettingsPatch {
       }
       continue;
     }
-    if (!["player", "iwara", "mediaSpeed", "download", "tagPreferences", "ui"].includes(key)) {
+    if (!["player", "iwara", "mediaSpeed", "download", "tagPreferences", "ui", "updates"].includes(key)) {
       invalid(`Unknown settings section: ${key}.`);
     }
     obj(section, key);
@@ -283,6 +289,12 @@ export const validators: Validators = {
   "auth:state": none,
   "auth:open-verification": none,
   "auth:sign-out": none,
+
+  "updates:state": none,
+  "updates:check": none,
+  "updates:download": none,
+  "updates:install": none,
+  "updates:skip": ([version]) => [str(version, "version", 64)],
 
   "system:select-executable": ([request]) => [selectPathRequest(request)],
   "system:select-directory": ([request]) => [selectPathRequest(request)],

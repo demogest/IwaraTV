@@ -34,6 +34,7 @@ import type {
   SelectPathResult,
   SendVideoCommentRequest,
   SettingsPatch,
+  UpdateState,
   VideoComment,
   VideoCommentsResult,
   VideoDetail,
@@ -52,6 +53,8 @@ import { FavoriteStore } from "./services/favorite-store";
 import { IwaraClient, type IwaraSessionBridge } from "./services/iwara-client";
 import type { PlayerService } from "./services/player-service";
 import { SettingsStore } from "./services/settings-store";
+import { UpdateService, type UpdateEnvironment } from "./services/update-service";
+import { GITHUB_SOURCE } from "./lib/update-manifest";
 
 const SALT_MAX_AGE_MS = 24 * 60 * 60 * 1000;
 const MAX_STREAMS = 16;
@@ -86,12 +89,21 @@ export interface PlatformPort {
   platform: NodeJS.Platform;
 }
 
+/** How this install finds, fetches and applies updates (see UpdateService). */
+export interface UpdatePort {
+  environment: UpdateEnvironment;
+  fetch: HttpFetch;
+  install(filePath: string): Promise<void>;
+}
+
 export interface BackendOptions {
   userDataPath: string;
   defaultDownloadDirectory?: string;
   session: SessionPort;
   player: PlayerService;
   platform: PlatformPort;
+  /** Omitted in tests: updates then report a development build that never checks. */
+  updates?: UpdatePort;
   emit: <E extends EventChannel>(channel: E, payload: IpcEventContract[E]) => void;
 }
 
@@ -100,6 +112,7 @@ export class Backend {
   readonly favorites: FavoriteStore;
   readonly downloads: DownloadManager;
   readonly client: IwaraClient;
+  readonly updates: UpdateService;
   private readonly session: SessionPort;
   private readonly player: PlayerService;
   private readonly platform: PlatformPort;
@@ -141,6 +154,18 @@ export class Backend {
       }
     });
 
+    const updates = options.updates ?? offlineUpdates(options.userDataPath, options.platform.appInfo().version);
+    this.updates = new UpdateService({
+      environment: updates.environment,
+      fetch: updates.fetch,
+      install: updates.install,
+      settings: {
+        get: () => this.settings.get().updates,
+        update: (patch) => this.settings.update({ updates: patch })
+      },
+      emit: (state) => options.emit("updates:changed", state)
+    });
+
     this.settings.onChange((settings) => options.emit("settings:changed", settings));
     this.favorites.onChange((state) => options.emit("favorites:changed", state));
     this.downloads.onChange((state) => {
@@ -154,6 +179,7 @@ export class Backend {
   }
 
   shutdown(): void {
+    this.updates.stop();
     this.downloads.shutdown();
   }
 
@@ -456,6 +482,28 @@ export class Backend {
     return this.authState();
   }
 
+  // --- Updates -----------------------------------------------------------------
+
+  updateState(): UpdateState {
+    return this.updates.getState();
+  }
+
+  checkForUpdates(): Promise<UpdateState> {
+    return this.updates.check();
+  }
+
+  downloadUpdate(): Promise<UpdateState> {
+    return this.updates.download();
+  }
+
+  installUpdate(): Promise<UpdateState> {
+    return this.updates.install();
+  }
+
+  skipUpdate(version: string): UpdateState {
+    return this.updates.skip(version);
+  }
+
   // --- System ------------------------------------------------------------------
 
   async selectExecutable(request: SelectPathRequest): Promise<SelectPathResult> {
@@ -554,6 +602,22 @@ export class Backend {
   private rememberHosts(formats: readonly VideoFormat[]): void {
     this.settings.addMediaHosts(formats.map((format) => mediaUrlHost(format.url)));
   }
+}
+
+/** Updates for a backend without an update port (tests): a development build that can't reach GitHub. */
+function offlineUpdates(userDataPath: string, currentVersion: string): UpdatePort {
+  return {
+    environment: {
+      currentVersion,
+      installKind: "dev",
+      strategy: "none",
+      downloadDirectory: path.join(userDataPath, "updates"),
+      ownsDownloadDirectory: true,
+      source: GITHUB_SOURCE
+    },
+    fetch: () => Promise.reject(new AppError("UPDATE_CHECK_FAILED", "Update checks are turned off in this build.")),
+    install: () => Promise.reject(new AppError("UPDATE_INSTALL_FAILED", "This build can't install updates."))
+  };
 }
 
 /** Continue where the viewer stopped, unless that was the very start or the end. */

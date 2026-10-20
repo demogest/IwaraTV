@@ -129,7 +129,7 @@ function applyPatch(settings: AppSettings, patch: SettingsPatch): void {
   if (!isRecord(patch)) {
     return;
   }
-  for (const section of ["player", "iwara", "mediaSpeed", "download", "tagPreferences", "ui"] as const) {
+  for (const section of ["player", "iwara", "mediaSpeed", "download", "tagPreferences", "ui", "updates"] as const) {
     const sectionPatch = patch[section];
     if (!isRecord(sectionPatch)) {
       continue;
@@ -175,7 +175,9 @@ const OPTIONAL_KEYS = new Set([
   "iwara.lastSaltSource",
   "mediaSpeed.lastTestedAt",
   "download.directory",
-  "download.defaultQuality"
+  "download.defaultQuality",
+  "updates.skippedVersion",
+  "updates.lastCheckedAt"
 ]);
 
 const PLAYER_MODES: PlayerMode[] = ["builtin", "mpv", "external"];
@@ -192,6 +194,7 @@ export function normalizeSettings(settings: AppSettings, defaults: AppSettings =
   const download = settings.download;
   const tags = settings.tagPreferences;
   const ui = settings.ui;
+  const updates = settings.updates;
   const blockedTags = normalizeTagList(stringArray(tags.blockedTags));
   const blocked = new Set(blockedTags);
 
@@ -237,6 +240,12 @@ export function normalizeSettings(settings: AppSettings, defaults: AppSettings =
       rating: oneOf(ui?.rating, RATINGS, defaults.ui.rating),
       density: oneOf(ui?.density, DENSITIES, defaults.ui.density)
     },
+    updates: dropUndefined({
+      autoCheck: typeof updates?.autoCheck === "boolean" ? updates.autoCheck : defaults.updates.autoCheck,
+      autoDownload: typeof updates?.autoDownload === "boolean" ? updates.autoDownload : defaults.updates.autoDownload,
+      skippedVersion: optionalText(updates?.skippedVersion),
+      lastCheckedAt: optionalText(updates?.lastCheckedAt)
+    }),
     history: Array.isArray(settings.history)
       ? settings.history.filter((item) => isRecord(item) && isRecord(item.video) && typeof item.video.id === "string").slice(0, HISTORY_LIMIT)
       : []

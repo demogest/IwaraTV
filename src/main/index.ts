@@ -1,3 +1,5 @@
+import { spawn } from "node:child_process";
+import { accessSync, constants, existsSync } from "node:fs";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
 import {
@@ -19,11 +21,13 @@ import { contentSecurityPolicy } from "../shared/csp";
 import { MEDIA_STREAM_SCHEME } from "../shared/media-hosts";
 import type { EventChannel, IpcEventContract } from "../shared/ipc";
 import type { AppSettings } from "../shared/types";
-import { Backend, type PlatformPort } from "./backend";
+import { Backend, type PlatformPort, type UpdatePort } from "./backend";
 import { registerIpc } from "./ipc";
 import { createHandlers, validators } from "./ipc-handlers";
 import { AppError } from "./lib/app-error";
 import { migrateLegacyData } from "./lib/migration";
+import { createInstaller, resolveUpdateEnvironment, type InstallContext } from "./lib/update-install";
+import { folderSource, GITHUB_SOURCE } from "./lib/update-manifest";
 import { IwaraSessionService } from "./services/iwara-session";
 import { PlayerService } from "./services/player-service";
 import { loadWindowState, trackWindowState } from "./window-state";
@@ -96,6 +100,7 @@ function start(): void {
       appRoot: app.isPackaged ? undefined : app.getAppPath()
     }),
     platform: electronPlatform(),
+    updates: electronUpdates(),
     emit
   });
   registerIpc(createHandlers(backend), validators, isTrustedSender);
@@ -106,6 +111,7 @@ function start(): void {
   applyUiSettings(settings);
   backend.settings.onChange(applyUiSettings);
   createMainWindow(userDataPath);
+  backend.updates.start();
 }
 
 function createMainWindow(userDataPath: string): void {
@@ -303,6 +309,63 @@ function applyApplicationMenu(): void {
       { role: "windowMenu" }
     ])
   );
+}
+
+/**
+ * Update checks go to GitHub through their own in-memory session: no cookies,
+ * no cache, nothing shared with the Iwara session. Development builds can point
+ * IWARATV_UPDATE_URL at a local folder (and pin IWARATV_UPDATE_PUBLIC_KEY) for testing.
+ */
+function electronUpdates(): UpdatePort {
+  const devUrl = app.isPackaged ? undefined : process.env.IWARATV_UPDATE_URL;
+  const publicKey = devUrl ? process.env.IWARATV_UPDATE_PUBLIC_KEY ?? "" : __UPDATE_PUBLIC_KEY__;
+  const context: InstallContext = {
+    isPackaged: app.isPackaged,
+    platform: process.platform,
+    arch: process.arch,
+    execPath: process.execPath,
+    env: process.env,
+    version: app.getVersion(),
+    paths: { userData: app.getPath("userData"), downloads: app.getPath("downloads"), temp: app.getPath("temp") },
+    exists: existsSync,
+    writable(directory) {
+      try {
+        accessSync(directory, constants.W_OK);
+        return true;
+      } catch {
+        return false;
+      }
+    }
+  };
+  const environment = resolveUpdateEnvironment(context, {
+    source: devUrl ? folderSource(devUrl) : GITHUB_SOURCE,
+    publicKey: publicKey.trim() ? publicKey : undefined
+  });
+  const updateSession = session.fromPartition("iwaratv-updates");
+  updateSession.setPermissionRequestHandler((_contents, _permission, callback) => callback(false));
+  return {
+    environment,
+    fetch: (url, init) => updateSession.fetch(url, { ...init, credentials: "omit", cache: "no-store" }),
+    install: createInstaller(environment, context, {
+      spawnDetached: (command, args) => new Promise((resolve, reject) => {
+        const child = spawn(command, args, { detached: true, stdio: "ignore" });
+        child.once("error", reject);
+        child.once("spawn", () => {
+          child.unref();
+          resolve();
+        });
+      }),
+      relaunch: (execPath) => app.relaunch({ execPath, args: [] }),
+      quit: () => app.quit(),
+      openPath: async (filePath) => {
+        const error = await shell.openPath(filePath);
+        if (error) {
+          throw new AppError("UPDATE_INSTALL_FAILED", error);
+        }
+      },
+      showItemInFolder: (filePath) => shell.showItemInFolder(filePath)
+    })
+  };
 }
 
 function electronPlatform(): PlatformPort {

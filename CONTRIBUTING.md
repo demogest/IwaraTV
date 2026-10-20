@@ -14,8 +14,8 @@ IwaraTV is an Electron app built with electron-vite:
   - `index.ts` — app lifecycle, the `app://` protocol, window creation and hardening, OS integration.
   - `backend.ts` — wires stores and services together; one method per IPC channel.
   - `ipc-handlers.ts` / `ipc.ts` — channel → handler and channel → validator tables, and their registration.
-  - `services/` — `iwara-client` (API, file lists, comments, follows, speed tests), `iwara-session` (the `persist:iwara` browser session, sign-in window, page-context fetch, network capture), `download-manager`, `player-service`, `settings-store`, `favorite-store`.
-  - `lib/` — Electron-free helpers: X-Version, JWT detection, response parsing, file transfer, JSON files, legacy data migration.
+  - `services/` — `iwara-client` (API, file lists, comments, follows, speed tests), `iwara-session` (the `persist:iwara` browser session, sign-in window, page-context fetch, network capture), `download-manager`, `player-service`, `settings-store`, `favorite-store`, `update-service` (the updater).
+  - `lib/` — Electron-free helpers: X-Version, JWT detection, response parsing, file transfer, JSON files, legacy data migration, versions and update manifests/installers.
 - `src/preload/index.ts` — exposes `window.iwaraTV` with allowlisted `invoke` and `on`.
 - `src/renderer` — React UI: `views/`, `components/`, `state/` (app state, navigation, toasts, confirm dialogs), `hooks/`, `i18n/` (`en.ts`, `zh-CN.ts`), `styles/`, and `dev/mock-bridge.ts` for the browser preview.
 - `src/shared` — types, the IPC contract (`ipc.ts`), error codes, CSP and helpers shared by both processes.
@@ -48,7 +48,7 @@ npm run test:e2e        # Linux: xvfb-run -a npm run test:e2e
 npm run check:release
 ```
 
-The unit suites cover the Iwara client against a fake fetch, downloads against a local Range server, stores, the player service, IPC validation, translations, and static boundary/security rules (`tests/boundaries.test.ts`). The smoke test builds the app and walks through browsing, hover previews, search and recent searches, the shortcut list, MPV playback (with a stub MPV), built-in playback of a real clip (`tests/e2e/fixtures/sample.mp4`) with fullscreen, resume and Continue watching, related videos, downloads, favorites, sign-in, subscriptions, following, commenting, settings and sign-out against `tests/e2e/mock-iwara.mjs`, saving screenshots to `test-results/e2e/`. Set `IWARATV_E2E_EXECUTABLE` to run it against a packaged app instead of `out/` (only for builds without the inspector fuse, since Playwright attaches through it).
+The unit suites cover the Iwara client against a fake fetch, downloads against a local Range server, stores, the player service, the updater (`tests/updates.test.ts`), IPC validation, translations, and static boundary/security rules (`tests/boundaries.test.ts`). The smoke test builds the app and walks through browsing, hover previews, search and recent searches, the shortcut list, MPV playback (with a stub MPV), built-in playback of a real clip (`tests/e2e/fixtures/sample.mp4`) with fullscreen, resume and Continue watching, related videos, downloads, favorites, sign-in, subscriptions, following, commenting, settings, a signed update served from a local folder, and sign-out against `tests/e2e/mock-iwara.mjs`, saving screenshots to `test-results/e2e/`. Set `IWARATV_E2E_EXECUTABLE` to run it against a packaged app instead of `out/` (only for builds without the inspector fuse, since Playwright attaches through it).
 
 ## Coding Guidelines
 
@@ -81,4 +81,6 @@ The unit suites cover the Iwara client against a fake fetch, downloads against a
 
 Use `npm run version:update -- patch` (or `minor`, `major`, or an exact semver such as `1.2.3`). It updates `package.json` and `package-lock.json`; electron-builder reads the version from there. `npm run version:check` confirms they agree.
 
-The GitHub `Build` workflow runs checks on pull requests and pushes. On `main`, a version change creates a `v*` tag and dispatches a tag build, which packages Windows (NSIS installer, portable EXE, ZIP), macOS (DMG) and Linux (DEB, AppImage) and publishes a GitHub Release with `SHA256SUMS.txt`.
+The GitHub `Build` workflow runs checks on pull requests and pushes. On `main`, a version change creates a `v*` tag and dispatches a tag build, which packages Windows (NSIS installer, portable EXE, ZIP), macOS (DMG) and Linux (DEB, AppImage) and publishes a GitHub Release with `SHA256SUMS.txt` and `update.json`, the manifest the in-app updater reads.
+
+Update signing is set up once by a maintainer: run `npm run update:keygen`, store the private key it writes (outside the repository) as the `UPDATE_SIGNING_KEY` secret of the `release` environment, which only `v*` tags may use, and commit `build/update-public-key.pem` (step by step in [docs/auto-update.md](docs/auto-update.md#setting-up-signing)). From then on the release job signs `update.json` and refuses to publish without a matching key, and apps built from that commit accept only signed updates. Never replace the committed public key unless the private key is lost or leaked: installed apps would reject every later update. To try the updater in a development build, point `IWARATV_UPDATE_URL` at a local folder with a manifest made by `scripts/update-manifest.mjs`; see [docs/auto-update.md](docs/auto-update.md#testing).

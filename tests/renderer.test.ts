@@ -1,4 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { parseNotes } from "../src/renderer/components/ReleaseNotes";
 import { createTranslator, resolveLocale, type TranslationKey } from "../src/renderer/i18n";
 import { en } from "../src/renderer/i18n/en";
 import { zhCN } from "../src/renderer/i18n/zh-CN";
@@ -137,5 +138,30 @@ describe("recent searches", () => {
     vi.stubGlobal("localStorage", { getItem: () => { throw new Error("denied"); }, setItem: () => { throw new Error("denied"); } });
     expect(() => addRecentSearch("x")).not.toThrow();
     expect(readRecentSearches()).toEqual([]);
+  });
+});
+
+describe("release notes", () => {
+  it("keeps headings, lists and paragraphs from the Markdown the release job ships", () => {
+    const notes = [
+      "## IwaraTV 2.1",
+      "",
+      "> **Heads up.** Read this",
+      "> before updating.",
+      "",
+      "- **Built-in updates** — see [the docs](https://example.com).",
+      "- A wrapped",
+      "  list item",
+      "",
+      "### ⚠️ Breaking changes",
+      "* `Node 24` required"
+    ].join("\n");
+    expect(parseNotes(notes)).toEqual([
+      { kind: "heading", text: "IwaraTV 2.1" },
+      { kind: "paragraph", text: "**Heads up.** Read this before updating." },
+      { kind: "list", items: ["**Built-in updates** — see [the docs](https://example.com).", "A wrapped list item"] },
+      { kind: "heading", text: "⚠️ Breaking changes" },
+      { kind: "list", items: ["`Node 24` required"] }
+    ]);
   });
 });

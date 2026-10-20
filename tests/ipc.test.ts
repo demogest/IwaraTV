@@ -98,6 +98,9 @@ describe("IPC validators", () => {
     expect(validators["player:play"]([{ videoId: "v", quality: null }])).toEqual([{ videoId: "v", quality: undefined, mode: undefined }]);
     expect(validators["favorites:add"]([{ id: "v", title: "t" }])[0]).toMatchObject({ tags: [], numViews: 0 });
     expect(validators["settings:get"](["ignored"])).toEqual([]);
+    expect(validators["settings:update"]([{ updates: { autoCheck: false } }])).toEqual([{ updates: { autoCheck: false } }]);
+    expect(() => validators["updates:skip"]([{ version: "2.1.0" }])).toThrow(AppError);
+    expect(() => validators["updates:skip"](["x".repeat(65)])).toThrow(AppError);
   });
 
   it("validates every channel's happy path", () => {
@@ -136,6 +139,11 @@ describe("IPC validators", () => {
       "auth:state": [],
       "auth:open-verification": [],
       "auth:sign-out": [],
+      "updates:state": [],
+      "updates:check": [],
+      "updates:download": [],
+      "updates:install": [],
+      "updates:skip": ["2.1.0"],
       "system:select-executable": [{ title: "Pick" }],
       "system:select-directory": [{ title: "Pick", currentPath: "/tmp" }],
       "system:open-external": ["https://www.iwara.tv/"],

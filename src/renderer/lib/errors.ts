@@ -28,20 +28,27 @@ const RECOVERY: Partial<Record<AppErrorCode, RecoveryAction>> = {
 
 export function describeError(error: unknown, t: Translate): ErrorDescription {
   const apiError = toApiError(error);
-  const code = apiError.code;
-  return {
-    code,
-    title: t(`errors.${code}.title` as TranslationKey),
-    detail: t(`errors.${code}.detail` as TranslationKey, { message: apiError.message }),
-    action: RECOVERY[code]
-  };
+  return describeErrorCode(apiError.code, apiError.message, t, apiError.details);
 }
 
-export function describeErrorCode(code: AppErrorCode, message: string, t: Translate): ErrorDescription {
+/**
+ * Errors from the main process carry an English message and, where the UI can
+ * explain them itself, a `reason` (plus values such as `status`). A translated
+ * `errors.<code>.reasons.<reason>` text wins over the English message.
+ */
+export function describeErrorCode(
+  code: AppErrorCode,
+  message: string,
+  t: Translate,
+  details?: Record<string, string | number>
+): ErrorDescription {
+  const reason = typeof details?.reason === "string" ? details.reason : undefined;
+  const reasonKey = `errors.${code}.reasons.${reason}` as TranslationKey;
+  const explained = reason ? t(reasonKey, { ...details, message }) : undefined;
   return {
     code,
     title: t(`errors.${code}.title` as TranslationKey),
-    detail: t(`errors.${code}.detail` as TranslationKey, { message }),
+    detail: explained && explained !== reasonKey ? explained : t(`errors.${code}.detail` as TranslationKey, { message }),
     action: RECOVERY[code]
   };
 }

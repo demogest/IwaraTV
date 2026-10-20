@@ -1,4 +1,4 @@
-import type { Locale } from "../i18n";
+import type { Locale, Translate } from "../i18n";
 
 export function compactNumber(value: number, locale: Locale): string {
   return new Intl.NumberFormat(locale, { notation: "compact", maximumFractionDigits: 1 }).format(value);
@@ -81,8 +81,13 @@ export function formatRemaining(remainingBytes: number, bytesPerSecond: number |
   return formatDuration(remainingBytes / bytesPerSecond);
 }
 
-export function qualityLabel(label: string): string {
-  return /^\d+$/.test(label) ? `${label}p` : label === "preview" ? "Preview" : label;
+/** "540" → "540p"; the source file and the preview clip get translated names. */
+export function qualityLabel(label: string, t: Translate): string {
+  if (/^\d+$/.test(label)) {
+    return `${label}p`;
+  }
+  const name = label.toLowerCase();
+  return name === "source" ? t("quality.source") : name === "preview" ? t("quality.preview") : label;
 }
 
 export function modKey(): string {

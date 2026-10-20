@@ -107,7 +107,7 @@ async function downloadSingle(options: TransferOptions, totalBytes: number | und
 
   if (bytesWritten === 0) {
     await rm(partPath, { force: true });
-    throw new AppError("DOWNLOAD_FAILED", "The download finished without writing any data.");
+    throw new AppError("DOWNLOAD_FAILED", "The download finished without writing any data.", { reason: "empty" });
   }
   await rename(partPath, filePath);
   return bytesWritten;
@@ -169,7 +169,7 @@ async function downloadSegment(
   });
   if (response.status !== 206) {
     await discardBody(response);
-    throw new AppError("DOWNLOAD_FAILED", `Segment request failed: HTTP ${response.status}`, { status: response.status });
+    throw new AppError("DOWNLOAD_FAILED", `Segment request failed: HTTP ${response.status}`, { status: response.status, reason: "http" });
   }
 
   let lastReported = existingLength;
@@ -178,7 +178,7 @@ async function downloadSegment(
     lastReported = current;
   }, signal);
   if (written !== expectedLength) {
-    throw new AppError("DOWNLOAD_FAILED", `Segment ${segment.index + 1} is incomplete: ${written} / ${expectedLength} bytes.`);
+    throw new AppError("DOWNLOAD_FAILED", `Segment ${segment.index + 1} is incomplete: ${written} / ${expectedLength} bytes.`, { reason: "incomplete" });
   }
 }
 
@@ -257,5 +257,5 @@ function numberHeader(response: Response, name: string): number | undefined {
 }
 
 function httpError(status: number): AppError {
-  return new AppError("DOWNLOAD_FAILED", `Download request failed: HTTP ${status}`, { status });
+  return new AppError("DOWNLOAD_FAILED", `Download request failed: HTTP ${status}`, { status, reason: "http" });
 }

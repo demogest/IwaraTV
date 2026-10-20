@@ -228,7 +228,7 @@ export function AppStateProvider({ children, onUiChange }: { children: ReactNode
           action: { label: t("downloads.showInFolder"), onClick: () => void invoke("downloads:show-in-folder", task.id).catch(reportError) }
         });
       } else if (task.status === "failed") {
-        const description = describeErrorCode(task.errorCode ?? "DOWNLOAD_FAILED", task.error ?? "", t);
+        const description = describeErrorCode(task.errorCode ?? "DOWNLOAD_FAILED", task.error ?? "", t, task.errorDetails);
         toasts.push({
           tone: "error",
           key: `download:${task.videoId}`,
@@ -280,7 +280,7 @@ export function AppStateProvider({ children, onUiChange }: { children: ReactNode
             toasts.push({
               tone: "info",
               key: `play:${videoId}`,
-              title: t("player.fallbackHere", { requested: qualityLabel(result.fallbackFrom), quality: qualityLabel(result.format.label) })
+              title: t("player.fallbackHere", { requested: qualityLabel(result.fallbackFrom, t), quality: qualityLabel(result.format.label, t) })
             });
           }
           if (resumeAt) {
@@ -296,12 +296,12 @@ export function AppStateProvider({ children, onUiChange }: { children: ReactNode
           }
           return;
         }
-        const player = result.mode === "mpv" ? t("player.mpv") : t("player.external");
+        const player = result.mode === "mpv" ? "mpv" : "external";
         toasts.push({
           tone: "success",
           title: result.fallbackFrom
-            ? t("player.startedFallback", { player, requested: qualityLabel(result.fallbackFrom), quality: qualityLabel(result.format.label) })
-            : t("player.started", { player, quality: qualityLabel(result.format.label) }),
+            ? t(`player.startedFallback.${player}`, { requested: qualityLabel(result.fallbackFrom, t), quality: qualityLabel(result.format.label, t) })
+            : t(`player.started.${player}`, { quality: qualityLabel(result.format.label, t) }),
           detail: result.video.title
         });
       } catch (error) {

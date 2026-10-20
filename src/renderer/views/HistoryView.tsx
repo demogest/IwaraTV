@@ -110,7 +110,7 @@ function HistoryRow({ item }: { item: PlaybackHistoryItem }) {
         <div className="row__meta">
           {video.uploaderName && <span>{video.uploaderName}</span>}
           <span>{when}</span>
-          <span>{t("history.playedWith", { quality: qualityLabel(item.formatId), player })}</span>
+          <span>{t("history.playedWith", { quality: qualityLabel(item.formatId, t), player })}</span>
           {progress ? <span>{t("history.watched", { percent: Math.round(progress * 100) })}</span> : null}
         </div>
       </div>

@@ -17,7 +17,7 @@ IwaraTV 是基于 electron-vite 构建的 Electron 应用：
   - `services/` — `iwara-client`（API、文件列表、评论、关注、测速）、`iwara-session`（`persist:iwara` 浏览器会话、登录窗口、页面上下文请求、网络抓包）、`download-manager`、`player-service`、`settings-store`、`favorite-store`、`update-service`（自动更新）。
   - `lib/` — 不依赖 Electron 的工具：X-Version、JWT 识别、响应解析、文件传输、JSON 文件读写、旧版数据迁移、版本比较以及更新清单与安装。
 - `src/preload/index.ts` — 暴露 `window.iwaraTV`，`invoke` 与 `on` 均为白名单。
-- `src/renderer` — React 界面：`views/`、`components/`、`state/`（应用状态、导航、提示、确认对话框）、`hooks/`、`i18n/`（`en.ts`、`zh-CN.ts`）、`styles/`，以及用于浏览器预览的 `dev/mock-bridge.ts`。
+- `src/renderer` — React 界面：`views/`、`components/`、`state/`（应用状态、导航、提示、确认对话框）、`hooks/`、`i18n/`（`en.ts`、`zh-CN.ts`、`zh-TW.ts`、`ja.ts`）、`styles/`，以及用于浏览器预览的 `dev/mock-bridge.ts`。
 - `src/shared` — 两个进程共用的类型、IPC 约定（`ipc.ts`）、错误码、CSP 和工具函数。
 - `tests` — Vitest 测试；`tests/e2e` — Playwright 冒烟测试和模拟 Iwara 服务器。
 - `.github/workflows/build.yml` — CI 检查、打包和发布。
@@ -56,7 +56,7 @@ npm run check:release
 - 不要削弱 `webPreferences`（`sandbox`、`contextIsolation`、`nodeIntegration: false`、`webSecurity`）、CSP、导航与权限处理，以及 IPC 发送方校验。
 - `src/main/lib` 和除 `iwara-session` 以外的服务不要引入 Electron，以便单元测试；Electron 功能通过 `SessionPort` 和 `PlatformPort` 注入。
 - 抛出带具体 `AppErrorCode` 的 `AppError`。渲染进程在 `src/renderer/lib/errors.ts` 中把错误码映射为本地化的标题、说明和恢复操作。
-- 所有用户可见文字都要同时加入 `en.ts` 和 `zh-CN.ts`；类型系统和 `tests/renderer.test.ts` 会检查键名和占位符。
+- 所有用户可见文字都要加入全部四个词典（`en.ts`、`zh-CN.ts`、`zh-TW.ts`、`ja.ts`）；类型系统和 `tests/renderer.test.ts` 会检查键名和占位符。请写完整的句子，不要把名称拼接进句子里，因为各语言的语序和空格规则不同。会显示给用户的主进程错误会在 details 中带上 `reason`，翻译位于 `errors.<CODE>.reasons`。支持的语言及系统语言匹配逻辑位于 `src/shared/locales.ts`。
 - 设置需保持兼容：`normalizeSettings` 会把保存的 JSON 合并到默认值上并限制取值范围，旧文件可以继续使用。
 - 不要在日志中输出令牌、Cookie 或带签名的媒体链接；诊断信息使用 `safeUrl`。
 

@@ -79,7 +79,7 @@ function useVideoDetail(videoId: string) {
             setDiagnostics(report);
             if (bestRank(captured) > bestRank(video.formats)) {
               setState({ video: { ...video, formats: captured }, loading: false });
-              push({ tone: "success", title: t("video.formatsImproved", { labels: sortFormats(captured).map((format) => qualityLabel(format.label)).join(" / ") }) });
+              push({ tone: "success", title: t("video.formatsImproved", { labels: sortFormats(captured).map((format) => qualityLabel(format.label, t)).join(" / ") }) });
             }
           }
         }
@@ -227,7 +227,7 @@ export function VideoView({ active, videoId, title: previewTitle, thumbnailUrl: 
               <Segmented
                 label={t("video.quality")}
                 onChange={changeQuality}
-                options={formats.map((format) => ({ value: format.id, label: qualityLabel(format.label) }))}
+                options={formats.map((format) => ({ value: format.id, label: qualityLabel(format.label, t) }))}
                 value={selectedQuality ?? ""}
               />
             </div>
@@ -329,7 +329,7 @@ function ActionBar({
       >
         {downloadBusy ? <Spinner /> : downloadStatus === "completed" ? <CircleCheck aria-hidden="true" size={16} /> : <Download aria-hidden="true" size={16} />}
         {downloadBusy ? t("video.downloading") : downloadStatus === "completed" ? t("video.downloaded") : t("video.download")}
-        {!downloadBusy && selectedQuality ? <span className="badge">{qualityLabel(selectedQuality)}</span> : null}
+        {!downloadBusy && selectedQuality ? <span className="badge">{qualityLabel(selectedQuality, t)}</span> : null}
       </button>
       <button
         aria-pressed={favorite}
@@ -483,7 +483,7 @@ function Troubleshooting({
   const [diagnosing, setDiagnosing] = useState(false);
   const [testing, setTesting] = useState(false);
   const [speed, setSpeed] = useState<MediaSpeedTestReport>();
-  const labels = (values: string[]) => (values.length ? values.map(qualityLabel).join(" / ") : t("video.noFormatsLabel"));
+  const labels = (values: string[]) => (values.length ? values.map((value) => qualityLabel(value, t)).join(" / ") : t("video.noFormatsLabel"));
 
   const diagnose = async () => {
     setDiagnosing(true);

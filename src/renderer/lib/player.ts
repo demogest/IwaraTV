@@ -7,7 +7,7 @@ export function playerName(mode: PlayerMode, t: Translate): string {
 
 /** "Play here" for the built-in player, "Play in MPV" etc. otherwise. */
 export function playLabel(mode: PlayerMode, t: Translate): string {
-  return mode === "builtin" ? t("video.playHere") : t("video.playIn", { player: playerName(mode, t) });
+  return mode === "builtin" ? t("video.playHere") : t(`video.playIn.${mode}`);
 }
 
 export const PLAYER_MODES: PlayerMode[] = ["builtin", "mpv", "external"];

@@ -572,7 +572,7 @@ export class IwaraClient {
     }
     const apiMessage = valueToString(field(data, "message"));
     if (apiMessage) {
-      throw mapVideoError(new AppError("HTTP_ERROR", apiMessage, { apiMessage }));
+      throw mapVideoError(new AppError("HTTP_ERROR", apiMessage, { apiMessage, reason: "api" }));
     }
 
     const summary = mapVideoSummary(data);
@@ -1008,7 +1008,7 @@ export class IwaraClient {
       if (looksLikeCloudflare(text)) {
         throw new AppError("CLOUDFLARE_CHALLENGE", "Iwara answered with a browser verification page.", { status: response.status });
       }
-      throw new AppError("HTTP_ERROR", `Request failed: HTTP ${response.status}`, { status: response.status });
+      throw new AppError("HTTP_ERROR", `Request failed: HTTP ${response.status}`, { status: response.status, reason: "status" });
     }
     return text;
   }
@@ -1026,9 +1026,10 @@ function requireVideoId(idOrUrl: string): string {
 }
 
 function statusError(status: number, apiMessage: string | undefined): AppError {
-  const details: Record<string, string | number> = { status };
+  const details: Record<string, string | number> = { status, reason: "status" };
   if (apiMessage) {
     details.apiMessage = apiMessage;
+    details.reason = "api";
   }
   const suffix = apiMessage ? ` (${apiMessage})` : "";
   if (status === 401) {

@@ -125,6 +125,25 @@
   margin-left: 1px;
 }
 
+/* A menu trigger in the group sits inside .menu-anchor. */
+.button-group > .menu-anchor:not(:last-child) > .button {
+  border-top-right-radius: 0;
+  border-bottom-right-radius: 0;
+}
+
+.button-group > .menu-anchor:not(:first-child) {
+  margin-left: -1px;
+}
+
+.button-group > .menu-anchor:not(:first-child):has(> .button--primary) {
+  margin-left: 1px;
+}
+
+.button-group > .menu-anchor:not(:first-child) > .button {
+  border-top-left-radius: 0;
+  border-bottom-left-radius: 0;
+}
+
 /* ----------------------------------------------------------------- Fields */
 
 .input,

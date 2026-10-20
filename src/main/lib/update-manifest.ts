@@ -95,7 +95,7 @@ export function assetKeyFor(kind: UpdateInstallKind, platform: NodeJS.Platform, 
 }
 
 function invalid(message: string): never {
-  throw new AppError("UPDATE_INVALID", message);
+  throw new AppError("UPDATE_INVALID", message, { reason: "format" });
 }
 
 /** Parses and validates update.json. Unknown fields and asset keys are ignored for forward compatibility. */

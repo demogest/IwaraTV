@@ -36,7 +36,7 @@ This project is independently made and is not affiliated with, sponsored by, or 
 - Local favorites with undo, backup, export and import; playback history grouped by day.
 - A download manager with parallel range requests, resume after cancel or restart, retry, progress/speed/ETA, taskbar progress and completion notifications.
 - Sign in on Iwara's own page in a separate window; the app never sees your password.
-- English and Simplified Chinese, light and dark themes, large or compact cards, keyboard shortcuts (press `?`), collapsible sidebar.
+- English, Simplified Chinese, Traditional Chinese and Japanese, light and dark themes, large or compact cards, keyboard shortcuts (press `?`), collapsible sidebar.
 - Troubleshooting tools: compare formats with the website, speed-test CDN hosts, refresh the X-Version salt.
 - Updates itself from GitHub Releases: checks signatures and checksums, installs with a restart where it can (Windows installer, AppImage) and hands you the verified file where the system installs it. Breaking releases always ask first.
 
@@ -53,7 +53,7 @@ npm ci
 npm run dev
 ```
 
-`npm run dev` starts the full Electron app with hot reload. `npm run dev:web` opens just the UI in a browser at http://127.0.0.1:5175 with fake data, which is handy for layout work (add `?lang=zh-CN`, `?theme=light`, `?signedIn=0` or `?empty=1` to the URL).
+`npm run dev` starts the full Electron app with hot reload. `npm run dev:web` opens just the UI in a browser at http://127.0.0.1:5175 with fake data, which is handy for layout work (add `?lang=zh-CN` / `zh-TW` / `ja`, `?theme=light`, `?update=1`, `?signedIn=0` or `?empty=1` to the URL).
 
 | Command | Purpose |
 | --- | --- |

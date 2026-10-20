@@ -23,6 +23,7 @@ import {
 } from "lucide-react";
 import { useEffect, useId, useState, type ReactNode } from "react";
 import { QUALITY_OPTIONS } from "../../shared/defaults";
+import { LOCALE_NAMES, LOCALES } from "../../shared/locales";
 import { normalizeMediaHostList } from "../../shared/media-hosts";
 import { buildExternalPlayerArgs, PLAYER_REFERER_HEADER, templateIncludesUrl } from "../../shared/player-template";
 import { splitTagInput } from "../../shared/tags";
@@ -236,7 +237,7 @@ function QualitySelect({ id, value, onChange }: { id: string; value?: string; on
       <option value="">{t("settings.playback.bestAvailable")}</option>
       {QUALITY_OPTIONS.map((quality) => (
         <option key={quality} value={quality}>
-          {qualityLabel(quality)}
+          {qualityLabel(quality, t)}
         </option>
       ))}
     </select>
@@ -252,16 +253,20 @@ function GeneralSection() {
   return (
     <Card title={t("settings.sections.general")}>
       <Setting description={t("settings.general.languageDesc")} label={t("settings.general.language")}>
-        <Segmented<LanguagePreference>
-          label={t("settings.general.language")}
-          onChange={(language) => void app.updateSettings({ ui: { language } })}
-          options={[
-            { value: "system", label: t("settings.general.languageSystem") },
-            { value: "zh-CN", label: "简体中文" },
-            { value: "en", label: "English" }
-          ]}
+        <select
+          aria-label={t("settings.general.language")}
+          className="select"
+          onChange={(event) => void app.updateSettings({ ui: { language: event.target.value as LanguagePreference } })}
+          style={{ width: 200 }}
           value={ui.language}
-        />
+        >
+          <option value="system">{t("settings.general.languageSystem")}</option>
+          {LOCALES.map((locale) => (
+            <option key={locale} lang={locale} value={locale}>
+              {LOCALE_NAMES[locale]}
+            </option>
+          ))}
+        </select>
       </Setting>
       <Setting description={t("settings.general.appearanceDesc")} label={t("settings.general.appearance")}>
         <Segmented<ThemePreference>
@@ -812,7 +817,7 @@ function UpdatesSection() {
   const update = state.update;
   const current = state.currentVersion || app.appInfo?.version || "";
   const automatic = state.strategy === "automatic";
-  const error = state.status === "error" && state.error ? describeErrorCode(state.error.code, state.error.message, t) : undefined;
+  const error = state.status === "error" && state.error ? describeErrorCode(state.error.code, state.error.message, t, state.error.details) : undefined;
 
   const status = (() => {
     switch (state.status) {

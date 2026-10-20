@@ -1,4 +1,5 @@
 import type { AppErrorCode } from "./errors";
+import type { Locale } from "./locales";
 
 // Data shapes shared by the Electron main process, the preload bridge and the
 // renderer. Everything here must be structured-clone friendly.
@@ -8,7 +9,7 @@ export type RatingFilter = "all" | "general" | "ecchi";
 /** `builtin` streams inside the app; the others launch a local player. */
 export type PlayerMode = "builtin" | "mpv" | "external";
 export type CardDensity = "comfortable" | "compact";
-export type LanguagePreference = "system" | "zh-CN" | "en";
+export type LanguagePreference = "system" | Locale;
 export type ThemePreference = "system" | "dark" | "light";
 
 export interface VideoSummary {
@@ -303,7 +304,7 @@ export interface UpdateState {
   signedOnly: boolean;
   update?: UpdateInfo;
   progress?: { received: number; total: number };
-  error?: { code: AppErrorCode; message: string };
+  error?: { code: AppErrorCode; message: string; details?: Record<string, string | number> };
   checkedAt?: string;
 }
 
@@ -420,6 +421,8 @@ export interface DownloadTask {
   fallbackFrom?: string;
   error?: string;
   errorCode?: AppErrorCode;
+  /** Lets the UI explain the failure in its own language (e.g. `reason`, `status`). */
+  errorDetails?: Record<string, string | number>;
   createdAt: string;
   updatedAt: string;
   completedAt?: string;

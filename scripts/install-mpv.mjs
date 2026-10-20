@@ -82,10 +82,14 @@ async function main() {
 }
 
 async function fetchJson(url) {
+  // Anonymous API calls share a small per-IP rate limit, which CI runners
+  // regularly exhaust; use the workflow's token when there is one.
+  const token = process.env.GH_TOKEN || process.env.GITHUB_TOKEN;
   const response = await fetch(url, {
     headers: {
       Accept: "application/vnd.github+json",
-      "User-Agent": "IwaraTV-build-script"
+      "User-Agent": "IwaraTV-build-script",
+      ...(token ? { Authorization: `Bearer ${token}` } : {})
     }
   });
 

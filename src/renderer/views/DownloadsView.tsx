@@ -147,7 +147,7 @@ function DownloadRow({
   const remaining = task.totalBytes ? formatRemaining(task.totalBytes - task.bytesWritten, task.bytesPerSecond) : undefined;
   const open = () => navigation.openVideo(task.videoId, { title: task.video?.title, thumbnailUrl: task.video?.thumbnailUrl });
   const errorText = task.status === "failed"
-    ? describeErrorCode(task.errorCode ?? "DOWNLOAD_FAILED", task.error ?? "", t).detail
+    ? describeErrorCode(task.errorCode ?? "DOWNLOAD_FAILED", task.error ?? "", t, task.errorDetails).detail
     : undefined;
   const statusTone = task.status === "completed" ? "badge--accent" : task.status === "failed" ? "badge--danger" : task.status === "canceled" ? "" : "badge--info";
 
@@ -168,10 +168,10 @@ function DownloadRow({
         </button>
         <div className="row__meta">
           <span className={`badge ${statusTone}`}>{t(`downloads.status.${task.status}` as TranslationKey)}</span>
-          {(task.format?.label ?? task.requestedQuality) && <span>{qualityLabel(task.format?.label ?? task.requestedQuality!)}</span>}
+          {(task.format?.label ?? task.requestedQuality) && <span>{qualityLabel(task.format?.label ?? task.requestedQuality!, t)}</span>}
           {!isActive && task.totalBytes ? <span>{formatBytes(task.totalBytes, locale)}</span> : null}
           {task.fallbackFrom && task.format && (
-            <span>{t("downloads.fallback", { requested: qualityLabel(task.fallbackFrom), actual: qualityLabel(task.format.label) })}</span>
+            <span>{t("downloads.fallback", { requested: qualityLabel(task.fallbackFrom, t), actual: qualityLabel(task.format.label, t) })}</span>
           )}
           {!isActive && <span>{formatDateTime(task.completedAt ?? task.updatedAt, locale)}</span>}
         </div>

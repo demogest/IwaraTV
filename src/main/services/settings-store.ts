@@ -1,5 +1,6 @@
 import path from "node:path";
 import { createDefaultSettings, HISTORY_LIMIT } from "../../shared/defaults";
+import { LOCALES } from "../../shared/locales";
 import { normalizeMediaHostList } from "../../shared/media-hosts";
 import { normalizeTagList } from "../../shared/tags";
 import type {
@@ -182,7 +183,7 @@ const OPTIONAL_KEYS = new Set([
 
 const PLAYER_MODES: PlayerMode[] = ["builtin", "mpv", "external"];
 const DENSITIES: CardDensity[] = ["comfortable", "compact"];
-const LANGUAGES: LanguagePreference[] = ["system", "zh-CN", "en"];
+const LANGUAGES: LanguagePreference[] = ["system", ...LOCALES];
 const THEMES: ThemePreference[] = ["system", "dark", "light"];
 const RATINGS: RatingFilter[] = ["all", "general", "ecchi"];
 

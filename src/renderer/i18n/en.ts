@@ -225,8 +225,14 @@ export const en = {
     builtin: "IwaraTV",
     mpv: "MPV",
     external: "External player",
-    started: "Playing in {player} · {quality}",
-    startedFallback: "Playing in {player} · {requested} unavailable, using {quality}",
+    started: {
+      mpv: "Playing in MPV · {quality}",
+      external: "Playing in your external player · {quality}"
+    },
+    startedFallback: {
+      mpv: "Playing in MPV · {requested} unavailable, using {quality}",
+      external: "Playing in your external player · {requested} unavailable, using {quality}"
+    },
     fallbackHere: "{requested} isn't available — playing {quality}",
     resumed: "Continuing from {time}",
     startOver: "Start over",
@@ -242,7 +248,10 @@ export const en = {
     playerErrorHint: "The link may have expired, or the format isn't supported.",
     related: "Related videos",
     moreFrom: "More from {name}",
-    playIn: "Play in {player}",
+    playIn: {
+      mpv: "Play in MPV",
+      external: "Play in external player"
+    },
     playOptions: "Choose player",
     quality: "Quality",
     download: "Download",
@@ -256,7 +265,7 @@ export const en = {
     viewVideos: "All videos",
     noFormats: "Iwara doesn't offer a direct file for this video.",
     embedOnly: "This video is hosted externally.",
-    openEmbed: "Open source",
+    openEmbed: "Open original",
     description: "Description",
     noDescription: "No description.",
     tags: "Tags",
@@ -370,6 +379,10 @@ export const en = {
       dmg: "In the window that opens, drag IwaraTV onto Applications to replace this copy, then reopen it.",
       dev: "Development builds don't install updates."
     }
+  },
+  quality: {
+    source: "Source",
+    preview: "Preview"
   },
   settings: {
     title: "Settings",
@@ -562,26 +575,82 @@ export const en = {
     LOGIN_EXPIRED: { title: "Session expired", detail: "Your Iwara session has expired. Please sign in again." },
     PRIVATE_VIDEO: { title: "Private video", detail: "Sign in with an account that has access to this video." },
     VIDEO_NOT_FOUND: { title: "Video not found", detail: "It may have been removed, or it requires signing in." },
-    VIDEO_UNAVAILABLE: { title: "Video unavailable", detail: "{message}" },
+    VIDEO_UNAVAILABLE: {
+      title: "Video unavailable",
+      detail: "{message}",
+      reasons: { api: "Iwara reported “{apiMessage}”." }
+    },
     CLOUDFLARE_CHALLENGE: { title: "Browser check needed", detail: "Iwara wants to verify the browser. Open the Iwara window and complete the check." },
-    HTTP_ERROR: { title: "Iwara returned an error", detail: "{message}" },
+    HTTP_ERROR: {
+      title: "Iwara returned an error",
+      detail: "{message}",
+      reasons: {
+        status: "Iwara answered with HTTP {status}. Try again in a moment.",
+        api: "Iwara reported “{apiMessage}”."
+      }
+    },
     NETWORK_ERROR: { title: "Network problem", detail: "Couldn't reach Iwara. Check your connection and try again." },
     INVALID_RESPONSE: { title: "Unexpected response", detail: "Iwara sent something IwaraTV didn't understand. Try again later." },
     NO_FORMATS: { title: "No playable file", detail: "Iwara didn't provide a file for this video." },
     MPV_NOT_FOUND: { title: "MPV not found", detail: "Install MPV or choose its executable in Settings → Playback." },
     EXTERNAL_PLAYER_NOT_FOUND: { title: "External player not set up", detail: "Choose the player's executable in Settings → Playback." },
     EXTERNAL_PLAYER_TEMPLATE: { title: "Player arguments need fixing", detail: "The arguments must include {url} so the player receives the video." },
-    PLAYER_LAUNCH_FAILED: { title: "Couldn't start the player", detail: "{message}" },
+    PLAYER_LAUNCH_FAILED: {
+      title: "Couldn't start the player",
+      detail: "{message}",
+      reasons: { spawn: "The system reported: {detail}" }
+    },
     DOWNLOAD_DIRECTORY_REQUIRED: { title: "Choose a download folder", detail: "Set a download folder in Settings → Downloads." },
     DOWNLOAD_NOT_FOUND: { title: "Download not found", detail: "That download record no longer exists." },
     DOWNLOAD_ACTIVE: { title: "Download in progress", detail: "Cancel the download before deleting it." },
-    DOWNLOAD_FAILED: { title: "Download failed", detail: "{message}" },
+    DOWNLOAD_FAILED: {
+      title: "Download failed",
+      detail: "{message}",
+      reasons: {
+        http: "The server answered with HTTP {status}.",
+        empty: "The download finished without any data.",
+        incomplete: "Part of the file didn't arrive. Retry to continue where it stopped.",
+        fileInUse: "Another download is already writing this file.",
+        fileName: "IwaraTV couldn't find a free file name in the download folder."
+      }
+    },
     FILE_NOT_FOUND: { title: "File not found", detail: "The file was moved or deleted." },
     SALT_NOT_FOUND: { title: "Salt not detected", detail: "Iwara's website didn't contain a recognizable X-Version salt. The saved value is still used." },
     FAVORITES_FILE_INVALID: { title: "Can't import that file", detail: "Choose a JSON file exported from IwaraTV." },
-    UPDATE_CHECK_FAILED: { title: "Couldn't check for updates", detail: "{message}" },
-    UPDATE_INVALID: { title: "Update rejected", detail: "{message} Nothing was installed." },
-    UPDATE_INSTALL_FAILED: { title: "Couldn't install the update", detail: "{message}" },
+    UPDATE_CHECK_FAILED: {
+      title: "Couldn't check for updates",
+      detail: "{message}",
+      reasons: {
+        http: "GitHub answered with HTTP {status}. Try again later.",
+        downloadHttp: "Downloading the update failed with HTTP {status}. Try again later.",
+        stalled: "The download stopped receiving data. Try again.",
+        network: "Couldn't reach GitHub. Check your connection and try again.",
+        disabled: "This build doesn't check for updates."
+      }
+    },
+    UPDATE_INVALID: {
+      title: "Update rejected",
+      detail: "{message} Nothing was installed.",
+      reasons: {
+        format: "The update information isn't in a format IwaraTV understands. Nothing was installed.",
+        tooLarge: "The update information is too large. Nothing was installed.",
+        unsigned: "The update information isn't signed. Nothing was installed.",
+        signature: "The update information's signature isn't valid. Nothing was installed.",
+        fileSize: "The update file was larger than announced and was deleted. Nothing was installed.",
+        checksum: "The downloaded file didn't match its checksum and was deleted. Nothing was installed.",
+        noFile: "This release has no file for your copy of IwaraTV.",
+        notReady: "No downloaded update is ready to install.",
+        changed: "The downloaded file changed on disk. Download it again."
+      }
+    },
+    UPDATE_INSTALL_FAILED: {
+      title: "Couldn't install the update",
+      detail: "{message}",
+      reasons: {
+        open: "The system couldn't open the file: {message}",
+        devBuild: "Development builds don't install updates."
+      }
+    },
     UNKNOWN: { title: "Something went wrong", detail: "{message}" }
   },
   actions: {

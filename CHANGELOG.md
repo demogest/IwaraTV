@@ -2,6 +2,21 @@
 
 All notable changes to IwaraTV. Versions follow [semantic versioning](https://semver.org/); a major version marks breaking changes. Full notes for each release, including upgrade steps, are in [`docs/release-notes/`](docs/release-notes/) and on the [Releases page](https://github.com/demogest/IwaraTV/releases).
 
+## 2.2.0 — 2026-10-20
+
+See the [2.2.0 release notes](docs/release-notes/v2.2.0.md).
+
+### Added
+
+- Traditional Chinese (繁體中文) and Japanese (日本語). Language follows the system by default: Taiwan, Hong Kong and Macau get Traditional Chinese; any other Chinese variant gets Simplified Chinese. You can pick a language in Settings → General.
+
+### Fixed
+
+- The play button reads naturally in every language ("用外部播放器播放", "Play in external player") and its menu half joins the button instead of showing a rounded notch.
+- "Source" and "Preview" quality names, update errors, download errors and Iwara error details are translated instead of showing English.
+- Long labels no longer widen the sidebar.
+- Windows release builds authenticate the MPV download's GitHub API request, so shared CI runners don't hit the anonymous rate limit.
+
 ## 2.1.1 — 2026-10-20
 
 ### Fixed

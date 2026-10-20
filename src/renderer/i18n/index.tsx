@@ -1,9 +1,12 @@
 import { createContext, useContext, useMemo, type ReactNode } from "react";
+import { matchLocale, type Locale } from "../../shared/locales";
 import type { LanguagePreference } from "../../shared/types";
 import { en, type Dictionary } from "./en";
+import { ja } from "./ja";
 import { zhCN } from "./zh-CN";
+import { zhTW } from "./zh-TW";
 
-export type Locale = "zh-CN" | "en";
+export type { Locale };
 
 export interface PluralForms {
   one?: string;
@@ -25,13 +28,13 @@ export type TranslationKey = Paths<Dictionary>;
 export type TranslationParams = Record<string, string | number | undefined>;
 export type Translate = (key: TranslationKey, params?: TranslationParams) => string;
 
-const dictionaries: Record<Locale, Translation<Dictionary>> = { en, "zh-CN": zhCN };
+const dictionaries: Record<Locale, Translation<Dictionary>> = { en, "zh-CN": zhCN, "zh-TW": zhTW, ja };
 
 export function resolveLocale(preference: LanguagePreference, systemLanguages: readonly string[] = navigator.languages): Locale {
   if (preference !== "system") {
     return preference;
   }
-  return systemLanguages.some((language) => language.toLowerCase().startsWith("zh")) ? "zh-CN" : "en";
+  return matchLocale(systemLanguages);
 }
 
 function lookup(dictionary: Translation<Dictionary>, key: string): Leaf | undefined {

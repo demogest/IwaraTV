@@ -2,7 +2,9 @@
 
 All notable changes to IwaraTV. Versions follow [semantic versioning](https://semver.org/); a major version marks breaking changes. Full notes for each release, including upgrade steps, are in [`docs/release-notes/`](docs/release-notes/) and on the [Releases page](https://github.com/demogest/IwaraTV/releases).
 
-## Unreleased
+## 2.2.0 — 2026-10-20
+
+See the [2.2.0 release notes](docs/release-notes/v2.2.0.md).
 
 ### Added
 

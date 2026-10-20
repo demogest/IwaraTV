@@ -1,6 +1,6 @@
 # Auto-update design
 
-Status: implemented, first shipped in the release after 2.0.0 · Related: [audit S-10](audit.md#findings), [release notes](release-notes/)
+Status: shipped in 2.1.0, with signed manifests · Related: [audit S-10](audit.md#findings), [release notes](release-notes/)
 
 ## Goals
 
@@ -182,6 +182,6 @@ The renderer gets the state through `updates:state` and the `updates:changed` ev
 
 ## Rollout
 
-1. The first release with the updater attaches `update.json`. Users on 2.0.0 install it manually once; from then on updates find them.
-2. The maintainer follows [Setting up signing](#setting-up-signing): creates the key pair, the `release` environment and its `UPDATE_SIGNING_KEY` secret, and commits `build/update-public-key.pem`. The next release is signed, and apps built from it only accept signed updates. Doing this before the first updater release means every updating app is signed-only from the start.
+1. Signing was set up before the first updater release ([Setting up signing](#setting-up-signing)), so every copy that can update accepts only signed manifests.
+2. 2.1.0 is the first release with the updater and a signed `update.json`. Users on 2.0.0 install it manually once; from then on updates find them.
 3. When code-signing certificates are available, keep the manifest signature anyway: it also protects the assisted macOS and Linux paths, which platform signing doesn't cover.

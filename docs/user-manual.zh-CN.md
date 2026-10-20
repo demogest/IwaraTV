@@ -12,7 +12,7 @@ IwaraTV 支持 Windows 10 及以上（64 位）、macOS 13 Ventura 及以上（A
 
 1. 从 [GitHub Releases](https://github.com/demogest/IwaraTV/releases) 下载最新版本：
    - Windows：`IwaraTV_<version>_x64-setup.exe`（安装包）、`…-portable.exe`（免安装）或 `…-unpacked.zip`。
-   - macOS：`.dmg`。应用未经公证，首次打开请右键点击应用并选择**打开**。
+   - macOS：`.dmg`。应用未经公证，首次打开时请前往**系统设置 → 隐私与安全性**并点击**仍要打开**（macOS 13 和 14 也可以右键点击应用并选择**打开**）。
    - Linux：`.deb` 或 `.AppImage`（先赋予可执行权限）。
 2. 启动 IwaraTV。应用会直接打开浏览页，登录不是必需的。
 3. 在任意视频上点击**在此播放**即可观看，内置播放器无需安装其他软件。如果你更喜欢 MPV：Windows 版本已内置；在 macOS 和 Linux 上请先安装（`brew install mpv`、`sudo apt install mpv` 等），然后在**设置 → 播放**中选择它。

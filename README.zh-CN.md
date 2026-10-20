@@ -40,6 +40,7 @@ IwaraTV 是一个用于浏览 Iwara.tv 的桌面应用，可以用内置播放�
 
 ## 环境要求
 
+- 运行 IwaraTV：Windows 10 及以上（64 位）、macOS 13 Ventura 及以上（Apple 芯片），或 64 位 Linux。
 - Node.js 24.14.1+ 和 npm 11.11.0+（见 `.node-version`）。
 - 播放无需额外软件：内置播放器在所有平台上可用。MPV 为可选项（Windows 发布版已内置）。
 

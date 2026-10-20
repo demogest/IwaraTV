@@ -8,6 +8,8 @@ IwaraTV 是一个用于浏览 Iwara.tv 并观看视频的桌面应用——可�
 
 ## 安装与启动
 
+IwaraTV 支持 Windows 10 及以上（64 位）、macOS 13 Ventura 及以上（Apple 芯片）以及 64 位 Linux。
+
 1. 从 [GitHub Releases](https://github.com/demogest/IwaraTV/releases) 下载最新版本：
    - Windows：`IwaraTV_<version>_x64-setup.exe`（安装包）、`…-portable.exe`（免安装）或 `…-unpacked.zip`。
    - macOS：`.dmg`。应用未经公证，首次打开请右键点击应用并选择**打开**。

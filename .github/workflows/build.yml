@@ -276,69 +276,8 @@ jobs:
           TAG_NAME: ${{ needs.version.outputs.tag }}
           VERSION: ${{ needs.version.outputs.version }}
         run: |
-          set -euo pipefail
-
-          changelog_base=""
-          changelog_label=""
-
-          previous_version=""
-          previous_sha=""
-          for commit in $(git rev-list --first-parent "$GITHUB_SHA"); do
-            commit_version="$(git show "${commit}:package.json" 2>/dev/null | node -p "JSON.parse(require('fs').readFileSync(0, 'utf8')).version" 2>/dev/null || true)"
-            if [[ -n "$commit_version" ]] && [[ "$commit_version" != "$VERSION" ]]; then
-              previous_version="$commit_version"
-              previous_sha="$commit"
-              break
-            fi
-          done
-
-          if [[ -n "$previous_version" ]]; then
-            previous_tag="v${previous_version}"
-            if git rev-parse -q --verify "refs/tags/${previous_tag}^{commit}" >/dev/null && git merge-base --is-ancestor "${previous_tag}^{commit}" "$GITHUB_SHA"; then
-              changelog_base="$previous_tag"
-              changelog_label="$previous_tag"
-            else
-              changelog_base="$previous_sha"
-              changelog_label="${previous_version} baseline (${previous_sha:0:7})"
-            fi
-          else
-            previous_tag="$(git tag --merged "$GITHUB_SHA" --list "v*" --sort=-v:refname | grep -vx "$TAG_NAME" | head -n 1 || true)"
-            if [[ -n "$previous_tag" ]]; then
-              changelog_base="$previous_tag"
-              changelog_label="$previous_tag"
-            fi
-          fi
-
-          {
-            # Hand-written notes for this version, if any, go first.
-            if [[ -f "docs/release-notes/${TAG_NAME}.md" ]]; then
-              cat "docs/release-notes/${TAG_NAME}.md"
-              echo
-            fi
-            echo "## Assets"
-            echo
-            echo "- Windows installer: \`IwaraTV_${VERSION}_x64-setup.exe\`"
-            echo "- Windows portable package: \`IwaraTV_${VERSION}_x64-portable.exe\`"
-            echo "- Windows unpacked archive: \`IwaraTV_${VERSION}_x64-unpacked.zip\`"
-            echo "- macOS disk image (Apple Silicon): \`*.dmg\`"
-            echo "- Linux packages: \`*.deb\` and \`*.AppImage\`"
-            echo "- Checksums: \`SHA256SUMS.txt\`"
-            echo
-            echo "## Changelog"
-            echo
-
-            if [[ -n "$changelog_base" ]]; then
-              echo "Changes since ${changelog_label}:"
-              echo
-              git log --no-merges --pretty=format:"- %s (%h)" "${changelog_base}..${GITHUB_SHA}"
-            else
-              echo "Initial release notes:"
-              echo
-              git log --no-merges --pretty=format:"- %s (%h)" "$GITHUB_SHA"
-            fi
-          } > release-notes.md
-
-          cat release-notes.md
+          bash scripts/release-notes.sh "$TAG_NAME" "$VERSION" "$GITHUB_SHA"
+          cat release-title.txt release-notes.md
 
       - name: Publish release
         env:
@@ -353,5 +292,5 @@ jobs:
           gh release create "$TAG_NAME" release-assets/* \
             --repo "$GITHUB_REPOSITORY" \
             --target "$GITHUB_SHA" \
-            --title "$TAG_NAME" \
+            --title "$(cat release-title.txt)" \
             --notes-file release-notes.md

@@ -2,6 +2,12 @@
 
 All notable changes to IwaraTV. Versions follow [semantic versioning](https://semver.org/); a major version marks breaking changes. Full notes for each release, including upgrade steps, are in [`docs/release-notes/`](docs/release-notes/) and on the [Releases page](https://github.com/demogest/IwaraTV/releases).
 
+## 2.1.1 — 2026-10-20
+
+### Fixed
+
+- Closing the window now quits IwaraTV. While signed in, a hidden Iwara page kept the app running for up to 5 minutes, and starting it again in that time showed no window. See the [2.1.1 release notes](docs/release-notes/v2.1.1.md).
+
 ## 2.1.0 — 2026-10-20
 
 IwaraTV keeps itself up to date. 2.0 can't update itself, so install 2.1 once by hand; see the [2.1.0 release notes](docs/release-notes/v2.1.0.md).

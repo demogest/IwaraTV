@@ -42,6 +42,7 @@ let mainWindow: BrowserWindow | undefined;
 let backend: Backend | undefined;
 let iwaraSession: IwaraSessionService | undefined;
 let migratedFrom: string | undefined;
+let quitting = false;
 const notifications = new Set<Notification>();
 
 app.setName("IwaraTV");
@@ -61,6 +62,9 @@ if (!app.requestSingleInstanceLock()) {
       }
       mainWindow.show();
       mainWindow.focus();
+    } else if (backend && !quitting) {
+      // Launching again must always show a window, never hand off to an invisible process.
+      createMainWindow(app.getPath("userData"));
     }
   });
 
@@ -74,8 +78,15 @@ if (!app.requestSingleInstanceLock()) {
   });
 
   app.on("before-quit", () => {
+    quitting = true;
     backend?.shutdown();
     iwaraSession?.dispose();
+    // Anything else still open is a hidden Iwara page; none of them may hold the app open.
+    for (const window of BrowserWindow.getAllWindows()) {
+      if (window !== mainWindow && !window.isDestroyed()) {
+        window.destroy();
+      }
+    }
   });
 
   app.on("window-all-closed", () => {
@@ -145,6 +156,9 @@ function createMainWindow(userDataPath: string): void {
   window.once("ready-to-show", () => window.show());
   window.on("closed", () => {
     mainWindow = undefined;
+    // Closing the main window quits the app: hidden Iwara helper pages count as
+    // windows and would otherwise keep the process (and its single-instance lock) alive.
+    app.quit();
   });
   trackWindowState(window, userDataPath);
 

@@ -270,7 +270,7 @@ export class IwaraSessionService implements IwaraSessionBridge {
   dispose(): void {
     this.stopCapturePolling();
     clearTimeout(this.helperIdleTimer);
-    for (const window of [this.verificationWindow, this.helperWindow]) {
+    for (const window of [this.verificationWindow, this.helperWindow, this.helperPending]) {
       if (isLive(window)) {
         window.destroy();
       }
@@ -455,6 +455,8 @@ function hardenRemoteWindow(window: BrowserWindow, options: { forwardLinks: bool
     }
   });
   contents.on("will-attach-webview", (event) => event.preventDefault());
+  // A beforeunload handler on Iwara's site must never stop the window from closing.
+  contents.on("will-prevent-unload", (event) => event.preventDefault());
 }
 
 function withoutHeader(headers: Record<string, string>, name: string): Record<string, string> {

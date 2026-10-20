@@ -431,6 +431,18 @@ try {
   await step("logs no renderer errors", async () => {
     expect(errors.length === 0, `renderer errors:\n${errors.join("\n")}`);
   });
+
+  await step("quits when its window is closed, even with hidden pages open", async () => {
+    // Stands in for the hidden Iwara helper page the app keeps while signed in.
+    await app.evaluate(({ BrowserWindow }) => {
+      void new BrowserWindow({ show: false }).loadURL("about:blank");
+    });
+    expect(await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows().length) >= 2, "no hidden window to test with");
+    const exited = new Promise((resolve) => app.process().once("exit", () => resolve(true)));
+    await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows().find((window) => window.isVisible())?.close()).catch(() => undefined);
+    const quit = await Promise.race([exited, new Promise((resolve) => setTimeout(() => resolve(false), 10_000))]);
+    expect(quit, "the app kept running after its window was closed");
+  });
 } catch {
   // The failing step has already been reported.
 } finally {

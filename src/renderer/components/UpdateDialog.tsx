@@ -40,7 +40,7 @@ export function UpdateDialog() {
 
   const progress = state.progress;
   const percent = progress && progress.total ? Math.min(100, Math.round((progress.received / progress.total) * 100)) : 0;
-  const error = state.status === "error" && state.error ? describeErrorCode(state.error.code, state.error.message, t) : undefined;
+  const error = state.status === "error" && state.error ? describeErrorCode(state.error.code, state.error.message, t, state.error.details) : undefined;
   const canDownload = Boolean(update?.fileName) && state.strategy !== "none";
   const howTo = state.strategy === "automatic" ? "updates.readyAutomatic" : (`updates.howTo.${state.installKind}` as TranslationKey);
 

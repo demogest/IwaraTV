@@ -51,6 +51,7 @@
 
 .sidebar__group {
   display: grid;
+  grid-template-columns: minmax(0, 1fr);
   gap: 2px;
 }
 
@@ -122,6 +123,8 @@
 
 .sidebar__footer {
   display: grid;
+  /* Long labels truncate instead of widening the column (and the sidebar). */
+  grid-template-columns: minmax(0, 1fr);
   gap: 2px;
   margin-top: auto;
   padding-top: var(--space-3);

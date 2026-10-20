@@ -268,7 +268,7 @@ export const zhCN: Translation<Dictionary> = {
     viewVideos: "全部视频",
     noFormats: "Iwara 没有为这个视频提供直链文件。",
     embedOnly: "这个视频托管在外部网站。",
-    openEmbed: "打开来源",
+    openEmbed: "打开原始页面",
     description: "简介",
     noDescription: "没有简介。",
     tags: "标签",
@@ -382,6 +382,10 @@ export const zhCN: Translation<Dictionary> = {
       dmg: "在打开的窗口中把 IwaraTV 拖到“应用程序”替换当前版本，然后重新打开。",
       dev: "开发版本不会安装更新。"
     }
+  },
+  quality: {
+    source: "原画",
+    preview: "预览"
   },
   settings: {
     title: "设置",
@@ -574,26 +578,82 @@ export const zhCN: Translation<Dictionary> = {
     LOGIN_EXPIRED: { title: "登录已过期", detail: "Iwara 登录已过期，请重新登录。" },
     PRIVATE_VIDEO: { title: "私有视频", detail: "需要使用有访问权限的账号登录。" },
     VIDEO_NOT_FOUND: { title: "视频不存在", detail: "视频可能已被删除，或需要登录后才能访问。" },
-    VIDEO_UNAVAILABLE: { title: "视频不可用", detail: "{message}" },
+    VIDEO_UNAVAILABLE: {
+      title: "视频不可用",
+      detail: "{message}",
+      reasons: { api: "Iwara 返回：“{apiMessage}”。" }
+    },
     CLOUDFLARE_CHALLENGE: { title: "需要浏览器验证", detail: "Iwara 要求进行浏览器验证，请打开 Iwara 窗口完成验证。" },
-    HTTP_ERROR: { title: "Iwara 返回了错误", detail: "{message}" },
+    HTTP_ERROR: {
+      title: "Iwara 返回了错误",
+      detail: "{message}",
+      reasons: {
+        status: "Iwara 返回了 HTTP {status}，请稍后重试。",
+        api: "Iwara 返回：“{apiMessage}”。"
+      }
+    },
     NETWORK_ERROR: { title: "网络连接异常", detail: "无法连接 Iwara，请检查网络后重试。" },
     INVALID_RESPONSE: { title: "响应异常", detail: "Iwara 返回了无法识别的内容，请稍后重试。" },
     NO_FORMATS: { title: "没有可播放的文件", detail: "Iwara 没有为这个视频提供文件。" },
     MPV_NOT_FOUND: { title: "未找到 MPV", detail: "请安装 MPV，或在 设置 → 播放 中选择 MPV 程序。" },
     EXTERNAL_PLAYER_NOT_FOUND: { title: "外部播放器未配置", detail: "请在 设置 → 播放 中选择播放器程序。" },
     EXTERNAL_PLAYER_TEMPLATE: { title: "播放器参数需要修正", detail: "启动参数必须包含 {url}，否则播放器收不到视频地址。" },
-    PLAYER_LAUNCH_FAILED: { title: "播放器启动失败", detail: "{message}" },
+    PLAYER_LAUNCH_FAILED: {
+      title: "播放器启动失败",
+      detail: "{message}",
+      reasons: { spawn: "系统提示：{detail}" }
+    },
     DOWNLOAD_DIRECTORY_REQUIRED: { title: "请选择下载文件夹", detail: "请在 设置 → 下载 中设置下载文件夹。" },
     DOWNLOAD_NOT_FOUND: { title: "下载记录不存在", detail: "该下载记录已不存在。" },
     DOWNLOAD_ACTIVE: { title: "下载进行中", detail: "请先取消下载，再删除。" },
-    DOWNLOAD_FAILED: { title: "下载失败", detail: "{message}" },
+    DOWNLOAD_FAILED: {
+      title: "下载失败",
+      detail: "{message}",
+      reasons: {
+        http: "服务器返回了 HTTP {status}。",
+        empty: "下载结束，但没有收到任何数据。",
+        incomplete: "文件有一部分没有下载完整，点击重试可从中断处继续。",
+        fileInUse: "已有另一个下载任务正在写入该文件。",
+        fileName: "无法在下载文件夹中找到可用的文件名。"
+      }
+    },
     FILE_NOT_FOUND: { title: "找不到文件", detail: "文件已被移动或删除。" },
     SALT_NOT_FOUND: { title: "未识别到盐值", detail: "Iwara 网页中没有可识别的 X-Version 盐值，将继续使用已保存的值。" },
     FAVORITES_FILE_INVALID: { title: "无法导入该文件", detail: "请选择由 IwaraTV 导出的 JSON 文件。" },
-    UPDATE_CHECK_FAILED: { title: "无法检查更新", detail: "{message}" },
-    UPDATE_INVALID: { title: "已拒绝该更新", detail: "{message} 未安装任何内容。" },
-    UPDATE_INSTALL_FAILED: { title: "无法安装更新", detail: "{message}" },
+    UPDATE_CHECK_FAILED: {
+      title: "无法检查更新",
+      detail: "{message}",
+      reasons: {
+        http: "GitHub 返回了 HTTP {status}，请稍后重试。",
+        downloadHttp: "下载更新失败（HTTP {status}），请稍后重试。",
+        stalled: "下载已停止接收数据，请重试。",
+        network: "无法连接 GitHub，请检查网络后重试。",
+        disabled: "此版本不检查更新。"
+      }
+    },
+    UPDATE_INVALID: {
+      title: "已拒绝该更新",
+      detail: "{message} 未安装任何内容。",
+      reasons: {
+        format: "更新信息的格式无法识别，未安装任何内容。",
+        tooLarge: "更新信息过大，未安装任何内容。",
+        unsigned: "更新信息没有签名，未安装任何内容。",
+        signature: "更新信息的签名无效，未安装任何内容。",
+        fileSize: "更新文件比声明的大小更大，已删除，未安装任何内容。",
+        checksum: "下载的文件与校验和不符，已删除，未安装任何内容。",
+        noFile: "此版本没有适用于当前安装方式的文件。",
+        notReady: "没有可安装的已下载更新。",
+        changed: "已下载的文件在磁盘上被修改，请重新下载。"
+      }
+    },
+    UPDATE_INSTALL_FAILED: {
+      title: "无法安装更新",
+      detail: "{message}",
+      reasons: {
+        open: "系统无法打开该文件：{message}",
+        devBuild: "开发版本不会安装更新。"
+      }
+    },
     UNKNOWN: { title: "出了点问题", detail: "{message}" }
   },
   actions: {

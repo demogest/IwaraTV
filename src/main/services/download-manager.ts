@@ -102,6 +102,7 @@ export class DownloadManager {
       status: "queued",
       error: undefined,
       errorCode: undefined,
+      errorDetails: undefined,
       bytesPerSecond: undefined,
       completedAt: undefined,
       updatedAt: new Date().toISOString()
@@ -205,7 +206,7 @@ export class DownloadManager {
         plan = await this.engine.prepare(request, controller.signal, this.pathsInUse(id));
         controller.signal.throwIfAborted();
         if (this.pathsInUse(id).has(plan.path)) {
-          throw new AppError("DOWNLOAD_FAILED", "Another download is already writing this file.");
+          throw new AppError("DOWNLOAD_FAILED", "Another download is already writing this file.", { reason: "fileInUse" });
         }
       }
       this.update(id, {
@@ -235,7 +236,7 @@ export class DownloadManager {
         this.finish(finished, "canceled");
       } else {
         const serialized = serializeError(error);
-        this.finish({ ...finished, error: serialized.message, errorCode: serialized.code }, "failed");
+        this.finish({ ...finished, error: serialized.message, errorCode: serialized.code, errorDetails: serialized.details }, "failed");
       }
     } finally {
       this.controllers.delete(id);

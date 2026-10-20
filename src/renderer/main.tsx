@@ -1,5 +1,6 @@
 import { StrictMode, useEffect, useState } from "react";
 import { createRoot } from "react-dom/client";
+import { isLocale } from "../shared/locales";
 import type { LanguagePreference, ThemePreference } from "../shared/types";
 import { App } from "./App";
 import { I18nProvider, resolveLocale, type Locale } from "./i18n";
@@ -19,7 +20,7 @@ const LOCALE_KEY = "iwaratv.locale";
 function cachedLocale(): Locale | undefined {
   try {
     const value = localStorage.getItem(LOCALE_KEY);
-    return value === "zh-CN" || value === "en" ? value : undefined;
+    return isLocale(value) ? value : undefined;
   } catch {
     return undefined;
   }

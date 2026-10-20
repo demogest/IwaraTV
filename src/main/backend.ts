@@ -615,8 +615,8 @@ function offlineUpdates(userDataPath: string, currentVersion: string): UpdatePor
       ownsDownloadDirectory: true,
       source: GITHUB_SOURCE
     },
-    fetch: () => Promise.reject(new AppError("UPDATE_CHECK_FAILED", "Update checks are turned off in this build.")),
-    install: () => Promise.reject(new AppError("UPDATE_INSTALL_FAILED", "This build can't install updates."))
+    fetch: () => Promise.reject(new AppError("UPDATE_CHECK_FAILED", "Update checks are turned off in this build.", { reason: "disabled" })),
+    install: () => Promise.reject(new AppError("UPDATE_INSTALL_FAILED", "This build can't install updates.", { reason: "devBuild" }))
   };
 }
 

@@ -113,5 +113,5 @@ export async function uniqueDownloadPath(
       return candidate;
     }
   }
-  throw new AppError("DOWNLOAD_FAILED", "Could not create a unique file name for the download.");
+  throw new AppError("DOWNLOAD_FAILED", "Could not create a unique file name for the download.", { reason: "fileName" });
 }

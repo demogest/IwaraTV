@@ -18,6 +18,7 @@ import {
   type MenuItemConstructorOptions
 } from "electron";
 import { contentSecurityPolicy } from "../shared/csp";
+import { matchLocale, type Locale } from "../shared/locales";
 import { MEDIA_STREAM_SCHEME } from "../shared/media-hosts";
 import type { EventChannel, IpcEventContract } from "../shared/ipc";
 import type { AppSettings } from "../shared/types";
@@ -272,12 +273,29 @@ function emit<E extends EventChannel>(channel: E, payload: IpcEventContract[E]):
   }
 }
 
-let currentLanguage: "zh-CN" | "en" = "en";
+let currentLanguage: Locale = "en";
+
+/** Text the main process shows itself: edit menus and download notifications. */
+const MAIN_TEXT: Record<Locale, {
+  undo: string;
+  redo: string;
+  cut: string;
+  copy: string;
+  paste: string;
+  selectAll: string;
+  completed: string;
+  failed: string;
+}> = {
+  en: { undo: "Undo", redo: "Redo", cut: "Cut", copy: "Copy", paste: "Paste", selectAll: "Select All", completed: "Download finished", failed: "Download failed" },
+  "zh-CN": { undo: "撤销", redo: "重做", cut: "剪切", copy: "复制", paste: "粘贴", selectAll: "全选", completed: "下载完成", failed: "下载失败" },
+  "zh-TW": { undo: "復原", redo: "重做", cut: "剪下", copy: "複製", paste: "貼上", selectAll: "全選", completed: "下載完成", failed: "下載失敗" },
+  ja: { undo: "元に戻す", redo: "やり直す", cut: "切り取り", copy: "コピー", paste: "貼り付け", selectAll: "すべて選択", completed: "ダウンロード完了", failed: "ダウンロード失敗" }
+};
 
 function applyUiSettings(settings: AppSettings): void {
   nativeTheme.themeSource = settings.ui.theme;
   const resolved = settings.ui.language === "system"
-    ? (app.getLocale().toLowerCase().startsWith("zh") ? "zh-CN" : "en")
+    ? matchLocale([...app.getPreferredSystemLanguages(), app.getLocale()])
     : settings.ui.language;
   if (resolved !== currentLanguage || !Menu.getApplicationMenu()) {
     currentLanguage = resolved;
@@ -287,9 +305,7 @@ function applyUiSettings(settings: AppSettings): void {
 }
 
 function menuLabels() {
-  return currentLanguage === "zh-CN"
-    ? { undo: "撤销", redo: "重做", cut: "剪切", copy: "复制", paste: "粘贴", selectAll: "全选" }
-    : { undo: "Undo", redo: "Redo", cut: "Cut", copy: "Copy", paste: "Paste", selectAll: "Select All" };
+  return MAIN_TEXT[currentLanguage];
 }
 
 /** macOS needs an application menu for standard shortcuts (copy/paste, quit). */
@@ -374,7 +390,7 @@ function electronUpdates(): UpdatePort {
       openPath: async (filePath) => {
         const error = await shell.openPath(filePath);
         if (error) {
-          throw new AppError("UPDATE_INSTALL_FAILED", error);
+          throw new AppError("UPDATE_INSTALL_FAILED", error, { reason: "open" });
         }
       },
       showItemInFolder: (filePath) => shell.showItemInFolder(filePath)
@@ -405,10 +421,7 @@ function electronPlatform(): PlatformPort {
       if (!Notification.isSupported() || owner?.isFocused()) {
         return;
       }
-      const labels = currentLanguage === "zh-CN"
-        ? { completed: "下载完成", failed: "下载失败" }
-        : { completed: "Download finished", failed: "Download failed" };
-      const notification = new Notification({ title: labels[outcome], body: title });
+      const notification = new Notification({ title: MAIN_TEXT[currentLanguage][outcome], body: title });
       // Keep a reference until it's gone, or the click handler can be collected.
       notifications.add(notification);
       const release = () => notifications.delete(notification);

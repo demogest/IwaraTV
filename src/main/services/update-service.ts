@@ -6,7 +6,6 @@ import { createHash } from "node:crypto";
 import { createReadStream } from "node:fs";
 import { mkdir, open, readdir, rename, rm, stat, type FileHandle } from "node:fs/promises";
 import path from "node:path";
-import type { AppErrorCode } from "../../shared/errors";
 import type { UpdateInfo, UpdateInstallKind, UpdateSettings, UpdateState, UpdateStrategy } from "../../shared/types";
 import { AppError, errorMessage, serializeError } from "../lib/app-error";
 import { discardBody, type HttpFetch } from "../lib/http";
@@ -130,7 +129,7 @@ export class UpdateService {
     }
     const { manifest, asset } = this;
     if (!manifest || !asset || this.state.strategy === "none") {
-      return Promise.reject(new AppError("UPDATE_INVALID", "There is no update file to download for this copy of IwaraTV."));
+      return Promise.reject(new AppError("UPDATE_INVALID", "There is no update file to download for this copy of IwaraTV.", { reason: "noFile" }));
     }
     this.downloading = this.runDownload(manifest, asset).finally(() => {
       this.downloading = undefined;
@@ -141,13 +140,13 @@ export class UpdateService {
   async install(): Promise<UpdateState> {
     const { asset, downloadedPath } = this;
     if (this.state.status !== "ready" || !asset || !downloadedPath) {
-      throw new AppError("UPDATE_INVALID", "No downloaded update is ready to install.");
+      throw new AppError("UPDATE_INVALID", "No downloaded update is ready to install.", { reason: "notReady" });
     }
     // The file has been sitting on disk since the download: check it again right before use.
     if (!(await this.verifiedFile(asset))) {
       this.downloadedPath = undefined;
       this.setState({ status: "available" });
-      throw new AppError("UPDATE_INVALID", "The downloaded update changed on disk. Download it again.");
+      throw new AppError("UPDATE_INVALID", "The downloaded update changed on disk. Download it again.", { reason: "changed" });
     }
     try {
       await this.options.install(downloadedPath);
@@ -219,7 +218,7 @@ export class UpdateService {
     }
     if (!response.ok) {
       await discardBody(response);
-      throw new AppError("UPDATE_CHECK_FAILED", `GitHub answered with HTTP ${response.status}.`, { status: response.status });
+      throw new AppError("UPDATE_CHECK_FAILED", `GitHub answered with HTTP ${response.status}.`, { status: response.status, reason: "http" });
     }
     const bytes = await readLimited(response, MAX_MANIFEST_BYTES);
     const manifest = parseManifest(new TextDecoder().decode(bytes));
@@ -230,11 +229,11 @@ export class UpdateService {
       });
       if (!signatureResponse.ok) {
         await discardBody(signatureResponse);
-        throw new AppError("UPDATE_INVALID", "The update information isn't signed.");
+        throw new AppError("UPDATE_INVALID", "The update information isn't signed.", { reason: "unsigned" });
       }
       const signature = new TextDecoder().decode(await readLimited(signatureResponse, 1024));
       if (!verifyManifestSignature(bytes, signature, publicKey)) {
-        throw new AppError("UPDATE_INVALID", "The update information's signature isn't valid.");
+        throw new AppError("UPDATE_INVALID", "The update information's signature isn't valid.", { reason: "signature" });
       }
     }
     return manifest;
@@ -339,16 +338,20 @@ export class UpdateService {
   }
 }
 
-function errorState(error: unknown): { code: AppErrorCode; message: string } {
-  const { code, message } = serializeError(error);
-  return { code, message };
+function errorState(error: unknown): NonNullable<UpdateState["error"]> {
+  const { code, message, details } = serializeError(error);
+  // A plain network failure here means GitHub, not Iwara.
+  if (code === "NETWORK_ERROR") {
+    return { code: "UPDATE_CHECK_FAILED", message, details: { reason: "network" } };
+  }
+  return details ? { code, message, details } : { code, message };
 }
 
 async function readLimited(response: Response, maxBytes: number): Promise<Uint8Array> {
   const declared = Number(response.headers.get("content-length"));
   if (Number.isFinite(declared) && declared > maxBytes) {
     await discardBody(response);
-    throw new AppError("UPDATE_INVALID", "The update information is too large.");
+    throw new AppError("UPDATE_INVALID", "The update information is too large.", { reason: "tooLarge" });
   }
   const chunks: Uint8Array[] = [];
   let total = 0;
@@ -357,7 +360,7 @@ async function readLimited(response: Response, maxBytes: number): Promise<Uint8A
       total += chunk.byteLength;
       if (total > maxBytes) {
         await discardBody(response);
-        throw new AppError("UPDATE_INVALID", "The update information is too large.");
+        throw new AppError("UPDATE_INVALID", "The update information is too large.", { reason: "tooLarge" });
       }
       chunks.push(chunk);
     }
@@ -393,7 +396,7 @@ export async function downloadUpdateFile(options: DownloadUpdateOptions): Promis
   let timer: ReturnType<typeof setTimeout> | undefined;
   const arm = () => {
     clearTimeout(timer);
-    timer = setTimeout(() => stall.abort(new AppError("NETWORK_ERROR", "The update download stalled.")), STALL_TIMEOUT_MS);
+    timer = setTimeout(() => stall.abort(new AppError("UPDATE_CHECK_FAILED", "The update download stalled.", { reason: "stalled" })), STALL_TIMEOUT_MS);
   };
   const signal = options.signal ? AbortSignal.any([options.signal, stall.signal]) : stall.signal;
   let handle: FileHandle | undefined;
@@ -402,7 +405,7 @@ export async function downloadUpdateFile(options: DownloadUpdateOptions): Promis
     const response = await options.fetch(options.url, { signal });
     if (!response.ok || !response.body) {
       await discardBody(response);
-      throw new AppError("UPDATE_CHECK_FAILED", `Downloading the update failed (HTTP ${response.status}).`, { status: response.status });
+      throw new AppError("UPDATE_CHECK_FAILED", `Downloading the update failed (HTTP ${response.status}).`, { status: response.status, reason: "downloadHttp" });
     }
     handle = await open(partial, "w");
     const hash = createHash("sha256");
@@ -411,7 +414,7 @@ export async function downloadUpdateFile(options: DownloadUpdateOptions): Promis
       received += chunk.byteLength;
       if (received > asset.size) {
         await discardBody(response);
-        throw new AppError("UPDATE_INVALID", "The update file is larger than expected.");
+        throw new AppError("UPDATE_INVALID", "The update file is larger than expected.", { reason: "fileSize" });
       }
       hash.update(chunk);
       await handle.write(chunk);
@@ -421,7 +424,7 @@ export async function downloadUpdateFile(options: DownloadUpdateOptions): Promis
     await handle.close();
     handle = undefined;
     if (received !== asset.size || hash.digest("hex") !== asset.sha256) {
-      throw new AppError("UPDATE_INVALID", "The downloaded update doesn't match its checksum.");
+      throw new AppError("UPDATE_INVALID", "The downloaded update doesn't match its checksum.", { reason: "checksum" });
     }
     await rename(partial, target);
   } catch (error) {

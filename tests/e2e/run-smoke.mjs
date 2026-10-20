@@ -387,6 +387,19 @@ try {
     await shot("08-settings");
   });
 
+  await step("switches the interface language", async () => {
+    await page.locator(".settings__nav").getByRole("button", { name: "General" }).click();
+    const language = view.getByRole("combobox", { name: "Language" });
+    await language.selectOption("ja");
+    await page.locator(".sidebar").getByRole("button", { name: "ブラウズ", exact: true }).waitFor();
+    expect(await page.evaluate(() => document.documentElement.lang) === "ja", "html lang is not ja");
+    await shot("08b-settings-ja");
+    await view.getByRole("combobox", { name: "言語" }).selectOption("zh-TW");
+    await page.locator(".sidebar").getByRole("button", { name: "瀏覽", exact: true }).waitFor();
+    await view.getByRole("combobox", { name: "語言" }).selectOption("en");
+    await page.locator(".sidebar").getByRole("button", { name: "Browse", exact: true }).waitFor();
+  });
+
   await step("finds, verifies and downloads a signed update", async () => {
     await page.locator(".settings__nav").getByRole("button", { name: "Updates" }).click();
     await view.getByText("Only releases signed with the key built into this app").waitFor();

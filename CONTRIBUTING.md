@@ -17,7 +17,7 @@ IwaraTV is an Electron app built with electron-vite:
   - `services/` — `iwara-client` (API, file lists, comments, follows, speed tests), `iwara-session` (the `persist:iwara` browser session, sign-in window, page-context fetch, network capture), `download-manager`, `player-service`, `settings-store`, `favorite-store`, `update-service` (the updater).
   - `lib/` — Electron-free helpers: X-Version, JWT detection, response parsing, file transfer, JSON files, legacy data migration, versions and update manifests/installers.
 - `src/preload/index.ts` — exposes `window.iwaraTV` with allowlisted `invoke` and `on`.
-- `src/renderer` — React UI: `views/`, `components/`, `state/` (app state, navigation, toasts, confirm dialogs), `hooks/`, `i18n/` (`en.ts`, `zh-CN.ts`), `styles/`, and `dev/mock-bridge.ts` for the browser preview.
+- `src/renderer` — React UI: `views/`, `components/`, `state/` (app state, navigation, toasts, confirm dialogs), `hooks/`, `i18n/` (`en.ts`, `zh-CN.ts`, `zh-TW.ts`, `ja.ts`), `styles/`, and `dev/mock-bridge.ts` for the browser preview.
 - `src/shared` — types, the IPC contract (`ipc.ts`), error codes, CSP and helpers shared by both processes.
 - `tests` — Vitest suites; `tests/e2e` — the Playwright smoke test and mock Iwara server.
 - `.github/workflows/build.yml` — CI checks, packaging and release publishing.
@@ -56,7 +56,7 @@ The unit suites cover the Iwara client against a fake fetch, downloads against a
 - Never weaken `webPreferences` (`sandbox`, `contextIsolation`, `nodeIntegration: false`, `webSecurity`), the CSP, the navigation and permission handlers, or the IPC sender check.
 - Keep `src/main/lib` and the services other than `iwara-session` free of Electron imports so they stay unit-testable; pass Electron features in through `SessionPort` and `PlatformPort`.
 - Throw `AppError` with a specific `AppErrorCode`. The renderer maps codes to localized titles, details and recovery actions in `src/renderer/lib/errors.ts`.
-- Add every user-visible string to both `en.ts` and `zh-CN.ts`; the type system and `tests/renderer.test.ts` check keys and placeholders.
+- Add every user-visible string to all four dictionaries (`en.ts`, `zh-CN.ts`, `zh-TW.ts`, `ja.ts`); the type system and `tests/renderer.test.ts` check keys and placeholders. Write whole sentences rather than splicing names into them, because word order and spacing differ between languages. Main-process errors that reach the screen carry a `reason` in their details, translated under `errors.<CODE>.reasons`. Supported locales and system-language matching live in `src/shared/locales.ts`.
 - Keep settings tolerant: `normalizeSettings` merges stored JSON over defaults and clamps values, so old files keep working.
 - Don't log tokens, cookies or signed media URLs; use `safeUrl` for diagnostics.
 

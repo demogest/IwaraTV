@@ -138,7 +138,7 @@ export class PlayerService {
     return new Promise((resolve, reject) => {
       const child = spawn(playerPath, args, { detached: true, stdio: "ignore" });
       child.once("error", (error) => {
-        reject(new AppError("PLAYER_LAUNCH_FAILED", `Could not start the player: ${error.message}`));
+        reject(new AppError("PLAYER_LAUNCH_FAILED", `Could not start the player: ${error.message}`, { reason: "spawn", detail: error.message }));
       });
       child.once("spawn", () => {
         child.unref();

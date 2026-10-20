@@ -296,12 +296,12 @@ export function AppStateProvider({ children, onUiChange }: { children: ReactNode
           }
           return;
         }
-        const player = result.mode === "mpv" ? t("player.mpv") : t("player.external");
+        const player = result.mode === "mpv" ? "mpv" : "external";
         toasts.push({
           tone: "success",
           title: result.fallbackFrom
-            ? t("player.startedFallback", { player, requested: qualityLabel(result.fallbackFrom), quality: qualityLabel(result.format.label) })
-            : t("player.started", { player, quality: qualityLabel(result.format.label) }),
+            ? t(`player.startedFallback.${player}`, { requested: qualityLabel(result.fallbackFrom), quality: qualityLabel(result.format.label) })
+            : t(`player.started.${player}`, { quality: qualityLabel(result.format.label) }),
           detail: result.video.title
         });
       } catch (error) {

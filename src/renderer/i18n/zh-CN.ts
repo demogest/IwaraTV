@@ -228,8 +228,14 @@ export const zhCN: Translation<Dictionary> = {
     builtin: "IwaraTV",
     mpv: "MPV",
     external: "外部播放器",
-    started: "已用 {player} 播放 · {quality}",
-    startedFallback: "已用 {player} 播放 · {requested} 不可用，改用 {quality}",
+    started: {
+      mpv: "已用 MPV 播放 · {quality}",
+      external: "已用外部播放器播放 · {quality}"
+    },
+    startedFallback: {
+      mpv: "已用 MPV 播放 · {requested} 不可用，改用 {quality}",
+      external: "已用外部播放器播放 · {requested} 不可用，改用 {quality}"
+    },
     fallbackHere: "{requested} 不可用，正在播放 {quality}",
     resumed: "从 {time} 继续播放",
     startOver: "从头播放",
@@ -245,7 +251,10 @@ export const zhCN: Translation<Dictionary> = {
     playerErrorHint: "链接可能已过期，或格式不受支持。",
     related: "相关视频",
     moreFrom: "{name} 的更多视频",
-    playIn: "用 {player} 播放",
+    playIn: {
+      mpv: "用 MPV 播放",
+      external: "用外部播放器播放"
+    },
     playOptions: "选择播放器",
     quality: "清晰度",
     download: "下载",

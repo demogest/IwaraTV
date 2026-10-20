@@ -113,7 +113,10 @@ describe("player labels", () => {
     const t = createTranslator("en");
     expect(playLabel("builtin", t)).toBe("Play here");
     expect(playLabel("mpv", t)).toBe("Play in MPV");
-    expect(playLabel("external", t)).toBe("Play in External player");
+    expect(playLabel("external", t)).toBe("Play in external player");
+    const zh = createTranslator("zh-CN");
+    expect(playLabel("mpv", zh)).toBe("用 MPV 播放");
+    expect(playLabel("external", zh)).toBe("用外部播放器播放");
     expect(playerName("builtin", createTranslator("zh-CN"))).toBe("IwaraTV");
   });
 });

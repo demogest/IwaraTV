@@ -225,8 +225,14 @@ export const en = {
     builtin: "IwaraTV",
     mpv: "MPV",
     external: "External player",
-    started: "Playing in {player} · {quality}",
-    startedFallback: "Playing in {player} · {requested} unavailable, using {quality}",
+    started: {
+      mpv: "Playing in MPV · {quality}",
+      external: "Playing in your external player · {quality}"
+    },
+    startedFallback: {
+      mpv: "Playing in MPV · {requested} unavailable, using {quality}",
+      external: "Playing in your external player · {requested} unavailable, using {quality}"
+    },
     fallbackHere: "{requested} isn't available — playing {quality}",
     resumed: "Continuing from {time}",
     startOver: "Start over",
@@ -242,7 +248,10 @@ export const en = {
     playerErrorHint: "The link may have expired, or the format isn't supported.",
     related: "Related videos",
     moreFrom: "More from {name}",
-    playIn: "Play in {player}",
+    playIn: {
+      mpv: "Play in MPV",
+      external: "Play in external player"
+    },
     playOptions: "Choose player",
     quality: "Quality",
     download: "Download",

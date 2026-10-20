@@ -16,6 +16,7 @@ import { findJwt, findToken, findUsernameInStorageValue, isJwtExpired, isLikelyJ
 import { mergeJson } from "../src/main/lib/json-file";
 import { serializeError, AppError } from "../src/main/lib/app-error";
 import { buildXVersion, extractXVersionSaltFromScript, scriptUrlsFromHtml } from "../src/main/lib/x-version";
+import { thumbnailFrameUrl } from "../src/shared/thumbnails";
 import { makeJwt, rawVideo } from "./helpers";
 
 describe("X-Version", () => {
@@ -96,6 +97,8 @@ describe("Iwara response mapping", () => {
     });
     // The selected frame, not always thumbnail-00 as before.
     expect(video.thumbnailUrl).toBe("https://i.iwara.tv/image/thumbnail/a283691e-4be7-4f7b-9f90-11a922a06fb6/thumbnail-09.jpg");
+    expect(video.thumbnailFramesBase).toBe("https://i.iwara.tv/image/thumbnail/a283691e-4be7-4f7b-9f90-11a922a06fb6/");
+    expect(thumbnailFrameUrl(video.thumbnailFramesBase!, 3)).toBe(`${video.thumbnailFramesBase}thumbnail-03.jpg`);
     expect(video.uploaderAvatarUrl).toBe(
       "https://i.iwara.tv/image/avatar/1511e132-d973-4181-8e1e-e3e8aadadc6d/1511e132-d973-4181-8e1e-e3e8aadadc6d.jpg"
     );

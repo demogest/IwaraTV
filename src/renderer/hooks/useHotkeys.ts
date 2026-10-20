@@ -4,6 +4,9 @@ export interface Hotkeys {
   focusSearch(): void;
   back(): void;
   openSettings(): void;
+  /** Ctrl/⌘+1…6 → the sidebar sections in order. */
+  goToSection(index: number): void;
+  showShortcuts(): void;
 }
 
 function isTyping(target: EventTarget | null): boolean {
@@ -13,7 +16,8 @@ function isTyping(target: EventTarget | null): boolean {
 
 /**
  * Global shortcuts: `/` or Ctrl/⌘+K focuses search, Ctrl/⌘+, opens settings,
- * Esc / Alt+← / the mouse back button go back.
+ * Ctrl/⌘+1…6 switch sections, `?` lists shortcuts, Esc / Alt+← / the mouse
+ * back button go back.
  */
 export function useHotkeys(handlers: Hotkeys): void {
   const ref = useRef(handlers);
@@ -32,7 +36,18 @@ export function useHotkeys(handlers: Hotkeys): void {
         ref.current.openSettings();
         return;
       }
-      if ((event.altKey && event.key === "ArrowLeft") || (event.key === "Escape" && !isTyping(event.target) && !document.querySelector("dialog[open]"))) {
+      if (mod && !event.shiftKey && !event.altKey && /^[1-6]$/.test(event.key)) {
+        event.preventDefault();
+        ref.current.goToSection(Number(event.key) - 1);
+        return;
+      }
+      if (event.key === "?" && !mod && !isTyping(event.target) && !document.querySelector("dialog[open]")) {
+        event.preventDefault();
+        ref.current.showShortcuts();
+        return;
+      }
+      const blocked = Boolean(document.querySelector("dialog[open]") || document.fullscreenElement);
+      if ((event.altKey && event.key === "ArrowLeft" && !isTyping(event.target)) || (event.key === "Escape" && !isTyping(event.target) && !blocked)) {
         ref.current.back();
       }
     };

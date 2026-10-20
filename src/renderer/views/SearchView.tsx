@@ -12,6 +12,7 @@ import { useVideoList } from "../hooks/useVideoList";
 import { useI18n } from "../i18n";
 import { useAppState } from "../state/app-state";
 import { useNavigation } from "../state/navigation";
+import { addRecentSearch } from "../lib/recent-searches";
 
 type SearchSort = Extract<VideoSort, "relevance" | "date" | "views" | "likes">;
 
@@ -26,6 +27,9 @@ export function SearchView({ active }: { active: boolean }) {
   const [page, setPage] = useState(0);
   const inputRef = useRef<HTMLInputElement>(null);
   const contentRef = useRef<HTMLDivElement>(null);
+
+  // Remember what was searched for the top bar's suggestions.
+  useEffect(() => addRecentSearch(query), [query]);
 
   const searchRequest = navigation.searchRequest;
   useEffect(() => {

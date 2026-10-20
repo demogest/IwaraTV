@@ -1,8 +1,10 @@
 import { CircleCheck, Download, Eye, Film, Heart, Play, Star } from "lucide-react";
-import { memo } from "react";
+import { memo, useEffect, useRef, useState } from "react";
+import { PREVIEW_FRAME_COUNT, thumbnailFrameUrl } from "../../shared/thumbnails";
 import type { VideoSummary } from "../../shared/types";
 import { useI18n } from "../i18n";
 import { compactNumber, formatDuration, relativeTime } from "../lib/format";
+import { playLabel } from "../lib/player";
 import { useAppState } from "../state/app-state";
 import { useNavigationActions } from "../state/navigation";
 import { Avatar, Spinner } from "./primitives";
@@ -11,9 +13,81 @@ interface VideoCardProps {
   video: VideoSummary;
   /** Hide the author link (e.g. on the author's own page). */
   hideAuthor?: boolean;
+  /** Quick play continues in the built-in player (Continue watching). */
+  resume?: boolean;
 }
 
-function VideoCardView({ video, hideAuthor }: VideoCardProps) {
+const HOVER_DELAY_MS = 350;
+const FRAME_INTERVAL_MS = 650;
+
+function prefersReducedMotion(): boolean {
+  return window.matchMedia?.("(prefers-reduced-motion: reduce)").matches ?? false;
+}
+
+/**
+ * Cycles Iwara's preview frames while the pointer rests on a card. Each frame
+ * is decoded before it is shown, so there is no blank flash; a frame that
+ * fails to load ends the cycle, so videos with fewer frames still work.
+ */
+function useFramePreview(base: string | undefined) {
+  const [frame, setFrame] = useState<number>();
+  const count = useRef(PREVIEW_FRAME_COUNT);
+  const timer = useRef<number | undefined>(undefined);
+  const running = useRef(false);
+
+  const stop = () => {
+    running.current = false;
+    window.clearTimeout(timer.current);
+    setFrame(undefined);
+  };
+  const start = () => {
+    if (!base || running.current || prefersReducedMotion()) {
+      return;
+    }
+    running.current = true;
+    let shown = -1;
+    const advance = (delay: number) => {
+      const next = (shown + 1) % count.current;
+      const image = new Image();
+      image.referrerPolicy = "no-referrer";
+      image.src = thumbnailFrameUrl(base, next);
+      const decoded = image.decode();
+      timer.current = window.setTimeout(() => {
+        decoded.then(
+          () => {
+            if (running.current) {
+              shown = next;
+              setFrame(next);
+              advance(FRAME_INTERVAL_MS);
+            }
+          },
+          () => {
+            if (!running.current) {
+              return;
+            }
+            if (next === 0) {
+              stop();
+            } else {
+              // Fewer frames than expected: loop over the ones that exist.
+              count.current = next;
+              shown = -1;
+              advance(0);
+            }
+          }
+        );
+      }, delay);
+    };
+    advance(HOVER_DELAY_MS);
+  };
+  useEffect(() => () => {
+    running.current = false;
+    window.clearTimeout(timer.current);
+  }, []);
+
+  return { frame, count: count.current, src: base && frame !== undefined ? thumbnailFrameUrl(base, frame) : undefined, start, stop };
+}
+
+function VideoCardView({ video, hideAuthor, resume }: VideoCardProps) {
   const { t, locale } = useI18n();
   const app = useAppState();
   const navigation = useNavigationActions();
@@ -34,13 +108,22 @@ function VideoCardView({ video, hideAuthor }: VideoCardProps) {
       })
     : undefined;
   const age = relativeTime(video.createdAt, locale);
+  const preview = useFramePreview(video.thumbnailFramesBase);
+  const progress = app.watchProgress(video.id);
+  const playMode = resume ? "builtin" : app.settings.player.preferredMode;
 
   return (
     <article className="video-card">
-      <div className="video-card__media">
+      <div className="video-card__media" onMouseEnter={preview.start} onMouseLeave={preview.stop}>
         <button aria-label={video.title} className="video-card__thumb" onClick={open} tabIndex={-1} type="button">
-          {video.thumbnailUrl ? (
-            <img alt="" decoding="async" loading="lazy" referrerPolicy="no-referrer" src={video.thumbnailUrl} />
+          {video.thumbnailUrl || preview.src ? (
+            <img
+              alt=""
+              decoding="async"
+              loading="lazy"
+              referrerPolicy="no-referrer"
+              src={preview.src ?? video.thumbnailUrl}
+            />
           ) : (
             <span className="video-card__placeholder">
               <Film aria-hidden="true" size={28} />
@@ -57,6 +140,15 @@ function VideoCardView({ video, hideAuthor }: VideoCardProps) {
         </div>
         {video.durationSeconds ? (
           <span className="video-card__duration">{formatDuration(video.durationSeconds)}</span>
+        ) : null}
+        {preview.frame !== undefined ? (
+          <span aria-hidden="true" className="video-card__frames">
+            <span style={{ width: `${((preview.frame + 1) / preview.count) * 100}%` }} />
+          </span>
+        ) : progress ? (
+          <span aria-hidden="true" className="watch-progress">
+            <span style={{ width: `${Math.round(progress * 100)}%` }} />
+          </span>
         ) : null}
         <div className="video-card__actions">
           <button
@@ -85,14 +177,14 @@ function VideoCardView({ video, hideAuthor }: VideoCardProps) {
         </div>
         <button
           aria-busy={playing}
-          aria-label={t("video.playIn", { player: app.settings.player.preferredMode === "mpv" ? t("player.mpv") : t("player.external") })}
+          aria-label={resume ? t("history.resume") : playLabel(playMode, t)}
           className="video-card__play"
           disabled={playing}
-          onClick={() => void app.play(video)}
+          onClick={() => void app.play(video, resume ? { mode: "builtin" } : undefined)}
           type="button"
         >
           {playing ? <Spinner size={14} /> : <Play aria-hidden="true" fill="currentColor" size={14} />}
-          {t("video.play")}
+          {resume ? t("history.resume") : t("video.play")}
         </button>
       </div>
       <div className="video-card__body" style={hideAuthor ? { gridTemplateColumns: "minmax(0, 1fr)" } : undefined}>
@@ -136,11 +228,11 @@ function VideoCardView({ video, hideAuthor }: VideoCardProps) {
 
 export const VideoCard = memo(VideoCardView);
 
-export function VideoGrid({ videos, hideAuthor }: { videos: VideoSummary[]; hideAuthor?: boolean }) {
+export function VideoGrid({ videos, hideAuthor, resume, className }: { videos: VideoSummary[]; hideAuthor?: boolean; resume?: boolean; className?: string }) {
   return (
-    <div className="video-grid">
+    <div className={className ? `video-grid ${className}` : "video-grid"}>
       {videos.map((video) => (
-        <VideoCard hideAuthor={hideAuthor} key={video.id} video={video} />
+        <VideoCard hideAuthor={hideAuthor} key={video.id} resume={resume} video={video} />
       ))}
     </div>
   );

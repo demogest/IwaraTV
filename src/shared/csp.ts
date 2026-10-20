@@ -1,3 +1,5 @@
+import { MEDIA_STREAM_SCHEME } from "./media-hosts";
+
 // Content-Security-Policy for the app renderer. Remote Iwara pages never run
 // in the app renderer; they live in separate, isolated windows.
 export function contentSecurityPolicy({ dev }: { dev: boolean }): string {
@@ -8,7 +10,8 @@ export function contentSecurityPolicy({ dev }: { dev: boolean }): string {
     "img-src": ["'self'", "data:", "blob:", "https://*.iwara.tv"],
     "font-src": ["'self'", "data:"],
     "connect-src": dev ? ["'self'", "ws://127.0.0.1:*", "http://127.0.0.1:*"] : ["'self'"],
-    "media-src": ["'none'"],
+    // Video only from the main process's stream proxy, never straight from the network.
+    "media-src": [`${MEDIA_STREAM_SCHEME}:`],
     "object-src": ["'none'"],
     "base-uri": ["'none'"],
     "form-action": ["'none'"]

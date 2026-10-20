@@ -4,6 +4,7 @@ import type {
   AppSettings,
   AuthorFollowRequest,
   AuthorFollowResult,
+  AppNavigateRequest,
   AuthState,
   DownloadDeleteRequest,
   DownloadState,
@@ -17,6 +18,7 @@ import type {
   ListCommentsRequest,
   ListVideosRequest,
   MediaSpeedTestReport,
+  PlaybackProgress,
   PlayerDiagnostics,
   PlayerProbe,
   PlayRequest,
@@ -47,6 +49,7 @@ export interface IpcInvokeContract {
   "iwara:set-author-following": { args: [request: AuthorFollowRequest]; result: AuthorFollowResult };
   "iwara:sniff-x-version-salt": { args: []; result: XVersionSaltReport };
   "iwara:speed-test-video": { args: [idOrUrl: string]; result: MediaSpeedTestReport };
+  "iwara:list-related": { args: [videoId: string]; result: VideoSummary[] };
 
   "downloads:list": { args: []; result: DownloadState };
   "downloads:start": { args: [request: DownloadVideoRequest]; result: DownloadTask };
@@ -69,6 +72,7 @@ export interface IpcInvokeContract {
   "player:play": { args: [request: PlayRequest]; result: PlayResult };
   "player:probe": { args: []; result: PlayerDiagnostics };
   "player:test-mpv": { args: []; result: PlayerProbe };
+  "player:report-progress": { args: [progress: PlaybackProgress]; result: void };
 
   "settings:get": { args: []; result: AppSettings };
   "settings:update": { args: [patch: SettingsPatch]; result: AppSettings };
@@ -82,6 +86,8 @@ export interface IpcInvokeContract {
   "system:open-external": { args: [url: string]; result: void };
   "system:write-clipboard": { args: [text: string]; result: void };
   "system:app-info": { args: []; result: AppInfo };
+  /** The Iwara video ID from a link on the clipboard, if there is one (nothing else is read back). */
+  "system:clipboard-video": { args: []; result: string | undefined };
 }
 
 /** Push events sent from the main process to the app window. */
@@ -90,6 +96,8 @@ export interface IpcEventContract {
   "auth:changed": AuthState;
   "settings:changed": AppSettings;
   "favorites:changed": FavoriteState;
+  /** Asks the window to show a section, e.g. after clicking a notification. */
+  "app:navigate": AppNavigateRequest;
 }
 
 export type InvokeChannel = keyof IpcInvokeContract;
@@ -111,6 +119,7 @@ const invokeChannelRecord = {
   "iwara:set-author-following": true,
   "iwara:sniff-x-version-salt": true,
   "iwara:speed-test-video": true,
+  "iwara:list-related": true,
   "downloads:list": true,
   "downloads:start": true,
   "downloads:retry": true,
@@ -130,6 +139,7 @@ const invokeChannelRecord = {
   "player:play": true,
   "player:probe": true,
   "player:test-mpv": true,
+  "player:report-progress": true,
   "settings:get": true,
   "settings:update": true,
   "auth:state": true,
@@ -139,14 +149,16 @@ const invokeChannelRecord = {
   "system:select-directory": true,
   "system:open-external": true,
   "system:write-clipboard": true,
-  "system:app-info": true
+  "system:app-info": true,
+  "system:clipboard-video": true
 } as const satisfies Record<InvokeChannel, true>;
 
 const eventChannelRecord = {
   "downloads:changed": true,
   "auth:changed": true,
   "settings:changed": true,
-  "favorites:changed": true
+  "favorites:changed": true,
+  "app:navigate": true
 } as const satisfies Record<EventChannel, true>;
 
 export const INVOKE_CHANNELS = Object.keys(invokeChannelRecord) as InvokeChannel[];

@@ -9,7 +9,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { _electron as electron } from "playwright-core";
 import electronPath from "electron";
-import { MEDIA_SHA256, MEDIA_SIZE, MOCK_SALT, VIDEOS, VIEWER, startMockIwara } from "./mock-iwara.mjs";
+import { MEDIA_SHA256, MEDIA_SIZE, MOCK_SALT, PLAYABLE_VIDEO_INDEX, VIDEOS, VIEWER, startMockIwara } from "./mock-iwara.mjs";
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..");
 const shots = path.join(root, "test-results", "e2e");
@@ -143,6 +143,31 @@ try {
     await shot("02-search");
   });
 
+  await step("previews frames when hovering a card", async () => {
+    await view.locator(".video-card__media").first().hover();
+    await view.locator(".video-card__frames").first().waitFor({ timeout: 5_000 });
+    const src = await view.locator(".video-card__thumb img").first().getAttribute("src");
+    expect(/\/image\/thumbnail\/file-\d+\/thumbnail-\d\d\.jpg$/.test(src ?? ""), `frame src ${src}`);
+    await page.mouse.move(5, 5);
+    await view.locator(".video-card__frames").first().waitFor({ state: "detached", timeout: 5_000 });
+  });
+
+  await step("suggests recent searches in the top bar", async () => {
+    await page.keyboard.press("Control+k");
+    await page.keyboard.press("Backspace");
+    await page.locator(".omnibox__option", { hasText: "neon" }).waitFor({ timeout: 5_000 });
+    await page.locator(".omnibox__option", { hasText: "Clear recent searches" }).waitFor();
+    await page.keyboard.press("Escape");
+  });
+
+  await step("shows the keyboard shortcuts", async () => {
+    await page.keyboard.press("Shift+?");
+    await page.locator(".shortcuts").getByText("Keyboard shortcuts").waitFor({ timeout: 5_000 });
+    await shot("02b-shortcuts");
+    await page.keyboard.press("Escape");
+    await page.locator(".shortcuts").waitFor({ state: "detached", timeout: 5_000 });
+  });
+
   const video = VIDEOS[3];
   await step("opens a pasted video link after detecting the X-Version salt", async () => {
     await page.keyboard.press("Control+k");
@@ -159,7 +184,8 @@ try {
   });
 
   await step("plays in MPV with the Iwara referrer", async () => {
-    await view.getByRole("button", { name: "Play in MPV" }).last().click();
+    await view.getByRole("button", { name: "Choose player" }).click();
+    await page.getByRole("menuitem", { name: "Play in MPV" }).click();
     await toast("Playing in MPV");
     const args = (await waitFor(() => existsSync(mpvLog) && readFileSync(mpvLog, "utf8"), "MPV to start")).trim().split("\n");
     expect(args.includes("--referrer=https://www.iwara.tv/"), `args ${args}`);
@@ -186,6 +212,71 @@ try {
     expect(ranged.length >= 2, `expected segmented download, saw ${ranged.length} ranged requests`);
     expect(ranged.every((request) => request.headers.referer === "https://www.iwara.tv/"), "media requests need the Iwara referrer");
     await shot("04-downloads");
+  });
+
+  const playable = VIDEOS[PLAYABLE_VIDEO_INDEX];
+  const player = view.locator("video.player__video");
+  const playerState = () => player.evaluate((element) => ({ time: element.currentTime, ready: element.readyState, paused: element.paused, error: element.error?.code }));
+  await step("plays in the built-in player with related videos alongside", async () => {
+    await page.keyboard.press("Control+k");
+    await page.keyboard.type(playable.id);
+    await page.keyboard.press("Enter");
+    await view.locator(".quality-picker").waitFor({ timeout: 20_000 });
+    await view.locator(".side-list", { hasText: "Related videos" }).locator(".video-row").first().waitFor({ timeout: 10_000 });
+    await view.locator(".side-list", { hasText: `More from ${playable.user.name}` }).locator(".video-row").first().waitFor();
+
+    await view.getByRole("button", { name: "Play here" }).first().click();
+    await waitFor(async () => {
+      const state = await playerState().catch(() => undefined);
+      expect(!state?.error, `media error ${state?.error}`);
+      return state && state.ready >= 2 && state.time > 0.3;
+    }, "the built-in player to start playing", 20_000);
+    const streamed = mock.state.requests.filter((request) => request.path.startsWith("/download/source") && request.headers.range);
+    expect(streamed.length > 0, "the stream should reach the CDN with Range requests");
+    expect(streamed.every((request) => request.headers.referer === "https://www.iwara.tv/"), "stream requests need the Iwara referrer");
+    await shot("04b-player");
+
+    // Fullscreen is the one permission the app window gets.
+    await page.keyboard.press("f");
+    await waitFor(() => page.evaluate(() => Boolean(document.fullscreenElement)), "fullscreen");
+    await page.keyboard.press("f");
+    await waitFor(() => page.evaluate(() => !document.fullscreenElement), "leaving fullscreen");
+  });
+
+  await step("remembers the position and resumes", async () => {
+    await player.evaluate((element) => {
+      element.currentTime = 30;
+    });
+    await waitFor(async () => (await playerState()).time >= 30, "seeking to 0:30");
+    await page.keyboard.press("k");
+    await waitFor(async () => (await playerState()).paused, "pausing with K");
+    await waitFor(() => {
+      const history = JSON.parse(readFileSync(path.join(userData, "settings.json"), "utf8")).history;
+      const entry = history.find((item) => item.video.id === playable.id);
+      return entry?.positionSeconds >= 29 && entry.durationSeconds === 60;
+    }, "the saved position");
+
+    await view.getByRole("button", { name: "Close player" }).click();
+    await view.locator(".hero .watch-progress").waitFor();
+    await view.getByRole("button", { name: "Play here" }).first().click();
+    await toast("Continuing from 0:3");
+    await waitFor(async () => {
+      const state = await playerState().catch(() => undefined);
+      return state && state.time >= 29;
+    }, "resuming at the saved position", 20_000);
+    await page.keyboard.press("k");
+  });
+
+  await step("offers to continue watching on Browse", async () => {
+    await nav("Browse");
+    await view.locator(".shelf .video-card__title", { hasText: playable.title }).waitFor({ timeout: 5_000 });
+    await view.locator(".shelf .watch-progress").first().waitFor();
+    await shot("01b-continue-watching");
+    // Leaving the video ended playback, so reopening it shows the page, not a running player.
+    await view.locator(".shelf .video-card__title", { hasText: playable.title }).click();
+    await view.locator(".hero .watch-progress").waitFor();
+    expect((await player.count()) === 0, "the player should not restart on its own");
+    await page.keyboard.press("Escape");
   });
 
   await step("lists favorites and history", async () => {

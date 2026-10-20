@@ -1,9 +1,11 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { createTranslator, resolveLocale, type TranslationKey } from "../src/renderer/i18n";
 import { en } from "../src/renderer/i18n/en";
 import { zhCN } from "../src/renderer/i18n/zh-CN";
 import { describeErrorCode } from "../src/renderer/lib/errors";
 import { formatBytes, formatDuration, formatRemaining, qualityLabel, relativeTime } from "../src/renderer/lib/format";
+import { playLabel, playerName } from "../src/renderer/lib/player";
+import { addRecentSearch, clearRecentSearches, readRecentSearches, removeRecentSearch } from "../src/renderer/lib/recent-searches";
 import { APP_ERROR_CODES } from "../src/shared/errors";
 
 type Tree = { [key: string]: string | Tree };
@@ -102,5 +104,38 @@ describe("format helpers", () => {
     expect(qualityLabel("540")).toBe("540p");
     expect(qualityLabel("Source")).toBe("Source");
     expect(qualityLabel("preview")).toBe("Preview");
+  });
+});
+
+describe("player labels", () => {
+  it("names each player mode", () => {
+    const t = createTranslator("en");
+    expect(playLabel("builtin", t)).toBe("Play here");
+    expect(playLabel("mpv", t)).toBe("Play in MPV");
+    expect(playLabel("external", t)).toBe("Play in External player");
+    expect(playerName("builtin", createTranslator("zh-CN"))).toBe("IwaraTV");
+  });
+});
+
+describe("recent searches", () => {
+  afterEach(() => vi.unstubAllGlobals());
+
+  it("keeps the latest eight unique searches", () => {
+    const store = new Map<string, string>();
+    vi.stubGlobal("localStorage", { getItem: (key: string) => store.get(key) ?? null, setItem: (key: string, value: string) => store.set(key, value) });
+    for (const query of ["a", "b", "A ", "  ", "c", "d", "e", "f", "g", "h", "i"]) {
+      addRecentSearch(query);
+    }
+    expect(readRecentSearches()).toEqual(["i", "h", "g", "f", "e", "d", "c", "A"]);
+    removeRecentSearch("g");
+    expect(readRecentSearches()).not.toContain("g");
+    clearRecentSearches();
+    expect(readRecentSearches()).toEqual([]);
+  });
+
+  it("works without storage", () => {
+    vi.stubGlobal("localStorage", { getItem: () => { throw new Error("denied"); }, setItem: () => { throw new Error("denied"); } });
+    expect(() => addRecentSearch("x")).not.toThrow();
+    expect(readRecentSearches()).toEqual([]);
   });
 });

@@ -48,7 +48,7 @@ npm run test:e2e        # Linux：xvfb-run -a npm run test:e2e
 npm run check:release
 ```
 
-单元测试覆盖：基于假 fetch 的 Iwara 客户端、基于本地 Range 服务器的下载、各存储、播放器服务、IPC 参数校验、翻译，以及静态边界/安全规则（`tests/boundaries.test.ts`）。冒烟测试会构建应用，并针对 `tests/e2e/mock-iwara.mjs` 依次验证浏览、搜索、播放（使用 MPV 替身）、下载、收藏、登录、订阅、关注、评论、设置和退出登录，截图保存在 `test-results/e2e/`。设置 `IWARATV_E2E_EXECUTABLE` 可针对打包后的应用运行（仅适用于未关闭调试器 fuse 的构建，因为 Playwright 依赖它连接）。
+单元测试覆盖：基于假 fetch 的 Iwara 客户端、基于本地 Range 服务器的下载、各存储、播放器服务、IPC 参数校验、翻译，以及静态边界/安全规则（`tests/boundaries.test.ts`）。冒烟测试会构建应用，并针对 `tests/e2e/mock-iwara.mjs` 依次验证浏览、悬停预览、搜索与最近搜索、快捷键列表、MPV 播放（使用 MPV 替身）、使用真实片段（`tests/e2e/fixtures/sample.mp4`）的内置播放器（含全屏、续播和继续观看）、相关视频、下载、收藏、登录、订阅、关注、评论、设置和退出登录，截图保存在 `test-results/e2e/`。设置 `IWARATV_E2E_EXECUTABLE` 可针对打包后的应用运行（仅适用于未关闭调试器 fuse 的构建，因为 Playwright 依赖它连接）。
 
 ## 编码约定
 

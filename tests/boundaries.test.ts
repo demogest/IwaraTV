@@ -109,6 +109,8 @@ describe("Electron hardening", () => {
       expect(source).toContain('"will-navigate"');
     }
     expect(main).toContain("requestSingleInstanceLock");
+    // The app window may only go fullscreen (the player); nothing else is granted.
+    expect(main).toMatch(/callback\(permission === "fullscreen" && Boolean\(mainWindow\) && contents === mainWindow\?\.webContents\)/);
     expect(main).toContain("isTrustedSender");
   });
 
@@ -157,6 +159,8 @@ describe("Electron hardening", () => {
     expect(policy).toContain("object-src 'none'");
     expect(policy).toContain("connect-src 'self'");
     expect(policy).toContain("base-uri 'none'");
+    // Video only through the main process's stream proxy.
+    expect(policy).toContain("media-src iwara-media:");
     expect(contentSecurityPolicy({ dev: true })).not.toContain("unsafe-eval");
   });
 });

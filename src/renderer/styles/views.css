@@ -278,10 +278,7 @@
   min-width: 0;
 }
 
-.video-page__side {
-  position: sticky;
-  top: var(--space-2);
-}
+
 
 .hero {
   position: relative;
@@ -961,6 +958,299 @@
 .ranking li:first-child .ranking__index {
   background: var(--color-accent);
   color: var(--color-on-accent);
+}
+
+/* ------------------------------------------------------------ Built-in player */
+
+.player {
+  position: relative;
+  overflow: hidden;
+  border-radius: var(--radius-lg);
+  background: #000;
+  aspect-ratio: 16 / 9;
+  box-shadow: var(--shadow-2);
+}
+
+.player__video {
+  display: block;
+  width: 100%;
+  height: 100%;
+  background: #000;
+}
+
+.player__close {
+  position: absolute;
+  top: var(--space-3);
+  right: var(--space-3);
+  display: grid;
+  width: 34px;
+  height: 34px;
+  place-items: center;
+  border: 0;
+  border-radius: var(--radius-full);
+  background: rgb(0 0 0 / 55%);
+  color: #fff;
+  cursor: pointer;
+  opacity: 0;
+  transition: opacity var(--duration-fast) var(--ease-out), background-color var(--duration-fast) var(--ease-out);
+}
+
+.player:hover .player__close,
+.player__close:focus-visible {
+  opacity: 1;
+}
+
+.player__close:hover {
+  background: rgb(0 0 0 / 80%);
+}
+
+.player__error {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  align-content: center;
+  justify-items: center;
+  gap: var(--space-2);
+  padding: var(--space-6);
+  background: rgb(0 0 0 / 78%);
+  color: #fff;
+  text-align: center;
+}
+
+.player__error span {
+  color: rgb(255 255 255 / 72%);
+  font-size: var(--text-sm);
+}
+
+.player__error .button {
+  margin-top: var(--space-2);
+}
+
+/* Watched fraction (cards, rows, hero) and the hover frame indicator. */
+.watch-progress,
+.video-card__frames {
+  position: absolute;
+  right: 0;
+  bottom: 0;
+  left: 0;
+  z-index: 2;
+  height: 3px;
+  background: rgb(255 255 255 / 28%);
+  pointer-events: none;
+}
+
+.watch-progress > span,
+.video-card__frames > span {
+  display: block;
+  height: 100%;
+  background: var(--color-accent);
+}
+
+.video-card__frames > span {
+  background: #fff;
+  transition: width var(--duration-fast) linear;
+}
+
+.watch-progress--hero {
+  height: 4px;
+}
+
+/* ------------------------------------------------------------ Side lists */
+
+.side-list {
+  display: grid;
+  gap: var(--space-3);
+  min-width: 0;
+}
+
+.side-list__title {
+  margin: 0;
+  color: var(--color-text);
+  font-size: var(--text-md);
+  font-weight: 650;
+}
+
+.side-list__items {
+  display: grid;
+  gap: var(--space-2);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.video-row__link {
+  display: grid;
+  grid-template-columns: 148px minmax(0, 1fr);
+  gap: var(--space-3);
+  width: 100%;
+  padding: var(--space-1);
+  border: 0;
+  border-radius: var(--radius-md);
+  background: none;
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.video-row__link:hover {
+  background: var(--color-surface-hover);
+}
+
+.video-row__thumb {
+  position: relative;
+  display: grid;
+  overflow: hidden;
+  place-items: center;
+  border-radius: var(--radius-sm);
+  background: var(--color-bg);
+  color: var(--color-text-subtle);
+  aspect-ratio: 16 / 9;
+}
+
+.video-row__thumb img {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.video-row__duration {
+  position: absolute;
+  right: 4px;
+  bottom: 5px;
+  z-index: 3;
+  padding: 0 4px;
+  border-radius: 4px;
+  background: rgb(0 0 0 / 76%);
+  color: #fff;
+  font-size: 10.5px;
+  font-weight: 650;
+  font-variant-numeric: tabular-nums;
+}
+
+.video-row__text {
+  display: grid;
+  align-content: start;
+  gap: 3px;
+  min-width: 0;
+}
+
+.video-row__title {
+  display: -webkit-box;
+  overflow: hidden;
+  color: var(--color-text);
+  font-size: var(--text-sm);
+  font-weight: 600;
+  line-height: 1.35;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+}
+
+.video-row__meta {
+  display: flex;
+  overflow: hidden;
+  align-items: center;
+  gap: 4px;
+  color: var(--color-text-muted);
+  font-size: var(--text-xs);
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+/* ------------------------------------------------------------ Continue watching */
+
+.shelf {
+  display: grid;
+  gap: var(--space-3);
+  margin-bottom: var(--space-6);
+}
+
+.shelf__title {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  margin: 0;
+  font-size: var(--text-md);
+  font-weight: 650;
+}
+
+/* One row only: the first row is explicit, extra cards wrap into zero-height rows and are clipped. */
+.video-grid--shelf {
+  grid-template-rows: auto;
+  grid-auto-rows: 0;
+  row-gap: 0;
+  overflow: hidden;
+}
+
+/* ------------------------------------------------------------ Card size */
+
+.shell[data-density="compact"] .video-grid {
+  grid-template-columns: repeat(auto-fill, minmax(184px, 1fr));
+  gap: var(--space-5) var(--space-3);
+}
+
+.shell[data-density="compact"] .video-card__title {
+  font-size: var(--text-sm);
+}
+
+/* The avatar size is an inline style, so it needs !important to shrink. */
+.shell[data-density="compact"] .video-card__author-avatar .avatar {
+  width: 26px !important;
+  height: 26px !important;
+  font-size: 11px !important;
+}
+
+/* ------------------------------------------------------------ Shortcuts */
+
+.shortcuts__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.shortcuts__group {
+  display: grid;
+  gap: var(--space-2);
+}
+
+.shortcuts__title {
+  margin: var(--space-2) 0 0;
+  color: var(--color-text-muted);
+  font-size: var(--text-xs);
+  font-weight: 650;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.shortcuts__list {
+  display: grid;
+  margin: 0;
+}
+
+.shortcuts__row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-4);
+  padding: 7px 0;
+  border-bottom: 1px solid var(--color-border);
+}
+
+.shortcuts__row:last-child {
+  border-bottom: 0;
+}
+
+.shortcuts__row dt {
+  font-size: var(--text-sm);
+}
+
+.shortcuts__row dd {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: var(--space-1);
+  margin: 0;
 }
 
 /* ------------------------------------------------------------ Responsive */

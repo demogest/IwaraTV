@@ -10,7 +10,8 @@ export const HISTORY_LIMIT = 100;
 export function createDefaultSettings(): AppSettings {
   return {
     player: {
-      preferredMode: "mpv",
+      // Works everywhere without installing anything; MPV and external players are opt-in.
+      preferredMode: "builtin",
       externalPlayerArgs: "{url}",
       preferredQuality: "Source"
     },
@@ -29,7 +30,8 @@ export function createDefaultSettings(): AppSettings {
     download: {
       defaultQuality: "Source",
       maxConnections: 4,
-      minSplitBytes: 16 * 1024 * 1024
+      minSplitBytes: 16 * 1024 * 1024,
+      notifyOnComplete: true
     },
     tagPreferences: {
       followedTags: [],
@@ -40,7 +42,8 @@ export function createDefaultSettings(): AppSettings {
     ui: {
       language: "system",
       theme: "system",
-      rating: "all"
+      rating: "all",
+      density: "comfortable"
     },
     history: []
   };

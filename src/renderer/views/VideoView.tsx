@@ -20,16 +20,19 @@ import {
   UserPlus,
   Wrench
 } from "lucide-react";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { normalizeTag } from "../../shared/tags";
-import type { IwaraVideoDiagnostics, MediaSpeedTestReport, PlayerMode, VideoDetail, VideoFormat } from "../../shared/types";
+import type { IwaraVideoDiagnostics, MediaSpeedTestReport, PlayerMode, VideoDetail, VideoFormat, VideoSummary } from "../../shared/types";
 import { iwaraVideoPageUrl } from "../../shared/video-id";
+import { InlinePlayer } from "../components/InlinePlayer";
 import { ListError } from "../components/ListStatus";
 import { MenuButton } from "../components/MenuButton";
 import { Avatar, Segmented, Spinner, View } from "../components/primitives";
 import { useI18n } from "../i18n";
 import { invoke } from "../lib/api";
 import { compactNumber, formatDate, formatDuration, formatSpeed, qualityLabel } from "../lib/format";
+import { playLabel, PLAYER_MODES } from "../lib/player";
+import { VideoRow, VideoRowSkeleton } from "../components/VideoRow";
 import { useAppState } from "../state/app-state";
 import { useNavigationActions } from "../state/navigation";
 import { useToasts } from "../state/toasts";
@@ -117,6 +120,11 @@ export function VideoView({ active, videoId, title: previewTitle, thumbnailUrl: 
     : (formats.find((format) => format.id === preferred) ?? formats[0])?.id;
   const title = video?.title ?? previewTitle ?? "";
   const thumbnail = video?.thumbnailUrl ?? previewThumbnail;
+  const inline = app.inline?.videoId === videoId ? app.inline : undefined;
+  const playerRef = useRef<HTMLVideoElement | null>(null);
+  const { closeInline } = app;
+  // Leaving the page ends playback; reopening the video starts from the hero again.
+  useEffect(() => () => closeInline(videoId), [closeInline, videoId]);
 
   if (detail.error && !video) {
     return (
@@ -127,14 +135,33 @@ export function VideoView({ active, videoId, title: previewTitle, thumbnailUrl: 
   }
 
   const preferredMode = app.settings.player.preferredMode;
-  const playerName = (mode: PlayerMode) => (mode === "mpv" ? t("player.mpv") : t("player.external"));
   const playing = app.isBusy(`play:${videoId}`);
-  const play = (mode?: PlayerMode) => void app.play({ id: videoId, title }, { quality: selectedQuality, mode });
+  const play = (mode?: PlayerMode, startAt?: number, quality = selectedQuality) =>
+    void app.play({ id: videoId, title, thumbnailUrl: thumbnail }, { quality, mode, startAt });
+  const changeQuality = (next: string) => {
+    setQuality(next);
+    // Switching quality while watching here continues at the same moment.
+    if (inline) {
+      play("builtin", playerRef.current?.currentTime ?? 0, next);
+    }
+  };
 
   return (
     <View active={active} label={title || t("video.loading")}>
       <div className="video-page">
         <div className="video-page__main">
+          {inline ? (
+            <InlinePlayer
+              active={active}
+              label={title}
+              onClose={() => app.closeInline()}
+              onProgress={(position, duration) => app.reportProgress(videoId, position, duration)}
+              onRetry={(position) => play("builtin", position)}
+              playback={inline}
+              poster={thumbnail}
+              ref={playerRef}
+            />
+          ) : (
           <div className="hero">
             {thumbnail && <div aria-hidden="true" className="hero__backdrop" style={{ backgroundImage: `url("${thumbnail}")` }} />}
             {thumbnail ? (
@@ -146,17 +173,19 @@ export function VideoView({ active, videoId, title: previewTitle, thumbnailUrl: 
             )}
             <button
               aria-busy={playing}
-              aria-label={t("video.playIn", { player: playerName(preferredMode) })}
+              aria-label={playLabel(preferredMode, t)}
               className="hero__play"
               disabled={!formats.length || playing}
               onClick={() => play()}
-              title={t("video.playIn", { player: playerName(preferredMode) })}
+              title={playLabel(preferredMode, t)}
               type="button"
             >
               {playing || detail.loading ? <Spinner size={30} /> : <Play aria-hidden="true" fill="currentColor" size={32} />}
             </button>
             {video?.durationSeconds ? <span className="hero__duration">{formatDuration(video.durationSeconds)}</span> : null}
+            <WatchProgress videoId={videoId} />
           </div>
+          )}
 
           <div style={{ display: "grid", gap: 10 }}>
             {title ? <h1 className="video-title">{title}</h1> : <div className="skeleton" style={{ height: 28, width: "70%" }} />}
@@ -184,8 +213,7 @@ export function VideoView({ active, videoId, title: previewTitle, thumbnailUrl: 
 
           <ActionBar
             formats={formats}
-            onPlay={play}
-            playerName={playerName}
+            onPlay={(mode) => play(mode)}
             playing={playing}
             selectedQuality={selectedQuality}
             title={title}
@@ -198,7 +226,7 @@ export function VideoView({ active, videoId, title: previewTitle, thumbnailUrl: 
               <span className="quality-picker__label" id={`quality-${videoId}`}>{t("video.quality")}</span>
               <Segmented
                 label={t("video.quality")}
-                onChange={setQuality}
+                onChange={changeQuality}
                 options={formats.map((format) => ({ value: format.id, label: qualityLabel(format.label) }))}
                 value={selectedQuality ?? ""}
               />
@@ -239,6 +267,7 @@ export function VideoView({ active, videoId, title: previewTitle, thumbnailUrl: 
             />
           )}
           {!video && detail.loading && <p className="subtle">{t("video.loading")}</p>}
+          {video && <RelatedLists active={active} video={video} />}
         </aside>
       </div>
     </View>
@@ -252,7 +281,6 @@ function ActionBar({
   formats,
   selectedQuality,
   playing,
-  playerName,
   onPlay
 }: {
   video?: VideoDetail;
@@ -261,7 +289,6 @@ function ActionBar({
   formats: VideoFormat[];
   selectedQuality?: string;
   playing: boolean;
-  playerName: (mode: PlayerMode) => string;
   onPlay: (mode?: PlayerMode) => void;
 }) {
   const { t } = useI18n();
@@ -277,12 +304,12 @@ function ActionBar({
       <div className="button-group">
         <button className="button button--primary button--lg" disabled={!formats.length || playing} onClick={() => onPlay()} type="button">
           {playing ? <Spinner /> : <Play aria-hidden="true" fill="currentColor" size={16} />}
-          {t("video.playIn", { player: playerName(preferredMode) })}
+          {playLabel(preferredMode, t)}
         </button>
         <MenuButton
           className="button button--primary button--lg button--icon"
-          items={(["mpv", "external"] as PlayerMode[]).map((mode) => ({
-            label: t("video.playIn", { player: playerName(mode) }),
+          items={PLAYER_MODES.map((mode) => ({
+            label: playLabel(mode, t),
             Icon: Play,
             onSelect: () => onPlay(mode),
             disabled: !formats.length
@@ -543,5 +570,81 @@ function Troubleshooting({
         )}
       </div>
     </details>
+  );
+}
+
+/** Thin bar under the hero showing how much was watched in the built-in player. */
+function WatchProgress({ videoId }: { videoId: string }) {
+  const progress = useAppState().watchProgress(videoId);
+  return progress ? (
+    <span aria-hidden="true" className="watch-progress watch-progress--hero">
+      <span style={{ width: `${Math.round(progress * 100)}%` }} />
+    </span>
+  ) : null;
+}
+
+const relatedCache = new Map<string, VideoSummary[]>();
+
+/** Loads once per key while the page is shown; results are kept for back navigation. */
+function useSideList(key: string | undefined, active: boolean, load: () => Promise<VideoSummary[]>) {
+  const [videos, setVideos] = useState<VideoSummary[] | undefined>(() => (key ? relatedCache.get(key) : undefined));
+  const loadRef = useRef(load);
+  loadRef.current = load;
+  useEffect(() => {
+    if (!key || !active || relatedCache.has(key)) {
+      if (key && relatedCache.has(key)) {
+        setVideos(relatedCache.get(key));
+      }
+      return;
+    }
+    let current = true;
+    loadRef.current()
+      .then((result) => {
+        relatedCache.set(key, result);
+        if (current) {
+          setVideos(result);
+        }
+      })
+      // Side lists are extras; a failure just leaves them out.
+      .catch(() => current && setVideos([]));
+    return () => {
+      current = false;
+    };
+  }, [key, active]);
+  return videos;
+}
+
+function RelatedLists({ video, active }: { video: VideoDetail; active: boolean }) {
+  const { t } = useI18n();
+  const authorName = video.uploaderName ?? video.uploaderUsername;
+  const fromAuthor = useSideList(video.uploaderId ? `author:${video.uploaderId}:${video.id}` : undefined, active, async () => {
+    const result = await invoke("iwara:list-videos", { sort: "date", page: 0, userId: video.uploaderId });
+    return result.results.filter((item) => item.id !== video.id).slice(0, 5);
+  });
+  const related = useSideList(`related:${video.id}`, active, async () => (await invoke("iwara:list-related", video.id)).slice(0, 10));
+
+  return (
+    <>
+      {video.uploaderId && authorName && (
+        <SideList title={t("video.moreFrom", { name: authorName })} videos={fromAuthor} />
+      )}
+      <SideList title={t("video.related")} videos={related} />
+    </>
+  );
+}
+
+function SideList({ title, videos }: { title: string; videos?: VideoSummary[] }) {
+  if (videos && !videos.length) {
+    return null;
+  }
+  return (
+    <section aria-label={title} className="side-list">
+      <h2 className="side-list__title">{title}</h2>
+      <ul className="side-list__items">
+        {videos
+          ? videos.map((item) => <VideoRow key={item.id} video={item} />)
+          : Array.from({ length: 3 }, (_, index) => <VideoRowSkeleton key={index} />)}
+      </ul>
+    </section>
   );
 }

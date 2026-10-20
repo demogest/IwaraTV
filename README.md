@@ -14,7 +14,7 @@
   </p>
 </div>
 
-IwaraTV is a desktop app for browsing Iwara.tv and playing videos in MPV or another local player. Browse and search feeds, open any video link, follow authors and tags, comment, keep local favorites and history, and download files with resumable, parallel transfers.
+IwaraTV is a desktop app for browsing Iwara.tv and watching videos in its built-in player, in MPV, or in another local player. Browse and search feeds, open any video link, follow authors and tags, comment, keep local favorites and history, and download files with resumable, parallel transfers.
 
 This project is independently made and is not affiliated with, sponsored by, or endorsed by Iwara.
 
@@ -26,20 +26,22 @@ This project is independently made and is not affiliated with, sponsored by, or 
 
 ## Highlights
 
-- Latest, trending, popular and followed-tag feeds, with tag filters and a content-rating switch.
-- One top bar for everything: type to search, or paste an Iwara link or video ID to open it.
-- Video pages with quality selection, one-click MPV playback, downloads, favorites, author follow, tags and threaded comments.
+- Latest, trending, popular and followed-tag feeds, with tag filters, a content-rating switch, and hover previews that step through frames of each video.
+- One top bar for everything: type to search, paste an Iwara link or video ID to open it, or pick a recent search or a copied link.
+- A built-in player that works out of the box, remembers where you stopped, switches quality without losing your place, and has fullscreen and keyboard controls — or one-click MPV and external players.
+- Video pages with quality selection, downloads, favorites, author follow, tags, threaded comments, more from the author and related videos.
+- Continue watching on the Browse page for videos you haven't finished.
 - Subscriptions from the authors you follow, filterable by author.
 - Local favorites with undo, backup, export and import; playback history grouped by day.
-- A download manager with parallel range requests, resume after cancel or restart, retry, and progress/speed/ETA.
+- A download manager with parallel range requests, resume after cancel or restart, retry, progress/speed/ETA, taskbar progress and completion notifications.
 - Sign in on Iwara's own page in a separate window; the app never sees your password.
-- English and Simplified Chinese, light and dark themes, keyboard shortcuts, collapsible sidebar.
+- English and Simplified Chinese, light and dark themes, large or compact cards, keyboard shortcuts (press `?`), collapsible sidebar.
 - Troubleshooting tools: compare formats with the website, speed-test CDN hosts, refresh the X-Version salt.
 
 ## Requirements
 
 - Node.js 24.14.1+ and npm 11.11.0+ (see `.node-version`).
-- MPV for playback (bundled in Windows release builds), or another player configured in Settings.
+- Nothing extra for playback: the built-in player works everywhere. MPV is optional (bundled in Windows release builds).
 
 ## Development
 
@@ -81,9 +83,9 @@ Windows builds produce `IwaraTV_<version>_x64-setup.exe`, `IwaraTV_<version>_x64
 - `src/shared` — types, the IPC contract, error codes and helpers used by both sides.
 - `tests` — unit, boundary and security tests; `tests/e2e` holds the smoke test and mock server.
 
-The renderer runs sandboxed with context isolation and no Node.js access, is served from a private `app://` scheme under a strict Content-Security-Policy, and can only call the channels declared in `src/shared/ipc.ts`. Iwara pages (sign-in and verification) open in separate sandboxed windows with their own session and no preload. Packaged builds disable Electron's run-as-Node, `NODE_OPTIONS` and inspector fuses.
+The renderer runs sandboxed with context isolation and no Node.js access, is served from a private `app://` scheme under a strict Content-Security-Policy, and can only call the channels declared in `src/shared/ipc.ts`. The built-in player streams from a private `iwara-media://` scheme: the main process fetches the media through the Iwara session (Range requests, referrer, token) and only for streams it handed out itself. Iwara pages (sign-in and verification) open in separate sandboxed windows with their own session and no preload. Packaged builds disable Electron's run-as-Node, `NODE_OPTIONS` and inspector fuses.
 
-Upgrading from the Tauri version: settings, favorites and download history are imported automatically on first launch. You need to sign in again.
+Upgrading from the Tauri version: settings, favorites and download history are imported automatically on first launch. You need to sign in again. Your default player stays MPV (or your external player); new installs default to the built-in player.
 
 ## Releases
 

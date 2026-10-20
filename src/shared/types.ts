@@ -5,7 +5,9 @@ import type { AppErrorCode } from "./errors";
 
 export type VideoSort = "date" | "trending" | "popularity" | "relevance" | "views" | "likes";
 export type RatingFilter = "all" | "general" | "ecchi";
-export type PlayerMode = "mpv" | "external";
+/** `builtin` streams inside the app; the others launch a local player. */
+export type PlayerMode = "builtin" | "mpv" | "external";
+export type CardDensity = "comfortable" | "compact";
 export type LanguagePreference = "system" | "zh-CN" | "en";
 export type ThemePreference = "system" | "dark" | "light";
 
@@ -19,6 +21,8 @@ export interface VideoSummary {
   uploaderAvatarUrl?: string;
   uploaderFollowing?: boolean;
   thumbnailUrl?: string;
+  /** Prefix of the auto-generated preview frames (`thumbnail-00.jpg` …), when Iwara made them. */
+  thumbnailFramesBase?: string;
   rating?: string;
   tags: string[];
   numViews: number;
@@ -102,12 +106,15 @@ export interface DownloadSettings {
   defaultQuality?: string;
   maxConnections: number;
   minSplitBytes: number;
+  /** System notification when a download finishes while IwaraTV is in the background. */
+  notifyOnComplete: boolean;
 }
 
 export interface UiSettings {
   language: LanguagePreference;
   theme: ThemePreference;
   rating: RatingFilter;
+  density: CardDensity;
 }
 
 export interface MediaSpeedCandidateResult {
@@ -219,6 +226,15 @@ export interface PlaybackHistoryItem {
   formatId: string;
   playedAt: string;
   mode: PlayerMode;
+  /** Last position in the built-in player, for resuming. */
+  positionSeconds?: number;
+  durationSeconds?: number;
+}
+
+export interface PlaybackProgress {
+  videoId: string;
+  positionSeconds: number;
+  durationSeconds: number;
 }
 
 export interface FavoriteItem {
@@ -322,10 +338,19 @@ export interface PlayRequest {
 export interface PlayResult {
   ok: true;
   mode: PlayerMode;
-  playerPath: string;
+  /** The launched executable (external players only). */
+  playerPath?: string;
+  /** `iwara-media://` URL for the built-in player. */
+  streamUrl?: string;
+  /** Saved position to continue from, in seconds (built-in player only). */
+  resumeAt?: number;
   format: VideoFormat;
   video: VideoDetail;
   fallbackFrom?: string;
+}
+
+export interface AppNavigateRequest {
+  section: "downloads";
 }
 
 export interface DownloadVideoRequest {

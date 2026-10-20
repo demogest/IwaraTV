@@ -7,9 +7,9 @@ This report covers the port from Tauri to Electron, the redesigned interface, an
 ## Summary
 
 - The Rust backend (about 7,300 lines in 16 files) was ported to a TypeScript main process. The single 4,205-line `App.tsx` was replaced by a React renderer split into views, components, state and i18n modules. All user-facing features carried over: feeds, search, subscriptions, the video page, comments, following, favorites, downloads, history, settings, MPV and external players, sign-in and verification, diagnostics, CDN speed tests and X-Version salt detection.
-- Security posture improved on every boundary. The old main webview ran with **no Content-Security-Policy** (`"csp": null`) and with `withGlobalTauri: true`, so any script that ran in the page had the full command API. The new renderer is sandboxed and context-isolated, has no Node.js, runs under a strict CSP on a private `app://` scheme, and reaches the backend only through 37 allowlisted, runtime-validated IPC channels that check the sender.
+- Security posture improved on every boundary. The old main webview ran with **no Content-Security-Policy** (`"csp": null`) and with `withGlobalTauri: true`, so any script that ran in the page had the full command API. The new renderer is sandboxed and context-isolated, has no Node.js, runs under a strict CSP on a private `app://` scheme, and reaches the backend only through 40 allowlisted, runtime-validated IPC channels that check the sender (37 at the time of the audit, 3 added in the follow-up).
 - The UI was redesigned around a sidebar, a single search-or-open bar, and a video page with clear primary actions. It is now available in English and Simplified Chinese (the old UI was Chinese-only), in light and dark themes, and with full keyboard support. Errors map to specific, actionable messages.
-- Six functional bugs from the Tauri version were fixed along the way (see [Bugs fixed](#bugs-fixed-from-the-tauri-version)). An independent review of the new main process found ten more issues, all fixed before release (R-1 to R-10). Verification: 123 unit, boundary and security tests, a 14-step end-to-end smoke test (run against both the build output and a packaged Linux build), live checks against iwara.tv, and screenshot review.
+- Six functional bugs from the Tauri version were fixed along the way (see [Bugs fixed](#bugs-fixed-from-the-tauri-version)). An independent review of the new main process found ten more issues, all fixed before release (R-1 to R-10). A follow-up added a built-in player with resume, hover previews, related videos, Continue watching, download notifications and more ([Follow-up](#follow-up-improvements-after-the-audit)). Verification: 132 unit, boundary and security tests, a 20-step end-to-end smoke test (also run against a packaged Linux build before the follow-up), live checks against iwara.tv, and screenshot review.
 
 ## Method
 
@@ -48,7 +48,7 @@ This report covers the port from Tauri to Electron, the redesigned interface, an
 | `sandbox`, `contextIsolation`, `nodeIntegration: false`, `webSecurity` on every window; DevTools only in unpackaged builds | `src/main/index.ts`, `iwara-session.ts` | `tests/boundaries.test.ts`; the renderer has no `require` or `process` in the fused build |
 | CSP `default-src 'self'; script-src 'self'; connect-src 'self'; object-src 'none'; base-uri 'none'; form-action 'none'`; images only from `self`, `data:`, `blob:` and `https://*.iwara.tv`; plus `frame-ancestors 'none'` and `nosniff` headers | `src/shared/csp.ts`, `app://` handler | boundary test; e2e asserts no renderer errors |
 | Private `app://` scheme with a path-traversal guard and malformed-URL handling, instead of `file://` | `registerAppProtocol` | packaged-build launch |
-| IPC allowlist in the preload; the main process rejects senders other than the main window's top frame on the app origin; validators drop unknown fields and bound string and list sizes | `src/preload`, `src/main/ipc*.ts` | `tests/ipc.test.ts` (all 37 channels) |
+| IPC allowlist in the preload; the main process rejects senders other than the main window's top frame on the app origin; validators drop unknown fields and bound string and list sizes | `src/preload`, `src/main/ipc*.ts` | `tests/ipc.test.ts` (all 40 channels) |
 | Navigation and popups denied; only `http(s)` links go to the system browser; `<webview>` blocked; every permission request denied (both sessions); single-instance lock | `index.ts`, `hardenRemoteWindow` | boundary test |
 | Iwara windows: own partition, no preload, no app IPC, muted hidden helpers that close after 5 minutes idle | `iwara-session.ts` | boundary test, e2e sign-in |
 | Players: arguments passed as an argv array (no shell); MPV gets `--` before the URL; external templates require `{url}` | `player-service.ts` | `tests/player.test.ts`, e2e |
@@ -118,8 +118,31 @@ This report covers the port from Tauri to Electron, the redesigned interface, an
 
 - Show the account's display name next to the username in the sidebar chip.
 - Virtualize very long favorites and history lists (they currently render fully).
-- On macOS and Linux, show a one-time hint about installing MPV before the first playback, instead of only an error with "Open settings".
-- Offer an optional in-app preview player. Today playback is external by design.
+- ~~On macOS and Linux, show a one-time hint about installing MPV before the first playback.~~ Superseded: new installs default to the built-in player, and a missing player's error now offers **Play here instead** (see the follow-up below).
+- ~~Offer an optional in-app preview player.~~ Done in the follow-up below.
+
+## Follow-up: improvements after the audit
+
+| Area | Improvement |
+| --- | --- |
+| Playback | **Built-in player.** Plays on the video page with native controls, fullscreen, remembered volume and keys (Space/K, ←/→, F, M). It's the default for new installs; existing settings keep their player. Switching quality continues at the same moment. When MPV or an external player can't start, the error offers **Play here instead**. |
+| Playback | **Resume and Continue watching.** The built-in player saves its position (every 10 s, on pause and on leaving), offers **Start over**, and shows watched bars on cards, rows and the hero. Unfinished videos appear in a Continue watching row on Browse; History shows how much was watched and offers **Resume**. |
+| Discovery | **Hover previews** step through Iwara's frame strip (thumbnail-00…). Each frame is decoded before it's shown; on live iwara.tv, no sample caught a blank frame (it was about 10% before decoding first). Reduced-motion users get no animation. |
+| Discovery | **More from the author** and **Related videos** (`/video/{id}/related`) in the video page's side column, without blocked tags or the video itself. |
+| Navigation | Recent searches and a **copied Iwara link** suggestion in the empty top bar; `Ctrl/⌘+1…6` switches sections; `?` (or the keyboard button) opens a shortcut list. |
+| Layout | **Card size** (large or compact) in Settings → General. |
+| Downloads | Aggregate progress on the taskbar or Dock, a badge count, and a system notification when a download finishes or fails while the app is in the background (clicking it opens Downloads; it can be turned off). |
+| Fixes | Electron 44's clipboard API is asynchronous; copying a link had been firing without being awaited. |
+
+Security notes on the new surface:
+
+| ID | New surface | Control |
+| --- | --- | --- |
+| F-1 | `iwara-media://` stream proxy | Registered only on the app window's session; Iwara windows can't reach it. Requests resolve through random one-time tokens that `player:play` issues (at most 16 live), so the page can't make the main process fetch arbitrary URLs. Targets are format URLs that already passed the `https://*.iwara.tv` filter; upstream response headers are allowlisted; CSP `media-src` allows only this scheme. Tested in `tests/backend.test.ts` and end-to-end. |
+| F-2 | Fullscreen | The only permission the app window can get, and only for its own top-level page (asserted in `tests/boundaries.test.ts`, exercised by the e2e test). |
+| F-3 | Clipboard read | Happens in the main process when the top bar gains focus; only a recognized `iwara.tv/video/…` link yields a video ID, and no clipboard text is ever sent to the page. |
+| F-4 | New IPC channels | `iwara:list-related`, `player:report-progress` and `system:clipboard-video` have runtime validators (bounded strings, finite non-negative seconds) and appear in the all-channels test. |
+| F-5 | Notifications | Show only the video title and an outcome; they're created in the main process and are skipped while the window is focused. |
 
 ## Bugs fixed from the Tauri version
 
@@ -135,10 +158,10 @@ This report covers the port from Tauri to Electron, the redesigned interface, an
 | Check | Result |
 | --- | --- |
 | `npm run typecheck` (renderer, plus main, preload and tests) | Pass |
-| `npm test` | 10 files, 123 tests pass |
-| `npm run test:e2e` (14 steps: feed and thumbnails, feeds and paging, search, open by link with salt detection, MPV launch arguments, favorite, segmented download with SHA-256 check, favorites and history, sign-in window and subscriptions, token kept on iwara.tv across a redirect, follow and comment, MPV detection and test, sign-out, no renderer errors) | 14/14 against `out/`. The packaged `release/linux-unpacked` build (without fuses, since Playwright attaches through the inspector) passed all 13 steps that existed before the review fixes |
+| `npm test` | 10 files, 132 tests pass |
+| `npm run test:e2e` (20 steps: feed and thumbnails, feeds and paging, search, hover frame preview, recent searches, shortcut list, open by link with salt detection, MPV launch arguments, favorite, segmented download with SHA-256 check, built-in playback of a real clip with related lists and fullscreen, saved position and resume, Continue watching, favorites and history, sign-in window and subscriptions, token kept on iwara.tv across a redirect, follow and comment, MPV detection and test, sign-out, no renderer errors) | 20/20 against `out/`. The packaged `release/linux-unpacked` build (without fuses, since Playwright attaches through the inspector) passed all 13 steps that existed before the review fixes |
 | Packaged Linux build with fuses (rebuilt after the review fixes) | Fuses read back as configured; ignores `ELECTRON_RUN_AS_NODE` and `NODE_OPTIONS`; renders the feed from the asar over `app://`, with no `require` or `process` in the page |
 | `npm audit --omit=dev` | 0 vulnerabilities (S-7 covers the dev tooling) |
-| Live iwara.tv (read-only) | Feeds, search, video formats, comments, salt detection, host discovery and speed test, a real download, and network capture all worked |
+| Live iwara.tv (read-only) | Feeds, search, video formats, comments, salt detection, host discovery and speed test, a real download, and network capture all worked. Follow-up: the built-in player streamed a real video (640×360), seeked to 2:07 over Range requests, switched to Source (720p) at the same moment, and saved its position. Related and more-from-author lists filled, and hover previews cycled real frames |
 
 Not verified here: Windows and macOS packaging and runtime (the CI matrix builds them on the next release tag), and a full sign-in with a real Iwara account (only the window lifecycle was exercised live; the complete flow ran against the mock server).

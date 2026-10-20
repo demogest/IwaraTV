@@ -1,3 +1,6 @@
+/** Custom scheme the built-in player streams from; the main process proxies it to Iwara's CDN. */
+export const MEDIA_STREAM_SCHEME = "iwara-media";
+
 const IWARA_MEDIA_HOST_PATTERN = /^[a-z0-9-]+\.iwara\.tv$/i;
 
 /** True for https URLs on iwara.tv or one of its subdomains — the only hosts that may see the session token. */

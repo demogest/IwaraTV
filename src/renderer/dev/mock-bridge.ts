@@ -9,6 +9,8 @@ import type {
   DownloadState,
   DownloadTask,
   FavoriteState,
+  PlaybackProgress,
+  PlayRequest,
   SettingsPatch,
   VideoComment,
   VideoDetail,
@@ -122,8 +124,9 @@ let settings: AppSettings = (() => {
   value.history = params.get("empty") ? [] : Array.from({ length: 7 }, (_, index) => ({
     video: makeVideo(500 + index),
     formatId: index % 2 ? "1080" : "Source",
-    mode: index % 3 ? "mpv" : "external",
-    playedAt: new Date(Date.now() - index * 9 * 3_600_000).toISOString()
+    mode: index < 2 ? "builtin" : index % 3 ? "mpv" : "external",
+    playedAt: new Date(Date.now() - index * 9 * 3_600_000).toISOString(),
+    ...(index < 2 ? { positionSeconds: 140 + index * 210, durationSeconds: 600 } : {})
   }));
   return value;
 })();
@@ -355,12 +358,29 @@ async function handle<C extends InvokeChannel>(channel: C, args: InvokeArgs<C>):
       return { canceled: true, imported: 0, merged: 0, skipped: 0, total: favorites.items.length, state: favorites };
     case "player:play": {
       await delay(600);
-      const request = first as { videoId: string; quality?: string; mode?: "mpv" | "external" };
+      const request = first as PlayRequest;
       const video = detail(request.videoId);
       const format = video.formats.find((item) => item.id === (request.quality ?? settings.player.preferredQuality)) ?? video.formats[0]!;
-      applyPatch({ history: [{ video, formatId: format.id, mode: request.mode ?? settings.player.preferredMode, playedAt: new Date().toISOString() }, ...settings.history] });
-      return { ok: true, mode: request.mode ?? settings.player.preferredMode, playerPath: "/usr/bin/mpv", format, video };
+      const mode = request.mode ?? settings.player.preferredMode;
+      const previous = settings.history.find((entry) => entry.video.id === video.id);
+      applyPatch({ history: [{ ...previous, video, formatId: format.id, mode, playedAt: new Date().toISOString() }, ...settings.history.filter((entry) => entry.video.id !== video.id)] });
+      // The preview has no stream proxy, so the built-in player shows its error state.
+      return mode === "builtin"
+        ? { ok: true, mode, streamUrl: "iwara-media://stream/preview", resumeAt: previous?.positionSeconds, format, video }
+        : { ok: true, mode, playerPath: "/usr/bin/mpv", format, video };
     }
+    case "player:report-progress": {
+      const progress = first as PlaybackProgress;
+      applyPatch({ history: settings.history.map((entry) => (entry.video.id === progress.videoId ? { ...entry, ...progress } : entry)) });
+      return undefined;
+    }
+    case "iwara:list-related": {
+      await delay(400);
+      const seed = hash(String(first));
+      return Array.from({ length: 8 }, (_, index) => makeVideo(seed + index * 7));
+    }
+    case "system:clipboard-video":
+      return params.get("clipboard") ?? undefined;
     case "player:probe":
       return { mpv: { ok: true, code: "found", resolvedPath: "/usr/bin/mpv" }, external: settings.player.externalPlayerPath ? { ok: true, code: "found", resolvedPath: settings.player.externalPlayerPath } : { ok: false, code: "not-configured" }, externalArgsPreview: [], externalTemplateHasUrl: true };
     case "player:test-mpv":

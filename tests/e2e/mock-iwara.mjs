@@ -9,6 +9,7 @@ import { mkdtempSync, readFileSync } from "node:fs";
 import { createServer } from "node:https";
 import os from "node:os";
 import path from "node:path";
+import { fileURLToPath } from "node:url";
 
 /** Differs from the app's built-in default, so file lists only work after salt detection. */
 export const MOCK_SALT = "E2eMockSaltZx81Qw7Lp4Rt9Vn2Ks6Hd0";
@@ -54,6 +55,10 @@ for (let index = 0; index < MEDIA_SIZE; index += 1) {
   MEDIA[index] = (index * 31 + (index >> 8)) & 0xff;
 }
 export const MEDIA_SHA256 = createHash("sha256").update(MEDIA).digest("hex");
+
+/** A real 60-second H.264 clip, served for this video so the built-in player can play it. */
+export const PLAYABLE_VIDEO_INDEX = 5;
+const SAMPLE_MP4 = readFileSync(path.join(path.dirname(fileURLToPath(import.meta.url)), "fixtures", "sample.mp4"));
 
 function selfSignedCertificate() {
   const directory = mkdtempSync(path.join(os.tmpdir(), "iwaratv-e2e-cert-"));
@@ -168,7 +173,7 @@ export async function startMockIwara() {
     if (pathname === "/user/token" && request.method === "POST") {
       return bearer(request) === userToken ? json(response, 200, { accessToken: mediaToken }) : json(response, 401, { message: "errors.unauthorized" });
     }
-    const videoMatch = pathname.match(/^\/video\/([^/]+)(\/comments)?$/);
+    const videoMatch = pathname.match(/^\/video\/([^/]+)(\/comments|\/related)?$/);
     const video = videoMatch && VIDEOS.find((item) => item.id === videoMatch[1]);
     if (videoMatch && !video) {
       return json(response, 404, { message: "errors.notFound" });
@@ -179,6 +184,10 @@ export async function startMockIwara() {
         ...withFollowing(video, request),
         fileUrl: `https://files.iwara.tv/file/${video.file.id}?expires=${expires}&hash=mockhash`
       });
+    }
+    if (video && videoMatch[2] === "/related") {
+      const results = VIDEOS.filter((item) => item.id !== video.id && item.user.id !== video.user.id).slice(0, 6);
+      return json(response, 200, { page: 0, limit: 12, results: results.map((item) => withFollowing(item, request)) });
     }
     if (video && videoMatch[2]) {
       const list = state.comments.get(video.id) ?? [
@@ -243,29 +252,31 @@ export async function startMockIwara() {
     ]);
   }
 
-  function media(request, response) {
+  function media(request, response, url) {
+    const body = url.searchParams.get("filename") === `file-${PLAYABLE_VIDEO_INDEX}.mp4` ? SAMPLE_MP4 : MEDIA;
+    const size = body.length;
     const range = request.headers.range?.match(/^bytes=(\d+)-(\d*)$/);
     if (request.method === "HEAD") {
-      response.writeHead(200, { "content-length": MEDIA_SIZE, "accept-ranges": "bytes", "content-type": "video/mp4" });
+      response.writeHead(200, { "content-length": size, "accept-ranges": "bytes", "content-type": "video/mp4" });
       return response.end();
     }
     if (!range) {
-      response.writeHead(200, { "content-length": MEDIA_SIZE, "accept-ranges": "bytes", "content-type": "video/mp4" });
-      return response.end(MEDIA);
+      response.writeHead(200, { "content-length": size, "accept-ranges": "bytes", "content-type": "video/mp4" });
+      return response.end(body);
     }
     const start = Number(range[1]);
-    const end = Math.min(range[2] ? Number(range[2]) : MEDIA_SIZE - 1, MEDIA_SIZE - 1);
-    if (start >= MEDIA_SIZE) {
-      response.writeHead(416, { "content-range": `bytes */${MEDIA_SIZE}` });
+    const end = Math.min(range[2] ? Number(range[2]) : size - 1, size - 1);
+    if (start >= size) {
+      response.writeHead(416, { "content-range": `bytes */${size}` });
       return response.end();
     }
     response.writeHead(206, {
       "content-length": end - start + 1,
-      "content-range": `bytes ${start}-${end}/${MEDIA_SIZE}`,
+      "content-range": `bytes ${start}-${end}/${size}`,
       "accept-ranges": "bytes",
       "content-type": "video/mp4"
     });
-    response.end(MEDIA.subarray(start, end + 1));
+    response.end(body.subarray(start, end + 1));
   }
 
   function website(request, url, response) {
@@ -314,7 +325,7 @@ button{font-size:18px;padding:10px 24px;border-radius:8px;border:0;background:#0
         return website(request, url, response);
       }
       if (host.endsWith(".iwara.tv")) {
-        return media(request, response);
+        return media(request, response, url);
       }
       json(response, 404, { message: "errors.notFound" });
     })().catch((error) => {

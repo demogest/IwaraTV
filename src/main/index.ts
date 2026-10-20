@@ -8,6 +8,7 @@ import {
   Menu,
   nativeTheme,
   net,
+  Notification,
   protocol,
   session,
   shell,
@@ -15,6 +16,7 @@ import {
   type MenuItemConstructorOptions
 } from "electron";
 import { contentSecurityPolicy } from "../shared/csp";
+import { MEDIA_STREAM_SCHEME } from "../shared/media-hosts";
 import type { EventChannel, IpcEventContract } from "../shared/ipc";
 import type { AppSettings } from "../shared/types";
 import { Backend, type PlatformPort } from "./backend";
@@ -36,10 +38,13 @@ let mainWindow: BrowserWindow | undefined;
 let backend: Backend | undefined;
 let iwaraSession: IwaraSessionService | undefined;
 let migratedFrom: string | undefined;
+const notifications = new Set<Notification>();
 
 app.setName("IwaraTV");
 protocol.registerSchemesAsPrivileged([
-  { scheme: APP_SCHEME, privileges: { standard: true, secure: true, supportFetchAPI: true, codeCache: true } }
+  { scheme: APP_SCHEME, privileges: { standard: true, secure: true, supportFetchAPI: true, codeCache: true } },
+  // `stream` lets <video> seek with Range requests through the handler.
+  { scheme: MEDIA_STREAM_SCHEME, privileges: { standard: true, secure: true, stream: true } }
 ]);
 
 if (!app.requestSingleInstanceLock()) {
@@ -94,6 +99,8 @@ function start(): void {
     emit
   });
   registerIpc(createHandlers(backend), validators, isTrustedSender);
+  const streams = backend;
+  protocol.handle(MEDIA_STREAM_SCHEME, (request) => streams.streamMedia(request.url, request.headers.get("range"), request.signal));
 
   const settings = backend.getSettings();
   applyUiSettings(settings);
@@ -205,7 +212,10 @@ function registerAppProtocol(): void {
 }
 
 function lockDownSession(target: Electron.Session): void {
-  target.setPermissionRequestHandler((_contents, _permission, callback) => callback(false));
+  // Only fullscreen, and only for the app's own window (the built-in player's fullscreen button).
+  target.setPermissionRequestHandler((contents, permission, callback) =>
+    callback(permission === "fullscreen" && Boolean(mainWindow) && contents === mainWindow?.webContents)
+  );
   target.setPermissionCheckHandler(() => false);
 }
 
@@ -308,6 +318,38 @@ function electronPlatform(): PlatformPort {
     showItemInFolder: (filePath) => shell.showItemInFolder(filePath),
     openExternal: (url) => openIfWebUrl(url),
     writeClipboard: (text) => clipboard.writeText(text),
+    readClipboard: () => clipboard.readText(),
+    setDownloadProgress(progress, activeCount) {
+      ownerWindow()?.setProgressBar(progress === undefined ? -1 : progress === "indeterminate" ? 2 : progress);
+      app.setBadgeCount(activeCount);
+    },
+    notifyDownload(outcome, title) {
+      const owner = ownerWindow();
+      if (!Notification.isSupported() || owner?.isFocused()) {
+        return;
+      }
+      const labels = currentLanguage === "zh-CN"
+        ? { completed: "下载完成", failed: "下载失败" }
+        : { completed: "Download finished", failed: "Download failed" };
+      const notification = new Notification({ title: labels[outcome], body: title });
+      // Keep a reference until it's gone, or the click handler can be collected.
+      notifications.add(notification);
+      const release = () => notifications.delete(notification);
+      notification.on("close", release);
+      notification.on("click", () => {
+        release();
+        const window = ownerWindow();
+        if (window) {
+          if (window.isMinimized()) {
+            window.restore();
+          }
+          window.show();
+          window.focus();
+          emit("app:navigate", { section: "downloads" });
+        }
+      });
+      notification.show();
+    },
     async pickFile({ title, defaultPath, filters }) {
       const options: Electron.OpenDialogOptions = { title, defaultPath, filters, properties: ["openFile"] };
       const owner = ownerWindow();

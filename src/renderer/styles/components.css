@@ -527,6 +527,10 @@ button.chip:hover:not(:disabled) {
   box-shadow: var(--shadow-3);
 }
 
+.dialog--wide {
+  width: min(560px, calc(100vw - 48px));
+}
+
 .dialog[open] {
   animation: rise-in var(--duration-slow) var(--ease-out);
 }

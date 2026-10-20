@@ -749,6 +749,16 @@ export class IwaraClient {
   }
 
   // ---------------------------------------------------------------------------
+  // Related videos
+
+  /** Iwara's "related" list for a video, without blocked tags or the video itself. */
+  async listRelatedVideos(videoId: string, preferences: TagPreferences): Promise<VideoSummary[]> {
+    const id = requireVideoId(videoId);
+    const { data } = await this.requestJson(`${API_BASE}/video/${id}/related`, { headers: await this.mediaHeaders() });
+    const related = arrayField(data, "results").map(mapVideoSummary).filter((video) => video.id && video.id !== id);
+    return applyFilter(related, listFilter([], preferences)).results;
+  }
+
   // Comments
 
   async listVideoComments(request: ListCommentsRequest): Promise<VideoCommentsResult> {

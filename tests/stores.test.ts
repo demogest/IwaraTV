@@ -33,7 +33,8 @@ describe("SettingsStore", () => {
     const settings = new SettingsStore(dir, "/downloads/IwaraTV").get();
     expect(settings.player).toMatchObject({ preferredMode: "external", externalPlayerArgs: "--play {url}", preferredQuality: "Source" });
     expect(settings.mediaSpeed.candidateHosts).toEqual(["jade.iwara.tv"]);
-    expect(settings.ui).toEqual({ language: "system", theme: "system", rating: "all" });
+    expect(settings.ui).toEqual({ language: "system", theme: "system", rating: "all", density: "comfortable" });
+    expect(settings.download.notifyOnComplete).toBe(true);
     expect(settings.download.directory).toBe("/downloads/IwaraTV");
     expect(settings.history).toHaveLength(1);
   });
@@ -61,7 +62,7 @@ describe("SettingsStore", () => {
       download: { maxConnections: 99 }
     });
     expect(next.ui).toMatchObject({ theme: "light", language: "system" });
-    expect(next.player.preferredMode).toBe("mpv");
+    expect(next.player.preferredMode).toBe("builtin");
     expect(next.player).not.toHaveProperty("bogus");
     expect(next.download.maxConnections).toBe(8);
     expect(seen).toEqual(["light"]);

@@ -1,8 +1,10 @@
+import { randomUUID } from "node:crypto";
 import { existsSync, readdirSync, statSync } from "node:fs";
 import { mkdir } from "node:fs/promises";
 import path from "node:path";
 import type { EventChannel, IpcEventContract } from "../shared/ipc";
-import { mediaUrlHost } from "../shared/media-hosts";
+import { MEDIA_STREAM_SCHEME, mediaUrlHost } from "../shared/media-hosts";
+import { parseIwaraVideoId } from "../shared/video-id";
 import type {
   AppInfo,
   AppSettings,
@@ -22,6 +24,8 @@ import type {
   ListCommentsRequest,
   ListVideosRequest,
   MediaSpeedTestReport,
+  PlaybackHistoryItem,
+  PlaybackProgress,
   PlayerDiagnostics,
   PlayerProbe,
   PlayRequest,
@@ -40,7 +44,7 @@ import type {
 } from "../shared/types";
 import { AppError } from "./lib/app-error";
 import { transferToFile } from "./lib/file-transfer";
-import type { HttpFetch } from "./lib/http";
+import { mergeHeaders, type HttpFetch } from "./lib/http";
 import { chooseVideoFormat } from "./lib/iwara-parse";
 import type { CapturedToken } from "./lib/jwt";
 import { DownloadManager } from "./services/download-manager";
@@ -50,6 +54,8 @@ import type { PlayerService } from "./services/player-service";
 import { SettingsStore } from "./services/settings-store";
 
 const SALT_MAX_AGE_MS = 24 * 60 * 60 * 1000;
+const MAX_STREAMS = 16;
+const STREAM_HEADERS = ["content-type", "content-length", "content-range", "accept-ranges", "last-modified", "etag"];
 
 /** Electron-specific session features the backend uses. */
 export interface SessionPort extends IwaraSessionBridge {
@@ -67,11 +73,16 @@ export interface PlatformPort {
   openPath(filePath: string): Promise<void>;
   showItemInFolder(filePath: string): void;
   openExternal(url: string): Promise<void>;
-  writeClipboard(text: string): void;
+  writeClipboard(text: string): Promise<void>;
   pickFile(options: { title: string; defaultPath?: string; filters: Array<{ name: string; extensions: string[] }> }): Promise<string | undefined>;
   pickDirectory(options: { title: string; defaultPath?: string }): Promise<string | undefined>;
   saveFile(options: { title: string; defaultPath: string; filters: Array<{ name: string; extensions: string[] }> }): Promise<string | undefined>;
   appInfo(): AppInfo;
+  readClipboard(): Promise<string>;
+  /** Taskbar/dock progress: 0–1, "indeterminate" while sizes are unknown, undefined when idle. */
+  setDownloadProgress(progress: number | "indeterminate" | undefined, activeCount: number): void;
+  /** A system notification for a finished download; the platform skips it while the app is focused. */
+  notifyDownload(outcome: "completed" | "failed", title: string): void;
   platform: NodeJS.Platform;
 }
 
@@ -93,6 +104,8 @@ export class Backend {
   private readonly player: PlayerService;
   private readonly platform: PlatformPort;
   private saltSniff?: Promise<void>;
+  private readonly streams = new Map<string, string>();
+  private activeDownloadIds = new Set<string>();
 
   constructor(options: BackendOptions) {
     this.session = options.session;
@@ -130,7 +143,11 @@ export class Backend {
 
     this.settings.onChange((settings) => options.emit("settings:changed", settings));
     this.favorites.onChange((state) => options.emit("favorites:changed", state));
-    this.downloads.onChange((state) => options.emit("downloads:changed", state));
+    this.downloads.onChange((state) => {
+      options.emit("downloads:changed", state);
+      this.trackDownloads(state);
+    });
+    this.activeDownloadIds = new Set(this.downloads.state().active.map((task) => task.id));
     this.session.onChange(() => {
       void this.authState().then((state) => options.emit("auth:changed", state)).catch(() => undefined);
     });
@@ -179,6 +196,10 @@ export class Backend {
     return report;
   }
 
+  listRelated(videoId: string): Promise<VideoSummary[]> {
+    return this.client.listRelatedVideos(videoId, this.settings.get().tagPreferences);
+  }
+
   async speedTestVideo(idOrUrl: string): Promise<MediaSpeedTestReport> {
     const report = await this.client.speedTestVideo(idOrUrl, this.settings.get().mediaSpeed);
     this.settings.updateMediaHostRanking(report.results, report.testedAt);
@@ -208,18 +229,66 @@ export class Backend {
       throw new AppError("NO_FORMATS", "No playable quality was found.");
     }
     const mode = request.mode ?? settings.player.preferredMode;
+    const fallbackFrom = requestedQuality && requestedQuality !== format.id ? requestedQuality : undefined;
+    if (mode === "builtin") {
+      const previous = settings.history.find((entry) => entry.video.id === video.id);
+      this.settings.addHistory({ video: summaryOf(video), formatId: format.id, mode, playedAt: new Date().toISOString() });
+      return {
+        ok: true,
+        mode,
+        streamUrl: this.registerStream(format.url),
+        resumeAt: resumePosition(previous),
+        format,
+        video,
+        fallbackFrom
+      };
+    }
     const playerPath = this.player.requirePlayer(mode, settings.player);
     await this.player.launch(playerPath, this.player.buildArgs(mode, settings.player, format.url, video.title));
     this.settings.addHistory({ video: summaryOf(video), formatId: format.id, mode, playedAt: new Date().toISOString() });
 
-    return {
-      ok: true,
-      mode,
-      playerPath,
-      format,
-      video,
-      fallbackFrom: requestedQuality && requestedQuality !== format.id ? requestedQuality : undefined
-    };
+    return { ok: true, mode, playerPath, format, video, fallbackFrom };
+  }
+
+  reportProgress(progress: PlaybackProgress): void {
+    this.settings.updateHistoryProgress(progress);
+  }
+
+  /**
+   * Serves an `iwara-media://stream/<token>` request from the built-in player:
+   * the media is fetched through the Iwara session (referrer, token, Range)
+   * and streamed back. Only URLs registered by play() are reachable.
+   */
+  async streamMedia(requestUrl: string, range: string | null, signal?: AbortSignal): Promise<Response> {
+    let token: string | undefined;
+    try {
+      const parsed = new URL(requestUrl);
+      token = parsed.hostname === "stream" ? parsed.pathname.slice(1) : undefined;
+    } catch {
+      token = undefined;
+    }
+    const url = token ? this.streams.get(token) : undefined;
+    if (!url) {
+      return new Response("Not found", { status: 404 });
+    }
+    let upstream: Response;
+    try {
+      const headers = mergeHeaders(await this.client.mediaRequestHeaders(), range ? { Range: range } : undefined);
+      upstream = await this.session.fetch(url, { headers, signal });
+    } catch {
+      return new Response("Upstream error", { status: 502 });
+    }
+    const headers = new Headers();
+    for (const name of STREAM_HEADERS) {
+      const value = upstream.headers.get(name);
+      if (value) {
+        headers.set(name, value);
+      }
+    }
+    if (!headers.has("content-type")) {
+      headers.set("content-type", "video/mp4");
+    }
+    return new Response(upstream.body, { status: upstream.status, headers });
   }
 
   probePlayers(): PlayerDiagnostics {
@@ -420,8 +489,14 @@ export class Backend {
     await this.platform.openExternal(parsed.toString());
   }
 
-  writeClipboard(text: string): void {
-    this.platform.writeClipboard(text);
+  async writeClipboard(text: string): Promise<void> {
+    await this.platform.writeClipboard(text);
+  }
+
+  /** Only a link to an Iwara video is recognized; any other clipboard text stays in the main process. */
+  async clipboardVideo(): Promise<string | undefined> {
+    const text = (await this.platform.readClipboard()).trim().slice(0, 2048);
+    return /^https?:\/\/(?:www\.)?iwara\.tv\/video\//i.test(text) ? parseIwaraVideoId(text) : undefined;
   }
 
   appInfo(): AppInfo {
@@ -446,9 +521,46 @@ export class Backend {
     return this.saltSniff;
   }
 
+  private registerStream(url: string): string {
+    const token = randomUUID();
+    this.streams.set(token, url);
+    while (this.streams.size > MAX_STREAMS) {
+      this.streams.delete(this.streams.keys().next().value!);
+    }
+    return `${MEDIA_STREAM_SCHEME}://stream/${token}`;
+  }
+
+  /** Mirrors download progress to the taskbar and announces finished downloads. */
+  private trackDownloads(state: DownloadState): void {
+    const active = state.active;
+    const sized = active.filter((task) => task.totalBytes);
+    const total = sized.reduce((sum, task) => sum + (task.totalBytes ?? 0), 0);
+    const written = sized.reduce((sum, task) => sum + task.bytesWritten, 0);
+    this.platform.setDownloadProgress(
+      !active.length ? undefined : sized.length === active.length && total > 0 ? Math.min(written / total, 1) : "indeterminate",
+      active.length
+    );
+
+    if (this.settings.get().download.notifyOnComplete) {
+      for (const task of state.history) {
+        if (this.activeDownloadIds.has(task.id) && (task.status === "completed" || task.status === "failed")) {
+          this.platform.notifyDownload(task.status, task.video?.title ?? task.videoId);
+        }
+      }
+    }
+    this.activeDownloadIds = new Set(active.map((task) => task.id));
+  }
+
   private rememberHosts(formats: readonly VideoFormat[]): void {
     this.settings.addMediaHosts(formats.map((format) => mediaUrlHost(format.url)));
   }
+}
+
+/** Continue where the viewer stopped, unless that was the very start or the end. */
+function resumePosition(entry: PlaybackHistoryItem | undefined): number | undefined {
+  const position = entry?.positionSeconds ?? 0;
+  const duration = entry?.durationSeconds ?? 0;
+  return position >= 15 && (!duration || position < duration - 20) ? position : undefined;
 }
 
 function summaryOf(video: VideoSummary | VideoDetail): VideoSummary {

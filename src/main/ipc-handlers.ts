@@ -33,6 +33,7 @@ export function createHandlers(backend: Backend): Handlers {
     "iwara:set-author-following": (request) => backend.setAuthorFollowing(request),
     "iwara:sniff-x-version-salt": () => backend.sniffXVersionSalt(),
     "iwara:speed-test-video": (idOrUrl) => backend.speedTestVideo(idOrUrl),
+    "iwara:list-related": (videoId) => backend.listRelated(videoId),
 
     "downloads:list": () => backend.listDownloads(),
     "downloads:start": (request) => backend.startDownload(request),
@@ -55,6 +56,7 @@ export function createHandlers(backend: Backend): Handlers {
     "player:play": (request) => backend.play(request),
     "player:probe": () => backend.probePlayers(),
     "player:test-mpv": () => backend.testMpv(),
+    "player:report-progress": (progress) => backend.reportProgress(progress),
 
     "settings:get": () => backend.getSettings(),
     "settings:update": (patch) => backend.updateSettings(patch),
@@ -67,7 +69,8 @@ export function createHandlers(backend: Backend): Handlers {
     "system:select-directory": (request) => backend.selectDirectory(request),
     "system:open-external": (url) => backend.openExternal(url),
     "system:write-clipboard": (text) => backend.writeClipboard(text),
-    "system:app-info": () => backend.appInfo()
+    "system:app-info": () => backend.appInfo(),
+    "system:clipboard-video": () => backend.clipboardVideo()
   };
 }
 
@@ -129,7 +132,14 @@ function stringList(value: unknown, name: string, maxItems = 200): string[] {
 
 const SORTS: VideoSort[] = ["date", "trending", "popularity", "relevance", "views", "likes"];
 const RATINGS: RatingFilter[] = ["all", "general", "ecchi"];
-const MODES: PlayerMode[] = ["mpv", "external"];
+const MODES: PlayerMode[] = ["builtin", "mpv", "external"];
+
+function seconds(value: unknown, name: string): number {
+  if (typeof value !== "number" || !Number.isFinite(value) || value < 0 || value > 7 * 24 * 3600) {
+    invalid(`${name} must be a number of seconds.`);
+  }
+  return value;
+}
 
 function listVideosRequest(value: unknown): ListVideosRequest {
   const raw = obj(value, "request");
@@ -222,6 +232,7 @@ export const validators: Validators = {
   },
   "iwara:sniff-x-version-salt": none,
   "iwara:speed-test-video": ([idOrUrl]) => [str(idOrUrl, "idOrUrl", 500)],
+  "iwara:list-related": ([videoId]) => [str(videoId, "videoId", 200)],
 
   "downloads:list": none,
   "downloads:start": ([request]) => {
@@ -257,6 +268,14 @@ export const validators: Validators = {
   },
   "player:probe": none,
   "player:test-mpv": none,
+  "player:report-progress": ([progress]) => {
+    const raw = obj(progress, "progress");
+    return [{
+      videoId: str(raw.videoId, "videoId", 200),
+      positionSeconds: seconds(raw.positionSeconds, "positionSeconds"),
+      durationSeconds: seconds(raw.durationSeconds, "durationSeconds")
+    }];
+  },
 
   "settings:get": none,
   "settings:update": ([patch]) => [settingsPatch(patch)],
@@ -269,5 +288,6 @@ export const validators: Validators = {
   "system:select-directory": ([request]) => [selectPathRequest(request)],
   "system:open-external": ([url]) => [str(url, "url", 4096)],
   "system:write-clipboard": ([text]) => [str(text, "text", 100_000)],
-  "system:app-info": none
+  "system:app-info": none,
+  "system:clipboard-video": none
 };

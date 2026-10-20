@@ -13,9 +13,9 @@ import type {
   VideoSummary
 } from "../../shared/types";
 import { useI18n } from "../i18n";
-import { ApiError, hasBridge, invoke, subscribe } from "../lib/api";
+import { ApiError, hasBridge, invoke, subscribe, toApiError } from "../lib/api";
 import { describeError, describeErrorCode, recoveryLabel, type ErrorDescription, type RecoveryAction } from "../lib/errors";
-import { qualityLabel } from "../lib/format";
+import { formatDuration, qualityLabel } from "../lib/format";
 import { useConfirm } from "./confirm";
 import { useNavigationActions, type AuthorRef } from "./navigation";
 import { useToasts } from "./toasts";
@@ -23,7 +23,29 @@ import { useToasts } from "./toasts";
 export interface VideoRef {
   id: string;
   title?: string;
+  thumbnailUrl?: string;
 }
+
+/** What the built-in player on a video page should play. */
+export interface InlinePlayback {
+  videoId: string;
+  streamUrl: string;
+  formatId: string;
+  /** Position to start from, in seconds. */
+  startAt: number;
+  /** Changes on every (re)start so the player reloads even for the same video. */
+  nonce: number;
+}
+
+export interface PlayOptions {
+  quality?: string;
+  mode?: PlayerMode;
+  /** Built-in player: start here instead of the saved position (e.g. after switching quality). */
+  startAt?: number;
+}
+
+const LAUNCH_ERRORS = new Set(["MPV_NOT_FOUND", "EXTERNAL_PLAYER_NOT_FOUND", "EXTERNAL_PLAYER_TEMPLATE", "PLAYER_LAUNCH_FAILED"]);
+let inlineNonce = 0;
 
 interface AppStateValue {
   ready: boolean;
@@ -36,9 +58,15 @@ interface AppStateValue {
   appInfo?: AppInfo;
   isBusy(key: string): boolean;
   isFollowing(authorId: string | undefined, fallback?: boolean): boolean;
+  inline?: InlinePlayback;
+  /** Fraction (0–1) of the video watched in the built-in player, if any. */
+  watchProgress(videoId: string): number | undefined;
 
   updateSettings(patch: SettingsPatch): Promise<AppSettings | undefined>;
-  play(video: VideoRef, options?: { quality?: string; mode?: PlayerMode }): Promise<void>;
+  play(video: VideoRef, options?: PlayOptions): Promise<void>;
+  /** Stops the built-in player (only if it is playing `videoId`, when given). */
+  closeInline(videoId?: string): void;
+  reportProgress(videoId: string, positionSeconds: number, durationSeconds: number): void;
   download(video: VideoRef, quality?: string): Promise<void>;
   toggleFavorite(video: VideoSummary): Promise<void>;
   setAuthorFollowing(author: AuthorRef, following: boolean): Promise<void>;
@@ -71,6 +99,7 @@ export function AppStateProvider({ children, onUiChange }: { children: ReactNode
   const [appInfo, setAppInfo] = useState<AppInfo>();
   const [busy, setBusy] = useState<ReadonlySet<string>>(new Set());
   const [followOverrides, setFollowOverrides] = useState<Record<string, boolean>>({});
+  const [inline, setInline] = useState<InlinePlayback>();
   const previousDownloads = useRef<DownloadState>(EMPTY_DOWNLOAD_STATE);
   const previousAuth = useRef<AuthState | undefined>(undefined);
 
@@ -151,7 +180,9 @@ export function AppStateProvider({ children, onUiChange }: { children: ReactNode
       subscribe("auth:changed", (state) => {
         setAuth(state);
         setAuthLoading(false);
-      })
+      }),
+      // e.g. a "download finished" notification was clicked.
+      subscribe("app:navigate", ({ section }) => navigation.goTo(section))
     ];
     void Promise.all([invoke("settings:get"), invoke("favorites:list"), invoke("downloads:list"), invoke("system:app-info")])
       .then(([loadedSettings, loadedFavorites, loadedDownloads, info]) => {
@@ -236,10 +267,35 @@ export function AppStateProvider({ children, onUiChange }: { children: ReactNode
     }
   }, [reportError]);
 
-  const play = useCallback(async (video: VideoRef, options: { quality?: string; mode?: PlayerMode } = {}) => {
+  const play = useCallback(async (video: VideoRef, options: PlayOptions = {}): Promise<void> => {
     await withBusy(`play:${video.id}`, async () => {
       try {
-        const result = await invoke("player:play", { videoId: video.id, ...options });
+        const result = await invoke("player:play", { videoId: video.id, quality: options.quality, mode: options.mode });
+        if (result.mode === "builtin" && result.streamUrl) {
+          const videoId = result.video.id;
+          const resumeAt = options.startAt === undefined ? result.resumeAt : undefined;
+          setInline({ videoId, streamUrl: result.streamUrl, formatId: result.format.id, startAt: options.startAt ?? resumeAt ?? 0, nonce: ++inlineNonce });
+          navigation.openVideo(videoId, { title: result.video.title, thumbnailUrl: result.video.thumbnailUrl ?? video.thumbnailUrl });
+          if (result.fallbackFrom) {
+            toasts.push({
+              tone: "info",
+              key: `play:${videoId}`,
+              title: t("player.fallbackHere", { requested: qualityLabel(result.fallbackFrom), quality: qualityLabel(result.format.label) })
+            });
+          }
+          if (resumeAt) {
+            toasts.push({
+              tone: "info",
+              key: `resume:${videoId}`,
+              title: t("player.resumed", { time: formatDuration(resumeAt) }),
+              action: {
+                label: t("player.startOver"),
+                onClick: () => setInline((current) => (current?.videoId === videoId ? { ...current, startAt: 0, nonce: ++inlineNonce } : current))
+              }
+            });
+          }
+          return;
+        }
         const player = result.mode === "mpv" ? t("player.mpv") : t("player.external");
         toasts.push({
           tone: "success",
@@ -249,10 +305,42 @@ export function AppStateProvider({ children, onUiChange }: { children: ReactNode
           detail: result.video.title
         });
       } catch (error) {
+        const mode = options.mode ?? settings.player.preferredMode;
+        if (mode !== "builtin" && LAUNCH_ERRORS.has(toApiError(error).code)) {
+          // The local player is missing or broken: offer the built-in one right away.
+          const description = describeError(error, t);
+          toasts.push({
+            tone: "error",
+            title: description.title,
+            detail: description.detail,
+            action: { label: t("player.playHereInstead"), onClick: () => void play(video, { ...options, mode: "builtin" }) }
+          });
+          return;
+        }
         reportError(error, () => void play(video, options));
       }
     });
-  }, [withBusy, t, toasts, reportError]);
+  }, [withBusy, t, toasts, reportError, navigation, settings.player.preferredMode]);
+
+  const closeInline = useCallback((videoId?: string) => {
+    setInline((current) => (!videoId || current?.videoId === videoId ? undefined : current));
+  }, []);
+
+  const reportProgress = useCallback((videoId: string, positionSeconds: number, durationSeconds: number) => {
+    // Best effort: losing one position update is harmless.
+    void invoke("player:report-progress", { videoId, positionSeconds, durationSeconds }).catch(() => undefined);
+  }, []);
+
+  const progressMap = useMemo(() => {
+    const map = new Map<string, number>();
+    for (const entry of settings.history) {
+      if (entry.positionSeconds && entry.durationSeconds) {
+        map.set(entry.video.id, Math.min(entry.positionSeconds / entry.durationSeconds, 1));
+      }
+    }
+    return map;
+  }, [settings.history]);
+  const watchProgress = useCallback((videoId: string) => progressMap.get(videoId), [progressMap]);
 
   const download = useCallback(async (video: VideoRef, quality?: string) => {
     await withBusy(`download:${video.id}`, async () => {
@@ -422,8 +510,12 @@ export function AppStateProvider({ children, onUiChange }: { children: ReactNode
     appInfo,
     isBusy,
     isFollowing,
+    inline,
+    watchProgress,
     updateSettings,
     play,
+    closeInline,
+    reportProgress,
     download,
     toggleFavorite,
     setAuthorFollowing,
@@ -438,7 +530,7 @@ export function AppStateProvider({ children, onUiChange }: { children: ReactNode
     openExternal
   }), [
     ready, settings, auth, authLoading, favorites, favoriteIds, downloadStatus, appInfo, isBusy, isFollowing,
-    updateSettings, play, download, toggleFavorite, setAuthorFollowing, toggleFollowTag, toggleBlockTag,
+    inline, watchProgress, updateSettings, play, closeInline, reportProgress, download, toggleFavorite, setAuthorFollowing, toggleFollowTag, toggleBlockTag,
     signIn, signOut, refreshAuth, reportError, runRecovery, copyText, openExternal
   ]);
 

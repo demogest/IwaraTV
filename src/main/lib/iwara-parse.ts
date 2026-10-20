@@ -46,6 +46,7 @@ export function mapVideoSummary(raw: Json): VideoSummary {
     uploaderAvatarUrl: avatarUrl(field(user, "avatar")),
     uploaderFollowing: typeof field(user, "following") === "boolean" ? (field(user, "following") as boolean) : undefined,
     thumbnailUrl: thumbnailUrl(raw),
+    thumbnailFramesBase: thumbnailFramesBase(raw),
     rating: valueToString(field(raw, "rating")),
     tags: Array.isArray(tags)
       ? tags.map((tag) => (typeof tag === "string" ? tag : valueToString(field(tag, "id")))).filter((tag): tag is string => Boolean(tag))
@@ -222,6 +223,12 @@ export function thumbnailUrl(video: Json): string | undefined {
   const index = field(video, "thumbnail");
   const frame = typeof index === "number" && Number.isInteger(index) && index >= 0 ? index : 0;
   return `${IMAGE_BASE}/thumbnail/${fileId}/thumbnail-${String(frame).padStart(2, "0")}.jpg`;
+}
+
+/** Prefix of the auto-generated frames; they exist even when a custom thumbnail is shown. */
+export function thumbnailFramesBase(video: Json): string | undefined {
+  const fileId = valueToString(field(field(video, "file"), "id"));
+  return fileId ? `${IMAGE_BASE}/thumbnail/${encodeURIComponent(fileId)}/` : undefined;
 }
 
 /** Avatar URL as built by www.iwara.tv (`{id}/{id}.jpg`, whatever the upload name). */

@@ -30,7 +30,11 @@ export const zhCN: Translation<Dictionary> = {
     search: "搜索“{query}”",
     hintOpen: "打开",
     hintSearch: "搜索",
-    clear: "清空"
+    clear: "清空",
+    recent: "最近搜索",
+    clearRecent: "清除最近搜索",
+    removeRecent: "从最近搜索中移除“{query}”",
+    clipboard: "打开已复制的链接 · {id}"
   },
   account: {
     signedIn: "已登录",
@@ -96,7 +100,8 @@ export const zhCN: Translation<Dictionary> = {
     followedEmptyBody: "可以在视频页关注标签，或在 设置 → 内容过滤 中添加。",
     manageTags: "管理标签",
     emptyTitle: "这里还没有视频",
-    emptyBody: "换一个视频源，或移除部分筛选条件。"
+    emptyBody: "换一个视频源，或移除部分筛选条件。",
+    continueWatching: "继续观看"
   },
   listNotice: {
     scanned: "已扫描 {count} 页",
@@ -213,20 +218,33 @@ export const zhCN: Translation<Dictionary> = {
     older: "更早",
     playedWith: "{quality} · {player}",
     playAgain: "再次播放",
+    resume: "继续播放",
+    watched: "已看 {percent}%",
     removeItem: "从历史中移除",
     emptyTitle: "还没有播放记录",
-    emptyBody: "使用 MPV 或外部播放器播放的视频会显示在这里。"
+    emptyBody: "播放过的视频会显示在这里，内置播放器还会记住你看到的位置。"
   },
   player: {
+    builtin: "IwaraTV",
     mpv: "MPV",
     external: "外部播放器",
     started: "已用 {player} 播放 · {quality}",
-    startedFallback: "已用 {player} 播放 · {requested} 不可用，改用 {quality}"
+    startedFallback: "已用 {player} 播放 · {requested} 不可用，改用 {quality}",
+    fallbackHere: "{requested} 不可用，正在播放 {quality}",
+    resumed: "从 {time} 继续播放",
+    startOver: "从头播放",
+    playHereInstead: "改为在此播放"
   },
   video: {
     loading: "正在打开视频…",
     openFailed: "无法打开这个视频",
     play: "播放",
+    playHere: "在此播放",
+    closePlayer: "关闭播放器",
+    playerError: "无法在此播放该视频。",
+    playerErrorHint: "链接可能已过期，或格式不受支持。",
+    related: "相关视频",
+    moreFrom: "{name} 的更多视频",
     playIn: "用 {player} 播放",
     playOptions: "选择播放器",
     quality: "清晰度",
@@ -301,6 +319,21 @@ export const zhCN: Translation<Dictionary> = {
     replyPosted: "回复已发送",
     loadFailed: "评论加载失败。"
   },
+  shortcuts: {
+    title: "键盘快捷键",
+    general: "通用",
+    player: "内置播放器",
+    search: "搜索或打开链接",
+    sections: "浏览、搜索、订阅、收藏、下载、历史",
+    settings: "打开设置",
+    back: "返回",
+    help: "显示此列表",
+    send: "发送评论",
+    playPause: "播放或暂停",
+    seek: "后退或前进 5 秒",
+    fullscreen: "全屏",
+    mute: "静音或取消静音"
+  },
   settings: {
     title: "设置",
     subtitle: "所有更改会自动保存",
@@ -323,7 +356,14 @@ export const zhCN: Translation<Dictionary> = {
       themeDark: "深色",
       themeLight: "浅色",
       rating: "默认内容分级",
-      ratingDesc: "应用于“浏览”中的视频源。"
+      ratingDesc: "应用于“浏览”中的视频源。",
+      density: "卡片大小",
+      densityDesc: "卡片越小，每行显示的视频越多。",
+      densityComfortable: "大",
+      densityCompact: "小",
+      shortcuts: "键盘快捷键",
+      shortcutsDesc: "在任意位置按 ? 即可查看。",
+      shortcutsOpen: "查看快捷键"
     },
     account: {
       statusSignedIn: "已登录：{name}",
@@ -350,6 +390,8 @@ export const zhCN: Translation<Dictionary> = {
     playback: {
       player: "默认播放器",
       playerDesc: "用于播放按钮和视频卡片上的快速播放。",
+      builtinOption: "内置",
+      builtinNote: "内置播放器直接在 IwaraTV 中播放，并会记住你看到的位置；MPV 和外部播放器会在单独的窗口中打开。",
       quality: "首选清晰度",
       qualityDesc: "不可用时自动改用可用的最高清晰度。",
       bestAvailable: "最高可用",
@@ -384,7 +426,9 @@ export const zhCN: Translation<Dictionary> = {
       connections: "并行连接数",
       connectionsDesc: "服务器支持时，大文件会被拆分为多个区段并行下载。",
       threshold: "大于此大小时分片",
-      resumeNote: "中断或取消的下载会从停止处继续。"
+      resumeNote: "中断或取消的下载会从停止处继续。",
+      notify: "下载完成时通知",
+      notifyDesc: "IwaraTV 在后台运行时显示系统通知。"
     },
     content: {
       followed: "关注标签",

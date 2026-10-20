@@ -4,9 +4,11 @@ import { normalizeMediaHostList } from "../../shared/media-hosts";
 import { normalizeTagList } from "../../shared/tags";
 import type {
   AppSettings,
+  CardDensity,
   LanguagePreference,
   MediaSpeedCandidateResult,
   PlaybackHistoryItem,
+  PlaybackProgress,
   PlayerMode,
   RatingFilter,
   SettingsPatch,
@@ -52,7 +54,27 @@ export class SettingsStore {
 
   addHistory(item: PlaybackHistoryItem): AppSettings {
     const next = structuredClone(this.settings);
-    next.history = [item, ...next.history.filter((entry) => entry.video.id !== item.video.id)].slice(0, HISTORY_LIMIT);
+    const previous = next.history.find((entry) => entry.video.id === item.video.id);
+    // Playing again keeps the saved position so the built-in player can resume.
+    const merged: PlaybackHistoryItem = previous?.positionSeconds !== undefined && item.positionSeconds === undefined
+      ? { ...item, positionSeconds: previous.positionSeconds, durationSeconds: previous.durationSeconds }
+      : item;
+    next.history = [merged, ...next.history.filter((entry) => entry.video.id !== item.video.id)].slice(0, HISTORY_LIMIT);
+    return this.commit(next);
+  }
+
+  /** Saves the built-in player's position without reordering the history. */
+  updateHistoryProgress(progress: PlaybackProgress): AppSettings {
+    const index = this.settings.history.findIndex((entry) => entry.video.id === progress.videoId);
+    if (index < 0) {
+      return this.get();
+    }
+    const next = structuredClone(this.settings);
+    next.history[index] = {
+      ...next.history[index]!,
+      positionSeconds: Math.max(0, Math.round(progress.positionSeconds)),
+      durationSeconds: Math.max(0, Math.round(progress.durationSeconds))
+    };
     return this.commit(next);
   }
 
@@ -156,7 +178,8 @@ const OPTIONAL_KEYS = new Set([
   "download.defaultQuality"
 ]);
 
-const PLAYER_MODES: PlayerMode[] = ["mpv", "external"];
+const PLAYER_MODES: PlayerMode[] = ["builtin", "mpv", "external"];
+const DENSITIES: CardDensity[] = ["comfortable", "compact"];
 const LANGUAGES: LanguagePreference[] = ["system", "zh-CN", "en"];
 const THEMES: ThemePreference[] = ["system", "dark", "light"];
 const RATINGS: RatingFilter[] = ["all", "general", "ecchi"];
@@ -199,7 +222,8 @@ export function normalizeSettings(settings: AppSettings, defaults: AppSettings =
       directory: optionalText(download.directory) ?? defaults.download.directory,
       defaultQuality: optionalText(download.defaultQuality),
       maxConnections: clampInteger(download.maxConnections, 1, 8, defaults.download.maxConnections),
-      minSplitBytes: clampInteger(download.minSplitBytes, 1024 * 1024, 256 * 1024 * 1024, defaults.download.minSplitBytes)
+      minSplitBytes: clampInteger(download.minSplitBytes, 1024 * 1024, 256 * 1024 * 1024, defaults.download.minSplitBytes),
+      notifyOnComplete: typeof download.notifyOnComplete === "boolean" ? download.notifyOnComplete : defaults.download.notifyOnComplete
     }),
     tagPreferences: {
       followedTags: normalizeTagList(stringArray(tags.followedTags)).filter((tag) => !blocked.has(tag)),
@@ -210,7 +234,8 @@ export function normalizeSettings(settings: AppSettings, defaults: AppSettings =
     ui: {
       language: oneOf(ui?.language, LANGUAGES, defaults.ui.language),
       theme: oneOf(ui?.theme, THEMES, defaults.ui.theme),
-      rating: oneOf(ui?.rating, RATINGS, defaults.ui.rating)
+      rating: oneOf(ui?.rating, RATINGS, defaults.ui.rating),
+      density: oneOf(ui?.density, DENSITIES, defaults.ui.density)
     },
     history: Array.isArray(settings.history)
       ? settings.history.filter((item) => isRecord(item) && isRecord(item.video) && typeof item.video.id === "string").slice(0, HISTORY_LIMIT)

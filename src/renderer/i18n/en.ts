@@ -27,7 +27,11 @@ export const en = {
     search: "Search for “{query}”",
     hintOpen: "Open",
     hintSearch: "Search",
-    clear: "Clear"
+    clear: "Clear",
+    recent: "Recent searches",
+    clearRecent: "Clear recent searches",
+    removeRecent: "Remove “{query}” from recent searches",
+    clipboard: "Open copied link · {id}"
   },
   account: {
     signedIn: "Signed in",
@@ -93,7 +97,8 @@ export const en = {
     followedEmptyBody: "Follow tags from a video page, or add them in Settings → Content filters.",
     manageTags: "Manage tags",
     emptyTitle: "No videos here",
-    emptyBody: "Try another feed or remove some filters."
+    emptyBody: "Try another feed or remove some filters.",
+    continueWatching: "Continue watching"
   },
   listNotice: {
     scanned: { one: "Scanned {count} page", other: "Scanned {count} pages" },
@@ -210,20 +215,33 @@ export const en = {
     older: "Older",
     playedWith: "{quality} · {player}",
     playAgain: "Play again",
+    resume: "Resume",
+    watched: "{percent}% watched",
     removeItem: "Remove from history",
     emptyTitle: "Nothing played yet",
-    emptyBody: "Videos you play in MPV or an external player show up here."
+    emptyBody: "Videos you play show up here, and the built-in player remembers where you stopped."
   },
   player: {
+    builtin: "IwaraTV",
     mpv: "MPV",
     external: "External player",
     started: "Playing in {player} · {quality}",
-    startedFallback: "Playing in {player} · {requested} unavailable, using {quality}"
+    startedFallback: "Playing in {player} · {requested} unavailable, using {quality}",
+    fallbackHere: "{requested} isn't available — playing {quality}",
+    resumed: "Continuing from {time}",
+    startOver: "Start over",
+    playHereInstead: "Play here instead"
   },
   video: {
     loading: "Opening video…",
     openFailed: "Couldn't open this video",
     play: "Play",
+    playHere: "Play here",
+    closePlayer: "Close player",
+    playerError: "This video couldn't be played here.",
+    playerErrorHint: "The link may have expired, or the format isn't supported.",
+    related: "Related videos",
+    moreFrom: "More from {name}",
     playIn: "Play in {player}",
     playOptions: "Choose player",
     quality: "Quality",
@@ -298,6 +316,21 @@ export const en = {
     replyPosted: "Reply posted",
     loadFailed: "Couldn't load comments."
   },
+  shortcuts: {
+    title: "Keyboard shortcuts",
+    general: "General",
+    player: "Built-in player",
+    search: "Search or open a link",
+    sections: "Browse, Search, Subscriptions, Favorites, Downloads, History",
+    settings: "Open settings",
+    back: "Go back",
+    help: "Show this list",
+    send: "Send a comment",
+    playPause: "Play or pause",
+    seek: "Back or forward 5 seconds",
+    fullscreen: "Fullscreen",
+    mute: "Mute or unmute"
+  },
   settings: {
     title: "Settings",
     subtitle: "Preferences are saved automatically",
@@ -320,7 +353,14 @@ export const en = {
       themeDark: "Dark",
       themeLight: "Light",
       rating: "Default content rating",
-      ratingDesc: "Applied to the Browse feeds."
+      ratingDesc: "Applied to the Browse feeds.",
+      density: "Card size",
+      densityDesc: "Smaller cards fit more videos on each row.",
+      densityComfortable: "Large",
+      densityCompact: "Small",
+      shortcuts: "Keyboard shortcuts",
+      shortcutsDesc: "Press ? anywhere to see them.",
+      shortcutsOpen: "Show shortcuts"
     },
     account: {
       statusSignedIn: "Signed in as {name}",
@@ -347,6 +387,8 @@ export const en = {
     playback: {
       player: "Default player",
       playerDesc: "Used by Play buttons and quick play on video cards.",
+      builtinOption: "Built-in",
+      builtinNote: "The built-in player streams inside IwaraTV and remembers where you stopped. MPV and external players open in their own window.",
       quality: "Preferred quality",
       qualityDesc: "Falls back to the best available quality when missing.",
       bestAvailable: "Best available",
@@ -381,7 +423,9 @@ export const en = {
       connections: "Parallel connections",
       connectionsDesc: "Large files are split into ranges and fetched in parallel when the server allows it.",
       threshold: "Split files larger than",
-      resumeNote: "Interrupted or canceled downloads resume where they stopped."
+      resumeNote: "Interrupted or canceled downloads resume where they stopped.",
+      notify: "Notify when downloads finish",
+      notifyDesc: "Shows a system notification while IwaraTV is in the background."
     },
     content: {
       followed: "Followed tags",

@@ -1,12 +1,14 @@
-import { ArrowLeft, PlugZap } from "lucide-react";
+import { ArrowLeft, Keyboard, PlugZap } from "lucide-react";
 import { useEffect, useRef, useState, type ComponentType } from "react";
 import { Omnibox } from "./components/Omnibox";
+import { openShortcuts, ShortcutsDialog } from "./components/ShortcutsDialog";
 import { StateMessage } from "./components/primitives";
 import { Sidebar } from "./components/Sidebar";
 import { ToastRegion } from "./components/Toasts";
 import { useHotkeys } from "./hooks/useHotkeys";
 import { useI18n } from "./i18n";
 import { hasBridge } from "./lib/api";
+import { useAppState } from "./state/app-state";
 import { useNavigation, type Section } from "./state/navigation";
 import { AuthorView } from "./views/AuthorView";
 import { BrowseView } from "./views/BrowseView";
@@ -29,6 +31,8 @@ const SECTION_VIEWS: Record<Section, ComponentType<{ active: boolean }>> = {
 };
 
 const NARROW_WIDTH = 1080;
+/** Sidebar order, for Ctrl/⌘+1…6. */
+const SECTION_ORDER: Section[] = ["browse", "search", "subscriptions", "favorites", "downloads", "history"];
 
 function readCollapsed(): boolean {
   try {
@@ -42,6 +46,7 @@ function readCollapsed(): boolean {
 export function App() {
   const { t } = useI18n();
   const navigation = useNavigation();
+  const density = useAppState().settings.ui.density;
   const omniboxRef = useRef<HTMLInputElement>(null);
   const [collapsed, setCollapsed] = useState(readCollapsed);
 
@@ -66,7 +71,14 @@ export function App() {
       omniboxRef.current?.select();
     },
     back: navigation.back,
-    openSettings: () => navigation.openSettings()
+    openSettings: () => navigation.openSettings(),
+    goToSection: (index) => {
+      const section = SECTION_ORDER[index];
+      if (section) {
+        navigation.goTo(section);
+      }
+    },
+    showShortcuts: openShortcuts
   });
 
   if (!hasBridge()) {
@@ -78,7 +90,7 @@ export function App() {
   const top = navigation.top;
 
   return (
-    <div className={collapsed ? "shell shell--collapsed" : "shell"}>
+    <div className={collapsed ? "shell shell--collapsed" : "shell"} data-density={density}>
       <Sidebar collapsed={collapsed} onToggle={() => setCollapsed((value) => !value)} />
       <div className="main">
         <header className="topbar">
@@ -89,6 +101,15 @@ export function App() {
             </button>
           )}
           <Omnibox ref={omniboxRef} />
+          <button
+            aria-label={t("shortcuts.title")}
+            className="button button--ghost button--icon topbar__help"
+            onClick={openShortcuts}
+            title={`${t("shortcuts.title")} (?)`}
+            type="button"
+          >
+            <Keyboard aria-hidden="true" size={18} />
+          </button>
         </header>
         <main className="views">
           {navigation.visited.map((section) => {
@@ -111,6 +132,7 @@ export function App() {
         </main>
       </div>
       <ToastRegion />
+      <ShortcutsDialog />
     </div>
   );
 }

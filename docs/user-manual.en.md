@@ -2,7 +2,7 @@
 
 [简体中文](user-manual.zh-CN.md) | English
 
-IwaraTV is a desktop app for browsing Iwara.tv and playing videos in MPV or another player on your computer. Everything it stores — settings, favorites, history, downloads and your Iwara session — stays on your machine.
+IwaraTV is a desktop app for browsing Iwara.tv and watching videos — in its own built-in player, in MPV, or in another player on your computer. Everything it stores — settings, favorites, history, downloads and your Iwara session — stays on your machine.
 
 This project is independent and is not affiliated with, sponsored by, or endorsed by Iwara.
 
@@ -13,24 +13,29 @@ This project is independent and is not affiliated with, sponsored by, or endorse
    - macOS: the `.dmg`. The app isn't notarized, so the first time, right-click the app and choose **Open**.
    - Linux: the `.deb` or the `.AppImage` (make it executable first).
 2. Start IwaraTV. The Browse page opens straight away; signing in is optional.
-3. Windows builds include MPV. On macOS and Linux, install MPV (`brew install mpv`, `sudo apt install mpv`, …) or pick another player in **Settings → Playback**.
+3. Press **Play here** on any video — the built-in player needs nothing else. If you prefer MPV, Windows builds include it; on macOS and Linux install it (`brew install mpv`, `sudo apt install mpv`, …) and choose it in **Settings → Playback**.
 
-Upgrading from an older (Tauri-based) IwaraTV: your settings, favorites and download history are imported automatically on the first start, and **Settings → Advanced** confirms it. Sign in again once — sessions can't be carried over.
+Upgrading from an older (Tauri-based) IwaraTV: your settings, favorites and download history are imported automatically on the first start, and **Settings → Advanced** confirms it. Sign in again once — sessions can't be carried over. Your default player stays MPV (or your external player); switch to **Built-in** in **Settings → Playback** if you like.
 
 ## The Window
 
 - **Sidebar**: Browse, Search, Subscriptions (Discover) and Favorites, Downloads, History (Library); Settings and your account at the bottom. The button next to the logo collapses the sidebar; it collapses automatically in narrow windows. A badge on Downloads shows active downloads.
-- **Top bar**: type words and press Enter to search, or paste an Iwara link or video ID to open the video. When the text could be either, the suggestion list offers both.
+- **Top bar**: type words and press Enter to search, or paste an Iwara link or video ID to open the video. When the text could be either, the suggestion list offers both. With the box empty, it suggests your recent searches (remove one with its **×** or `Delete`, or clear them all) and, if you copied an Iwara video link, offers to open it.
 - **Back**: the Back button, `Esc`, `Alt+←` or the mouse back button return to where you were, including your scroll position.
 
-Keyboard shortcuts:
+Keyboard shortcuts (press `?` or the keyboard button in the top bar to see them in the app):
 
 | Keys | Action |
 | --- | --- |
 | `/`, `Ctrl+K` or `Ctrl+L` (`⌘` on macOS) | Focus the top bar |
+| `Ctrl+1` … `Ctrl+6` | Browse, Search, Subscriptions, Favorites, Downloads, History |
 | `Ctrl+,` | Open Settings |
 | `Esc`, `Alt+←`, mouse back | Go back |
 | `Ctrl+Enter` in a comment box | Send |
+| `?` | Show the shortcut list |
+| `Space` or `K` | Built-in player: play or pause |
+| `←` / `→` | Built-in player: back or forward 5 seconds |
+| `F` / `M` | Built-in player: fullscreen / mute |
 | Arrow keys, `Home`, `End` | Move between tabs, quality options and menu items |
 
 ## Browsing And Searching
@@ -38,23 +43,34 @@ Keyboard shortcuts:
 - **Browse** has four feeds: Latest, Trending, Popular and Followed tags. The rating switch (All / General / Ecchi) applies to all of them; set its default in **Settings → General**. Add tag filters to narrow a feed.
 - **Search** searches all of Iwara and sorts by relevance, newest, views or likes.
 - **Subscriptions** shows new videos from authors you follow on Iwara (sign-in required). Filter by author with the chips at the top.
-- Hover a video card for quick actions: play, download and favorite. Click the author's name to open their page.
+- Rest the pointer on a video card to preview it: the thumbnail steps through frames from the video, and quick actions appear (play, download, favorite). Click the author's name to open their page.
+- **Continue watching** at the top of Browse lists videos you started in the built-in player but didn't finish; a bar under each thumbnail shows how far you got, and **Resume** carries on from there.
+- **Settings → General → Card size** switches to smaller cards to fit more videos on each row.
 - Lists remember their page and scroll position while you move around.
 
 ## Watching
 
 Open a video to see its details. Choose a **Quality** (best first), then:
 
-- **Play in MPV** (or your external player). The arrow next to it picks the other player for this one time.
+- **Play here** (or **Play in MPV** / your external player, depending on your default). The arrow next to it picks another player for this one time.
 - **Download** saves the chosen quality.
 - **Favorite** saves the video locally.
 - **⋯** opens the video on Iwara or copies its link.
 
-If the chosen quality isn't available, IwaraTV uses the best one there is and tells you. The page also shows the description, tags and comments. Each tag has a menu to browse it, follow it or block it.
+If the chosen quality isn't available, IwaraTV uses the best one there is and tells you. The page also shows the description, tags and comments, plus **More from** the author and **Related videos** in the side column. Each tag has a menu to browse it, follow it or block it.
+
+### The built-in player
+
+**Play here** plays the video right on its page, with the usual controls, fullscreen and keyboard shortcuts (`Space`/`K`, `←`/`→`, `F`, `M`). The volume is remembered.
+
+- Switching **Quality** while watching continues at the same moment.
+- IwaraTV remembers where you stopped. Next time it continues from there and shows **Start over** in case you'd rather begin again. Finished videos start from the beginning.
+- Leaving the page stops playback. The **×** in the corner closes the player and brings back the thumbnail.
+- If a video can't be played (for example an expired link), the player offers **Try again**; MPV may still work from the arrow menu.
 
 ### Players
 
-Pick the default player and preferred quality in **Settings → Playback**.
+Pick the default player and preferred quality in **Settings → Playback**. If MPV or your external player can't be found, the error message offers **Play here instead**.
 
 - **MPV**: found automatically (bundled copy, your system's MPV, or a path you choose). **Test MPV** confirms it starts.
 - **External player**: choose the executable and its arguments. The arguments must contain `{url}`; you can also use `{title}` and `{headers}` (the Iwara referrer header). The preview shows the exact command.
@@ -83,7 +99,7 @@ Favorites are saved on this computer, not on your Iwara account. Click the star 
 - **Export…**: save a JSON file anywhere.
 - **Import…**: merge a JSON file exported from IwaraTV; duplicates are merged and the earliest date is kept.
 
-**History** lists videos you played, grouped by day, with the quality and player used. Play again, remove single entries or clear everything.
+**History** lists videos you played, grouped by day, with the quality, the player used and how much you watched in the built-in player. **Resume** (or **Play again**), remove single entries or clear everything.
 
 ## Downloads
 
@@ -94,6 +110,7 @@ Choose the folder, default quality, parallel connections and split threshold in 
 - **Cancel** keeps the partial file; **Resume** continues where it stopped, also after restarting the app.
 - Finished items offer **Play file** and **Show in folder**; the **⋯** menu removes the entry, and for finished downloads asks whether to delete the file too.
 - Tabs filter active, completed and interrupted (failed or canceled) downloads; **Clear list** removes finished entries (files are kept).
+- Progress also shows on the taskbar or Dock icon. When a download finishes or fails while IwaraTV is in the background, a system notification tells you; click it to open Downloads. Turn this off with **Notify when downloads finish**.
 
 ## Network And Troubleshooting
 
@@ -127,7 +144,7 @@ Errors appear as messages with a suggested fix, such as **Sign in**, **Open sett
 
 The app data folder (also shown in **Settings → Advanced**) contains:
 
-- `settings.json` — preferences, tag lists, host ranking and playback history.
+- `settings.json` — preferences, tag lists, host ranking and playback history (including where you stopped in the built-in player).
 - `favorites.json` and `favorites.backup.json` — favorites and the latest backup.
 - `downloads.json` — the download list.
 - `window-state.json` — window size and position.

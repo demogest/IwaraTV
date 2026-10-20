@@ -48,7 +48,7 @@ npm run test:e2e        # Linux: xvfb-run -a npm run test:e2e
 npm run check:release
 ```
 
-The unit suites cover the Iwara client against a fake fetch, downloads against a local Range server, stores, the player service, IPC validation, translations, and static boundary/security rules (`tests/boundaries.test.ts`). The smoke test builds the app and walks through browsing, search, playback (with a stub MPV), downloads, favorites, sign-in, subscriptions, following, commenting, settings and sign-out against `tests/e2e/mock-iwara.mjs`, saving screenshots to `test-results/e2e/`. Set `IWARATV_E2E_EXECUTABLE` to run it against a packaged app instead of `out/` (only for builds without the inspector fuse, since Playwright attaches through it).
+The unit suites cover the Iwara client against a fake fetch, downloads against a local Range server, stores, the player service, IPC validation, translations, and static boundary/security rules (`tests/boundaries.test.ts`). The smoke test builds the app and walks through browsing, hover previews, search and recent searches, the shortcut list, MPV playback (with a stub MPV), built-in playback of a real clip (`tests/e2e/fixtures/sample.mp4`) with fullscreen, resume and Continue watching, related videos, downloads, favorites, sign-in, subscriptions, following, commenting, settings and sign-out against `tests/e2e/mock-iwara.mjs`, saving screenshots to `test-results/e2e/`. Set `IWARATV_E2E_EXECUTABLE` to run it against a packaged app instead of `out/` (only for builds without the inspector fuse, since Playwright attaches through it).
 
 ## Coding Guidelines
 

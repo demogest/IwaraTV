@@ -507,3 +507,31 @@
     padding: 0 var(--space-4);
   }
 }
+
+.topbar__help {
+  flex: none;
+  color: var(--color-text-muted);
+}
+
+.omnibox__option--muted {
+  color: var(--color-text-muted);
+  font-size: var(--text-sm);
+}
+
+.omnibox__remove {
+  display: grid;
+  width: 24px;
+  height: 24px;
+  margin-left: auto;
+  place-items: center;
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: none;
+  color: var(--color-text-subtle);
+  cursor: pointer;
+}
+
+.omnibox__remove:hover {
+  background: var(--color-surface-active);
+  color: var(--color-text);
+}

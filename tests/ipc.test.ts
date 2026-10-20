@@ -69,6 +69,10 @@ describe("IPC validators", () => {
     reject("favorites:add", { ...validVideo, tags: [1] });
     reject("favorites:restore", { video: validVideo });
     reject("player:play", { videoId: "a", mode: "vlc" });
+    reject("player:report-progress", { videoId: "a", positionSeconds: -1, durationSeconds: 10 });
+    reject("player:report-progress", { videoId: "a", positionSeconds: Number.NaN, durationSeconds: 10 });
+    reject("player:report-progress", { videoId: "a", positionSeconds: 1 });
+    reject("iwara:list-related", { id: "a" });
     reject("settings:update", null);
     reject("settings:update", { evil: {} });
     reject("settings:update", { player: "mpv" });
@@ -106,6 +110,7 @@ describe("IPC validators", () => {
       "iwara:set-author-following": [{ authorId: "u", following: true }],
       "iwara:sniff-x-version-salt": [],
       "iwara:speed-test-video": ["abc"],
+      "iwara:list-related": ["abc"],
       "downloads:list": [],
       "downloads:start": [{ videoId: "abc" }],
       "downloads:retry": ["d"],
@@ -125,6 +130,7 @@ describe("IPC validators", () => {
       "player:play": [{ videoId: "abc", mode: "external" }],
       "player:probe": [],
       "player:test-mpv": [],
+      "player:report-progress": [{ videoId: "abc", positionSeconds: 12.5, durationSeconds: 600 }],
       "settings:get": [],
       "settings:update": [{ ui: { theme: "dark" } }],
       "auth:state": [],
@@ -134,7 +140,8 @@ describe("IPC validators", () => {
       "system:select-directory": [{ title: "Pick", currentPath: "/tmp" }],
       "system:open-external": ["https://www.iwara.tv/"],
       "system:write-clipboard": ["text"],
-      "system:app-info": []
+      "system:app-info": [],
+      "system:clipboard-video": []
     };
     for (const channel of INVOKE_CHANNELS) {
       expect(() => validators[channel](samples[channel]), channel).not.toThrow();

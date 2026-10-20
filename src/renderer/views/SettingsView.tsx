@@ -5,6 +5,7 @@ import {
   FolderOpen,
   Gauge,
   Info,
+  Keyboard,
   LogIn,
   LogOut,
   MonitorPlay,
@@ -25,6 +26,7 @@ import { normalizeMediaHostList } from "../../shared/media-hosts";
 import { buildExternalPlayerArgs, PLAYER_REFERER_HEADER, templateIncludesUrl } from "../../shared/player-template";
 import { splitTagInput } from "../../shared/tags";
 import type {
+  CardDensity,
   LanguagePreference,
   MediaSpeedTestReport,
   PlayerDiagnostics,
@@ -35,10 +37,12 @@ import type {
 } from "../../shared/types";
 import { parseIwaraVideoId } from "../../shared/video-id";
 import { ChipInput } from "../components/ChipInput";
+import { openShortcuts } from "../components/ShortcutsDialog";
 import { Avatar, PageHeader, Segmented, Spinner, Switch, View } from "../components/primitives";
 import { useI18n, type TranslationKey } from "../i18n";
 import { invoke } from "../lib/api";
 import { formatBytes, formatDateTime, formatSpeed, qualityLabel } from "../lib/format";
+import { playerName, PLAYER_MODES } from "../lib/player";
 import { useAppState } from "../state/app-state";
 import { useNavigation, type SettingsSection } from "../state/navigation";
 import { useToasts } from "../state/toasts";
@@ -278,6 +282,23 @@ function GeneralSection() {
           value={ui.rating}
         />
       </Setting>
+      <Setting description={t("settings.general.densityDesc")} label={t("settings.general.density")}>
+        <Segmented<CardDensity>
+          label={t("settings.general.density")}
+          onChange={(density) => void app.updateSettings({ ui: { density } })}
+          options={[
+            { value: "comfortable", label: t("settings.general.densityComfortable") },
+            { value: "compact", label: t("settings.general.densityCompact") }
+          ]}
+          value={ui.density}
+        />
+      </Setting>
+      <Setting description={t("settings.general.shortcutsDesc")} label={t("settings.general.shortcuts")}>
+        <button className="button" onClick={openShortcuts} type="button">
+          <Keyboard aria-hidden="true" size={16} />
+          {t("settings.general.shortcutsOpen")}
+        </button>
+      </Setting>
     </Card>
   );
 }
@@ -393,15 +414,12 @@ function PlaybackSection({ active }: { active: boolean }) {
 
   return (
     <>
-      <Card title={t("settings.sections.playback")}>
+      <Card description={t("settings.playback.builtinNote")} title={t("settings.sections.playback")}>
         <Setting description={t("settings.playback.playerDesc")} label={t("settings.playback.player")}>
           <Segmented<PlayerMode>
             label={t("settings.playback.player")}
             onChange={(preferredMode) => void app.updateSettings({ player: { preferredMode } })}
-            options={[
-              { value: "mpv", label: t("player.mpv") },
-              { value: "external", label: t("player.external") }
-            ]}
+            options={PLAYER_MODES.map((mode) => ({ value: mode, label: mode === "builtin" ? t("settings.playback.builtinOption") : playerName(mode, t) }))}
             value={player.preferredMode}
           />
         </Setting>
@@ -558,6 +576,13 @@ function DownloadsSection() {
             </option>
           ))}
         </select>
+      </Setting>
+      <Setting description={t("settings.downloads.notifyDesc")} label={t("settings.downloads.notify")}>
+        <Switch
+          checked={download.notifyOnComplete}
+          label={t("settings.downloads.notify")}
+          onChange={(notifyOnComplete) => void app.updateSettings({ download: { notifyOnComplete } })}
+        />
       </Setting>
     </Card>
   );

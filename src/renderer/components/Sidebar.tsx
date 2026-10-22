@@ -1,4 +1,4 @@
-import { Bell, CircleArrowUp, Compass, Download, History, PanelLeftClose, PanelLeftOpen, Search, Settings, Star, type LucideIcon } from "lucide-react";
+import { Bell, CircleArrowUp, Compass, Download, History, House, PanelLeftClose, PanelLeftOpen, Search, Settings, Star, type LucideIcon } from "lucide-react";
 import logoUrl from "../assets/iwara-tv-mark.svg";
 import { useI18n, type TranslationKey } from "../i18n";
 import { useAppState, useDownloads } from "../state/app-state";
@@ -13,6 +13,7 @@ interface NavEntry {
 }
 
 const DISCOVER: NavEntry[] = [
+  { section: "home", label: "nav.home", Icon: House },
   { section: "browse", label: "nav.browse", Icon: Compass },
   { section: "search", label: "nav.search", Icon: Search },
   { section: "subscriptions", label: "nav.subscriptions", Icon: Bell }

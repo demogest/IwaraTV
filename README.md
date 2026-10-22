@@ -31,7 +31,7 @@ This project is independently made and is not affiliated with, sponsored by, or 
 - One top bar for everything: type to search, paste an Iwara link or video ID to open it, or pick a recent search or a copied link.
 - A built-in player that works out of the box, remembers where you stopped, switches quality without losing your place, and has fullscreen and keyboard controls — or one-click MPV and external players.
 - Video pages with quality selection, downloads, favorites, author follow, tags, threaded comments, more from the author and related videos.
-- Continue watching on the Browse page for videos you haven't finished.
+- A Home page with everything recent: videos you haven't finished, what you played lately and your recent searches.
 - Subscriptions from the authors you follow, filterable by author.
 - Local favorites with undo, backup, export and import; playback history grouped by day.
 - A download manager with parallel range requests, resume after cancel or restart, retry, progress/speed/ETA, taskbar progress and completion notifications.

@@ -11,6 +11,7 @@ export const zhTW: Translation<Dictionary> = {
   nav: {
     discover: "探索",
     library: "我的",
+    home: "首頁",
     browse: "瀏覽",
     search: "搜尋",
     subscriptions: "訂閱",
@@ -88,6 +89,18 @@ export const zhTW: Translation<Dictionary> = {
     popular: "熱門",
     followed: "追蹤的標籤"
   },
+  home: {
+    title: "首頁",
+    subtitle: "從上次離開的地方繼續",
+    continueWatching: "繼續觀看",
+    recentlyPlayed: "最近播放",
+    recentSearches: "最近搜尋",
+    viewHistory: "查看觀看紀錄",
+    emptyTitle: "這裡還沒有內容",
+    emptyBody: "你播放過的影片和搜尋過的內容會出現在這裡。",
+    browse: "瀏覽影片",
+    search: "搜尋"
+  },
   browse: {
     title: "瀏覽",
     subtitleLatest: "Iwara 全站最新上傳",
@@ -100,8 +113,7 @@ export const zhTW: Translation<Dictionary> = {
     followedEmptyBody: "可以在影片頁面追蹤標籤，或在「設定 → 內容過濾」中新增。",
     manageTags: "管理標籤",
     emptyTitle: "這裡沒有影片",
-    emptyBody: "換個列表，或移除部分篩選條件。",
-    continueWatching: "繼續觀看"
+    emptyBody: "換個列表，或移除部分篩選條件。"
   },
   listNotice: {
     scanned: "已掃描 {count} 頁",
@@ -333,7 +345,7 @@ export const zhTW: Translation<Dictionary> = {
     general: "一般",
     player: "內建播放器",
     search: "搜尋或開啟連結",
-    sections: "瀏覽、搜尋、訂閱、收藏、下載、觀看紀錄",
+    sections: "首頁、瀏覽、搜尋、訂閱、收藏、下載、觀看紀錄",
     settings: "開啟設定",
     back: "返回",
     help: "顯示此清單",

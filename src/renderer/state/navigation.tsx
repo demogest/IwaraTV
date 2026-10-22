@@ -1,6 +1,6 @@
 import { createContext, useContext, useMemo, useState, type ReactNode } from "react";
 
-export type Section = "browse" | "search" | "subscriptions" | "favorites" | "downloads" | "history" | "settings";
+export type Section = "home" | "browse" | "search" | "subscriptions" | "favorites" | "downloads" | "history" | "settings";
 export type SettingsSection = "general" | "account" | "playback" | "downloads" | "content" | "network" | "updates" | "advanced";
 
 export interface AuthorRef {
@@ -56,7 +56,7 @@ function visit(visited: Section[], section: Section): Section[] {
 }
 
 export function NavigationProvider({ children }: { children: ReactNode }) {
-  const [state, setState] = useState<NavigationState>({ section: "browse", stack: [], visited: ["browse"] });
+  const [state, setState] = useState<NavigationState>({ section: "home", stack: [], visited: ["home"] });
 
   // Every action uses functional updates, so the actions object never changes.
   const actions = useMemo<NavigationActions>(() => {
@@ -86,6 +86,7 @@ export function NavigationProvider({ children }: { children: ReactNode }) {
         ...current,
         section: "browse",
         stack: [],
+        visited: visit(current.visited, "browse"),
         browseTagRequest: { value: tag, nonce: ++nonce }
       })),
       openSettings: (section) => setState((current) => ({

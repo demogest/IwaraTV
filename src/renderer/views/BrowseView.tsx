@@ -1,7 +1,7 @@
-import { Clock3, Flame, Heart, History, RefreshCw, Tag, TrendingUp } from "lucide-react";
+import { Clock3, Flame, Heart, RefreshCw, Tag, TrendingUp } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { normalizeTagList, splitTagInput } from "../../shared/tags";
-import type { ListVideosRequest, PlaybackHistoryItem, RatingFilter, VideoSort } from "../../shared/types";
+import type { ListVideosRequest, RatingFilter, VideoSort } from "../../shared/types";
 import { ChipInput } from "../components/ChipInput";
 import { EmptyList, ListError, ListMeta, Pager } from "../components/ListStatus";
 import { PageHeader, Segmented, Spinner, Tabs, View } from "../components/primitives";
@@ -16,13 +16,6 @@ import { useNavigation } from "../state/navigation";
 type FeedTab = "latest" | "trending" | "popular" | "followed";
 
 const SORT_BY_TAB: Record<FeedTab, VideoSort> = { latest: "date", trending: "trending", popular: "popularity", followed: "date" };
-const SHELF_SIZE = 4;
-
-/** Started in the built-in player but not finished. */
-function inProgress(entry: PlaybackHistoryItem): boolean {
-  const fraction = entry.positionSeconds && entry.durationSeconds ? entry.positionSeconds / entry.durationSeconds : 0;
-  return fraction > 0.02 && fraction < 0.95;
-}
 
 export function BrowseView({ active }: { active: boolean }) {
   const { t } = useI18n();
@@ -72,10 +65,6 @@ export function BrowseView({ active }: { active: boolean }) {
     followed: t("browse.subtitleFollowed")
   };
   const videos = list.data?.results ?? [];
-  const continueWatching = useMemo(
-    () => app.settings.history.filter(inProgress).slice(0, SHELF_SIZE).map((entry) => entry.video),
-    [app.settings.history]
-  );
 
   return (
     <View active={active} label={t("browse.title")} refreshing={list.refreshing}>
@@ -85,16 +74,6 @@ export function BrowseView({ active }: { active: boolean }) {
           {t("common.refresh")}
         </button>
       </PageHeader>
-
-      {continueWatching.length > 0 && (
-        <section aria-labelledby="continue-watching" className="shelf">
-          <h2 className="shelf__title" id="continue-watching">
-            <History aria-hidden="true" size={17} />
-            {t("browse.continueWatching")}
-          </h2>
-          <VideoGrid className="video-grid--shelf" resume videos={continueWatching} />
-        </section>
-      )}
 
       <Tabs
         idPrefix="browse"

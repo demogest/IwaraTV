@@ -21,7 +21,7 @@ function groups(mod: string): Array<{ title: TranslationKey; items: Shortcut[] }
       title: "shortcuts.general",
       items: [
         { keys: ["/", `${mod}+K`], label: "shortcuts.search" },
-        { keys: [`${mod}+1…6`], label: "shortcuts.sections" },
+        { keys: [`${mod}+1…7`], label: "shortcuts.sections" },
         { keys: [`${mod}+,`], label: "shortcuts.settings" },
         { keys: ["Esc", "Alt+←"], label: "shortcuts.back" },
         { keys: [`${mod}+Enter`], label: "shortcuts.send" },

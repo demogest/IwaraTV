@@ -1176,6 +1176,32 @@
 }
 
 /* One row only: the first row is explicit, extra cards wrap into zero-height rows and are clipped. */
+.shelf__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+}
+
+.chip--search {
+  padding-right: 6px;
+  font-size: var(--text-sm);
+}
+
+.chip__label {
+  padding: 0;
+  border: 0;
+  background: none;
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+}
+
+.chip__label:hover {
+  color: var(--color-text);
+  text-decoration: underline;
+}
+
 .video-grid--shelf {
   grid-template-rows: auto;
   grid-auto-rows: 0;

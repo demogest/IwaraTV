@@ -153,6 +153,12 @@ try {
   const nav = (name) => page.locator(".sidebar").getByRole("button", { name, exact: true }).click();
   const toast = (text) => page.locator(".toast__title", { hasText: text }).first().waitFor({ timeout: 15_000 });
 
+  await step("opens on an empty Home", async () => {
+    await view.getByText("Nothing here yet").waitFor({ timeout: 30_000 });
+    expect(await page.locator(".sidebar .nav-item[aria-current=page]").innerText() === "Home", "Home is not the start page");
+    await nav("Browse");
+  });
+
   await step("loads the latest feed with thumbnails", async () => {
     await cards.first().waitFor({ timeout: 30_000 });
     expect((await cards.count()) === 32, `expected 32 cards, got ${await cards.count()}`);
@@ -310,13 +316,24 @@ try {
     await page.keyboard.press("k");
   });
 
-  await step("offers to continue watching on Browse", async () => {
+  await step("collects recent activity on Home, not on Browse", async () => {
     await nav("Browse");
-    await view.locator(".shelf .video-card__title", { hasText: playable.title }).waitFor({ timeout: 5_000 });
-    await view.locator(".shelf .watch-progress").first().waitFor();
-    await shot("01b-continue-watching");
+    await cards.first().waitFor();
+    expect((await view.locator(".shelf").count()) === 0, "Browse should only show feeds");
+    await nav("Home");
+    const continueShelf = view.locator(".shelf", { has: page.getByRole("heading", { name: "Continue watching" }) });
+    await continueShelf.locator(".video-card__title", { hasText: playable.title }).waitFor({ timeout: 5_000 });
+    await continueShelf.locator(".watch-progress").first().waitFor();
+    // Played in MPV, so it's recent but has no position to resume.
+    const recentShelf = view.locator(".shelf", { has: page.getByRole("heading", { name: "Recently played" }) });
+    await recentShelf.locator(".video-card__title", { hasText: video.title }).waitFor();
+    await view.locator(".chip--search", { hasText: "neon" }).waitFor();
+    await shot("01b-home");
+    await view.locator(".chip__label", { hasText: "neon" }).click();
+    await waitFor(async () => (await cards.count()) === 5, "the recent search runs again");
+    await nav("Home");
     // Leaving the video ended playback, so reopening it shows the page, not a running player.
-    await view.locator(".shelf .video-card__title", { hasText: playable.title }).click();
+    await continueShelf.locator(".video-card__title", { hasText: playable.title }).click();
     await view.locator(".hero .watch-progress").waitFor();
     expect((await player.count()) === 0, "the player should not restart on its own");
     await page.keyboard.press("Escape");

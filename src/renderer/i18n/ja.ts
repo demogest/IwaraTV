@@ -11,6 +11,7 @@ export const ja: Translation<Dictionary> = {
   nav: {
     discover: "見つける",
     library: "ライブラリ",
+    home: "ホーム",
     browse: "ブラウズ",
     search: "検索",
     subscriptions: "フォロー中",
@@ -88,6 +89,18 @@ export const ja: Translation<Dictionary> = {
     popular: "人気",
     followed: "フォロー中のタグ"
   },
+  home: {
+    title: "ホーム",
+    subtitle: "前回の続きから",
+    continueWatching: "続きから見る",
+    recentlyPlayed: "最近再生した動画",
+    recentSearches: "最近の検索",
+    viewHistory: "履歴を見る",
+    emptyTitle: "まだ何もありません",
+    emptyBody: "再生した動画や検索したキーワードがここに表示されます。",
+    browse: "動画をブラウズ",
+    search: "検索"
+  },
   browse: {
     title: "ブラウズ",
     subtitleLatest: "Iwara 全体の新着動画",
@@ -100,8 +113,7 @@ export const ja: Translation<Dictionary> = {
     followedEmptyBody: "動画ページでタグをフォローするか、「設定 → コンテンツフィルター」で追加してください。",
     manageTags: "タグを管理",
     emptyTitle: "動画がありません",
-    emptyBody: "別の一覧を選ぶか、絞り込みを減らしてください。",
-    continueWatching: "続きから見る"
+    emptyBody: "別の一覧を選ぶか、絞り込みを減らしてください。"
   },
   listNotice: {
     scanned: "{count} ページを走査しました",
@@ -333,7 +345,7 @@ export const ja: Translation<Dictionary> = {
     general: "全般",
     player: "内蔵プレーヤー",
     search: "検索またはリンクを開く",
-    sections: "ブラウズ、検索、フォロー中、お気に入り、ダウンロード、履歴",
+    sections: "ホーム、ブラウズ、検索、フォロー中、お気に入り、ダウンロード、履歴",
     settings: "設定を開く",
     back: "戻る",
     help: "この一覧を表示",

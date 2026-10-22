@@ -8,6 +8,7 @@ export const en = {
   nav: {
     discover: "Discover",
     library: "Library",
+    home: "Home",
     browse: "Browse",
     search: "Search",
     subscriptions: "Subscriptions",
@@ -85,6 +86,18 @@ export const en = {
     popular: "Popular",
     followed: "Followed tags"
   },
+  home: {
+    title: "Home",
+    subtitle: "Pick up where you left off",
+    continueWatching: "Continue watching",
+    recentlyPlayed: "Recently played",
+    recentSearches: "Recent searches",
+    viewHistory: "View history",
+    emptyTitle: "Nothing here yet",
+    emptyBody: "Videos you play and searches you run show up here.",
+    browse: "Browse videos",
+    search: "Search"
+  },
   browse: {
     title: "Browse",
     subtitleLatest: "Fresh uploads from across Iwara",
@@ -97,8 +110,7 @@ export const en = {
     followedEmptyBody: "Follow tags from a video page, or add them in Settings → Content filters.",
     manageTags: "Manage tags",
     emptyTitle: "No videos here",
-    emptyBody: "Try another feed or remove some filters.",
-    continueWatching: "Continue watching"
+    emptyBody: "Try another feed or remove some filters."
   },
   listNotice: {
     scanned: { one: "Scanned {count} page", other: "Scanned {count} pages" },
@@ -330,7 +342,7 @@ export const en = {
     general: "General",
     player: "Built-in player",
     search: "Search or open a link",
-    sections: "Browse, Search, Subscriptions, Favorites, Downloads, History",
+    sections: "Home, Browse, Search, Subscriptions, Favorites, Downloads, History",
     settings: "Open settings",
     back: "Go back",
     help: "Show this list",

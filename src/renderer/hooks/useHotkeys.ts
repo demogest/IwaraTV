@@ -36,7 +36,7 @@ export function useHotkeys(handlers: Hotkeys): void {
         ref.current.openSettings();
         return;
       }
-      if (mod && !event.shiftKey && !event.altKey && /^[1-6]$/.test(event.key)) {
+      if (mod && !event.shiftKey && !event.altKey && /^[1-7]$/.test(event.key)) {
         event.preventDefault();
         ref.current.goToSection(Number(event.key) - 1);
         return;

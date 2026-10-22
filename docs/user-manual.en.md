@@ -14,14 +14,14 @@ IwaraTV runs on Windows 10 or later (64-bit), macOS 13 Ventura or later on Apple
    - Windows: `IwaraTV_<version>_x64-setup.exe` (installer), `…-portable.exe` (no install) or `…-unpacked.zip`.
    - macOS: the `.dmg`. The app isn't notarized, so the first time you open it, go to **System Settings → Privacy & Security** and click **Open Anyway** (on macOS 13 and 14 you can instead right-click the app and choose **Open**).
    - Linux: the `.deb` or the `.AppImage` (make it executable first).
-2. Start IwaraTV. The Browse page opens straight away; signing in is optional.
+2. Start IwaraTV. It opens on Home; Browse has the feeds. Signing in is optional.
 3. Press **Play here** on any video — the built-in player needs nothing else. If you prefer MPV, Windows builds include it; on macOS and Linux install it (`brew install mpv`, `sudo apt install mpv`, …) and choose it in **Settings → Playback**.
 
 Upgrading from an older (Tauri-based) IwaraTV: your settings, favorites and download history are imported automatically on the first start, and **Settings → Advanced** confirms it. Sign in again once — sessions can't be carried over. Your default player stays MPV (or your external player); switch to **Built-in** in **Settings → Playback** if you like.
 
 ## The Window
 
-- **Sidebar**: Browse, Search, Subscriptions (Discover) and Favorites, Downloads, History (Library); Settings and your account at the bottom. The button next to the logo collapses the sidebar; it collapses automatically in narrow windows. A badge on Downloads shows active downloads.
+- **Sidebar**: Home, Browse, Search, Subscriptions (Discover) and Favorites, Downloads, History (Library); Settings and your account at the bottom. The button next to the logo collapses the sidebar; it collapses automatically in narrow windows. A badge on Downloads shows active downloads.
 - **Top bar**: type words and press Enter to search, or paste an Iwara link or video ID to open the video. When the text could be either, the suggestion list offers both. With the box empty, it suggests your recent searches (remove one with its **×** or `Delete`, or clear them all) and, if you copied an Iwara video link, offers to open it.
 - **Back**: the Back button, `Esc`, `Alt+←` or the mouse back button return to where you were, including your scroll position.
 
@@ -30,7 +30,7 @@ Keyboard shortcuts (press `?` or the keyboard button in the top bar to see them 
 | Keys | Action |
 | --- | --- |
 | `/`, `Ctrl+K` or `Ctrl+L` (`⌘` on macOS) | Focus the top bar |
-| `Ctrl+1` … `Ctrl+6` | Browse, Search, Subscriptions, Favorites, Downloads, History |
+| `Ctrl+1` … `Ctrl+7` | Home, Browse, Search, Subscriptions, Favorites, Downloads, History |
 | `Ctrl+,` | Open Settings |
 | `Esc`, `Alt+←`, mouse back | Go back |
 | `Ctrl+Enter` in a comment box | Send |
@@ -42,11 +42,11 @@ Keyboard shortcuts (press `?` or the keyboard button in the top bar to see them 
 
 ## Browsing And Searching
 
+- **Home** gathers what's recent: **Continue watching** (videos you started in the built-in player but didn't finish; a bar under each thumbnail shows how far you got, and **Resume** carries on from there), **Recently played**, and **Recent searches** (click one to search again, **×** to remove it). **View history** opens the full list.
 - **Browse** has four feeds: Latest, Trending, Popular and Followed tags. The rating switch (All / General / Ecchi) applies to all of them; set its default in **Settings → General**. Add tag filters to narrow a feed.
 - **Search** searches all of Iwara and sorts by relevance, newest, views or likes.
 - **Subscriptions** shows new videos from authors you follow on Iwara (sign-in required). Filter by author with the chips at the top.
 - Rest the pointer on a video card to preview it: the thumbnail steps through frames from the video, and quick actions appear (play, download, favorite). Click the author's name to open their page.
-- **Continue watching** at the top of Browse lists videos you started in the built-in player but didn't finish; a bar under each thumbnail shows how far you got, and **Resume** carries on from there.
 - **Settings → General → Card size** switches to smaller cards to fit more videos on each row.
 - Lists remember their page and scroll position while you move around.
 

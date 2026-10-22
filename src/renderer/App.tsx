@@ -16,12 +16,14 @@ import { BrowseView } from "./views/BrowseView";
 import { DownloadsView } from "./views/DownloadsView";
 import { FavoritesView } from "./views/FavoritesView";
 import { HistoryView } from "./views/HistoryView";
+import { HomeView } from "./views/HomeView";
 import { SearchView } from "./views/SearchView";
 import { SettingsView } from "./views/SettingsView";
 import { SubscriptionsView } from "./views/SubscriptionsView";
 import { VideoView } from "./views/VideoView";
 
 const SECTION_VIEWS: Record<Section, ComponentType<{ active: boolean }>> = {
+  home: HomeView,
   browse: BrowseView,
   search: SearchView,
   subscriptions: SubscriptionsView,
@@ -32,8 +34,8 @@ const SECTION_VIEWS: Record<Section, ComponentType<{ active: boolean }>> = {
 };
 
 const NARROW_WIDTH = 1080;
-/** Sidebar order, for Ctrl/⌘+1…6. */
-const SECTION_ORDER: Section[] = ["browse", "search", "subscriptions", "favorites", "downloads", "history"];
+/** Sidebar order, for Ctrl/⌘+1…7. */
+const SECTION_ORDER: Section[] = ["home", "browse", "search", "subscriptions", "favorites", "downloads", "history"];
 
 function readCollapsed(): boolean {
   try {

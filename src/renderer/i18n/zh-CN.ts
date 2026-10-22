@@ -11,6 +11,7 @@ export const zhCN: Translation<Dictionary> = {
   nav: {
     discover: "发现",
     library: "我的",
+    home: "首页",
     browse: "浏览",
     search: "搜索",
     subscriptions: "订阅",
@@ -88,6 +89,18 @@ export const zhCN: Translation<Dictionary> = {
     popular: "流行视频",
     followed: "关注标签"
   },
+  home: {
+    title: "首页",
+    subtitle: "从上次离开的地方继续",
+    continueWatching: "继续观看",
+    recentlyPlayed: "最近播放",
+    recentSearches: "最近搜索",
+    viewHistory: "查看历史",
+    emptyTitle: "这里还什么都没有",
+    emptyBody: "播放过的视频和搜索过的内容会显示在这里。",
+    browse: "浏览视频",
+    search: "搜索"
+  },
   browse: {
     title: "浏览",
     subtitleLatest: "Iwara 全站最新上传",
@@ -100,8 +113,7 @@ export const zhCN: Translation<Dictionary> = {
     followedEmptyBody: "可以在视频页关注标签，或在 设置 → 内容过滤 中添加。",
     manageTags: "管理标签",
     emptyTitle: "这里还没有视频",
-    emptyBody: "换一个视频源，或移除部分筛选条件。",
-    continueWatching: "继续观看"
+    emptyBody: "换一个视频源，或移除部分筛选条件。"
   },
   listNotice: {
     scanned: "已扫描 {count} 页",
@@ -333,7 +345,7 @@ export const zhCN: Translation<Dictionary> = {
     general: "通用",
     player: "内置播放器",
     search: "搜索或打开链接",
-    sections: "浏览、搜索、订阅、收藏、下载、历史",
+    sections: "首页、浏览、搜索、订阅、收藏、下载、历史",
     settings: "打开设置",
     back: "返回",
     help: "显示此列表",

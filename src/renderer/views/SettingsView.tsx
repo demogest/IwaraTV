@@ -40,7 +40,7 @@ import type {
 import { parseIwaraVideoId } from "../../shared/video-id";
 import { ChipInput } from "../components/ChipInput";
 import { openShortcuts } from "../components/ShortcutsDialog";
-import { Avatar, PageHeader, Segmented, Spinner, Switch, View } from "../components/primitives";
+import { Avatar, PageHeader, Segmented, Spinner, Switch, View, ViewHeader } from "../components/primitives";
 import { useI18n, type TranslationKey } from "../i18n";
 import { invoke } from "../lib/api";
 import { describeErrorCode } from "../lib/errors";
@@ -76,7 +76,10 @@ export function SettingsView({ active }: { active: boolean }) {
 
   return (
     <View active={active} label={t("settings.title")}>
-      <PageHeader subtitle={t("settings.subtitle")} title={t("settings.title")} />
+      <ViewHeader>
+        <PageHeader subtitle={t("settings.subtitle")} title={t("settings.title")} />
+      </ViewHeader>
+
       <div className="settings">
         <nav aria-label={t("settings.title")} className="settings__nav">
           {SECTIONS.map(({ id, Icon }) => (

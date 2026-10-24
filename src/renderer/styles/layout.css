@@ -377,14 +377,67 @@
   inset: 0;
   overflow: hidden auto;
   scroll-behavior: auto;
+  /* Keep keyboard focus from landing under the pinned header. */
+  scroll-padding-top: var(--view-header-height, 0px);
 }
 
 .view__inner {
+  --view-top: var(--space-6);
+  --view-gutter: var(--space-8);
+
   width: 100%;
   max-width: var(--content-max);
   margin: 0 auto;
-  padding: var(--space-6) var(--space-8) var(--space-10);
+  padding: var(--view-top) var(--view-gutter) var(--space-10);
   animation: fade-in var(--duration-base) var(--ease-out);
+}
+
+/*
+ * Page title, tabs and filters stay pinned while the list scrolls under them.
+ * The header reaches into the page padding so its background covers the full
+ * width, and part of the top padding scrolls away before it sticks.
+ */
+.view-header {
+  position: sticky;
+  top: calc(var(--space-3) - var(--view-top));
+  z-index: 10;
+  margin: calc(-1 * var(--view-top)) calc(-1 * var(--view-gutter)) var(--space-2);
+  padding: var(--view-top) var(--view-gutter) var(--space-3);
+  background: var(--color-bg);
+  animation: view-header-pinned auto linear both;
+  animation-range: var(--space-3) var(--space-6);
+  animation-timeline: scroll(nearest block);
+}
+
+.view-header > :last-child {
+  margin-bottom: 0;
+}
+
+.view-header > .tabs:not(:last-child) {
+  margin-bottom: var(--space-5);
+}
+
+/* Tabs already draw a line underneath; don't add a gap below it. */
+.view-header:has(> .tabs:last-child) {
+  --view-header-line: transparent;
+
+  margin-bottom: var(--space-5);
+  padding-bottom: 0;
+}
+
+@keyframes view-header-pinned {
+  to {
+    box-shadow:
+      0 1px 0 var(--view-header-line, var(--color-border)),
+      0 10px 18px -14px rgb(0 0 0 / 45%);
+  }
+}
+
+/* Too short to give up the space: let the header scroll away. */
+@media (max-height: 520px) {
+  .view-header {
+    position: static;
+  }
 }
 
 .page-header {
@@ -503,7 +556,10 @@
 
 @media (max-width: 1100px) {
   .view__inner {
-    padding: var(--space-5) var(--space-5) var(--space-8);
+    --view-top: var(--space-5);
+    --view-gutter: var(--space-5);
+
+    padding-bottom: var(--space-8);
   }
 
   .topbar {

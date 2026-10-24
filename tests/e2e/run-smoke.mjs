@@ -173,6 +173,28 @@ try {
     await shot("01-browse");
   });
 
+  await step("keeps the page header in place while scrolling", async () => {
+    const header = view.locator(".view-header");
+    const ecchi = view.getByRole("radio", { name: "Ecchi" });
+    const restingTop = (await ecchi.boundingBox()).y;
+    await view.evaluate((element) => element.scrollTo({ top: 900 }));
+    await waitFor(async () => (await view.evaluate((element) => element.scrollTop)) >= 900, "the feed to scroll");
+    const pinned = await header.evaluate((element) => ({
+      offset: element.getBoundingClientRect().top - element.closest(".view").getBoundingClientRect().top,
+      bottom: element.getBoundingClientRect().bottom,
+      covered: parseFloat(element.closest(".view").style.getPropertyValue("--view-header-height")),
+      shadow: getComputedStyle(element).boxShadow
+    }));
+    const filterTop = (await ecchi.boundingBox()).y;
+    expect(Math.abs(pinned.offset + 12) <= 1, `header is ${pinned.offset}px from the top`);
+    expect(Math.abs(restingTop - 12 - filterTop) <= 1, `rating filter moved from ${restingTop} to ${filterTop}`);
+    expect((await cards.first().boundingBox()).y < pinned.bottom, "the list does not pass under the header");
+    expect(pinned.covered > 100, `--view-header-height is ${pinned.covered}`);
+    expect(pinned.shadow !== "none", "pinned header has no shadow");
+    await shot("01a-browse-scrolled");
+    await view.evaluate((element) => element.scrollTo({ top: 0 }));
+  });
+
   await step("switches feeds and pages", async () => {
     await view.getByRole("tab", { name: "Trending" }).click();
     await waitFor(async () => (await view.locator(".video-card__title").first().innerText()) === VIDEOS.at(-1).title, "trending order");

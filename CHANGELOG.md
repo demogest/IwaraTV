@@ -2,6 +2,14 @@
 
 All notable changes to IwaraTV. Versions follow [semantic versioning](https://semver.org/); a major version marks breaking changes. Full notes for each release, including upgrade steps, are in [`docs/release-notes/`](docs/release-notes/) and on the [Releases page](https://github.com/demogest/IwaraTV/releases).
 
+## 2.3.1 — 2026-10-24
+
+See the [2.3.1 release notes](docs/release-notes/v2.3.1.md).
+
+### Changed
+
+- Page headers stay in place while you scroll: the title, actions, tabs and filters of Home, Browse, Search, Subscriptions, Favorites, Downloads, History, Settings and author pages remain visible above the list. Very short windows (under 520 px) let the header scroll away.
+
 ## 2.3.0 — 2026-10-22
 
 See the [2.3.0 release notes](docs/release-notes/v2.3.0.md).

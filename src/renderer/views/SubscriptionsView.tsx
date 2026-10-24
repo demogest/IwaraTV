@@ -2,7 +2,7 @@ import { Bell, LogIn, RefreshCw, UserRound, Users } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { ListVideosRequest, VideoSummary } from "../../shared/types";
 import { EmptyList, ListError, ListMeta, Pager } from "../components/ListStatus";
-import { Avatar, PageHeader, Spinner, View } from "../components/primitives";
+import { Avatar, PageHeader, Spinner, View, ViewHeader } from "../components/primitives";
 import { VideoGrid, VideoGridSkeleton } from "../components/VideoCard";
 import { useFrozenWhileHidden } from "../hooks/useFrozenWhileHidden";
 import { scrollToTop } from "../hooks/useScrollMemory";
@@ -63,17 +63,46 @@ export function SubscriptionsView({ active }: { active: boolean }) {
   }, [author, authors]);
 
   const visible = author === "all" ? videos : videos.filter((video) => authorKey(video) === author);
+  // Same condition as the video grid below.
+  const showAuthors = signedIn && !list.loading && videos.length > 0;
 
   return (
     <View active={active} label={t("subscriptions.title")} refreshing={list.refreshing}>
-      <PageHeader subtitle={t("subscriptions.subtitle")} title={t("subscriptions.title")}>
-        {signedIn && (
-          <button className="button" disabled={list.loading} onClick={list.reload} type="button">
-            {list.loading || list.refreshing ? <Spinner /> : <RefreshCw aria-hidden="true" size={16} />}
-            {t("common.refresh")}
-          </button>
+      <ViewHeader>
+        <PageHeader subtitle={t("subscriptions.subtitle")} title={t("subscriptions.title")}>
+          {signedIn && (
+            <button className="button" disabled={list.loading} onClick={list.reload} type="button">
+              {list.loading || list.refreshing ? <Spinner /> : <RefreshCw aria-hidden="true" size={16} />}
+              {t("common.refresh")}
+            </button>
+          )}
+        </PageHeader>
+
+        {showAuthors && (
+          <div aria-label={t("subscriptions.authorFilter")} className="author-strip" role="radiogroup">
+            <button aria-checked={author === "all"} className="author-strip__item" onClick={() => setAuthor("all")} role="radio" type="button">
+              <span className="avatar" style={{ width: 30, height: 30 }}>
+                <Users aria-hidden="true" size={15} />
+              </span>
+              <span>{t("subscriptions.allAuthors")}</span>
+            </button>
+            {authors.map((option) => (
+              <button
+                aria-checked={author === option.id}
+                className="author-strip__item"
+                key={option.id}
+                onClick={() => setAuthor(option.id)}
+                role="radio"
+                title={option.name}
+                type="button"
+              >
+                <Avatar name={option.name} size={30} url={option.avatarUrl} />
+                <span>{option.name}</span>
+              </button>
+            ))}
+          </div>
         )}
-      </PageHeader>
+      </ViewHeader>
 
       <div ref={contentRef}>
         {!signedIn ? (
@@ -93,28 +122,6 @@ export function SubscriptionsView({ active }: { active: boolean }) {
           <VideoGridSkeleton />
         ) : videos.length ? (
           <>
-            <div aria-label={t("subscriptions.authorFilter")} className="author-strip" role="radiogroup">
-              <button aria-checked={author === "all"} className="author-strip__item" onClick={() => setAuthor("all")} role="radio" type="button">
-                <span className="avatar" style={{ width: 30, height: 30 }}>
-                  <Users aria-hidden="true" size={15} />
-                </span>
-                <span>{t("subscriptions.allAuthors")}</span>
-              </button>
-              {authors.map((option) => (
-                <button
-                  aria-checked={author === option.id}
-                  className="author-strip__item"
-                  key={option.id}
-                  onClick={() => setAuthor(option.id)}
-                  role="radio"
-                  title={option.name}
-                  type="button"
-                >
-                  <Avatar name={option.name} size={30} url={option.avatarUrl} />
-                  <span>{option.name}</span>
-                </button>
-              ))}
-            </div>
             <ListMeta result={list.data} />
             {visible.length ? <VideoGrid videos={visible} /> : <EmptyList Icon={UserRound} title={t("subscriptions.filteredEmpty")} />}
             <Pager

@@ -4,7 +4,7 @@ import { splitTagInput } from "../../shared/tags";
 import type { ListVideosRequest, VideoSort } from "../../shared/types";
 import { ChipInput } from "../components/ChipInput";
 import { EmptyList, ListError, ListMeta, Pager } from "../components/ListStatus";
-import { PageHeader, Segmented, Spinner, View } from "../components/primitives";
+import { PageHeader, Segmented, Spinner, View, ViewHeader } from "../components/primitives";
 import { VideoGrid, VideoGridSkeleton } from "../components/VideoCard";
 import { useFrozenWhileHidden } from "../hooks/useFrozenWhileHidden";
 import { scrollToTop } from "../hooks/useScrollMemory";
@@ -61,68 +61,70 @@ export function SearchView({ active }: { active: boolean }) {
 
   return (
     <View active={active} label={t("search.title")} refreshing={list.refreshing}>
-      <PageHeader subtitle={t("search.subtitle")} title={t("search.title")}>
-        <button className="button" disabled={!request || list.loading} onClick={list.reload} type="button">
-          {list.loading || list.refreshing ? <Spinner /> : <RefreshCw aria-hidden="true" size={16} />}
-          {t("common.refresh")}
-        </button>
-      </PageHeader>
+      <ViewHeader>
+        <PageHeader subtitle={t("search.subtitle")} title={t("search.title")}>
+          <button className="button" disabled={!request || list.loading} onClick={list.reload} type="button">
+            {list.loading || list.refreshing ? <Spinner /> : <RefreshCw aria-hidden="true" size={16} />}
+            {t("common.refresh")}
+          </button>
+        </PageHeader>
 
-      <form
-        className="toolbar"
-        onSubmit={(event) => {
-          event.preventDefault();
-          setQuery(draft.trim());
-          setPage(0);
-        }}
-        role="search"
-      >
-        <div className="input-with-icon toolbar__grow">
-          <Search aria-hidden="true" size={16} />
-          <input
-            aria-label={t("search.placeholder")}
-            className="input"
-            onChange={(event) => setDraft(event.target.value)}
-            placeholder={t("search.placeholder")}
-            ref={inputRef}
-            type="search"
-            value={draft}
-          />
-        </div>
-        <button className="button button--primary" disabled={!draft.trim()} type="submit">
-          {t("search.submit")}
-        </button>
-      </form>
-
-      <div className="toolbar">
-        <Segmented<SearchSort>
-          label={t("search.sortLabel")}
-          onChange={(next) => {
-            setSort(next);
+        <form
+          className="toolbar"
+          onSubmit={(event) => {
+            event.preventDefault();
+            setQuery(draft.trim());
             setPage(0);
           }}
-          options={[
-            { value: "relevance", label: t("search.relevance") },
-            { value: "date", label: t("search.date") },
-            { value: "views", label: t("search.views") },
-            { value: "likes", label: t("search.likes") }
-          ]}
-          value={sort}
-        />
-        <div className="toolbar__grow">
-          <ChipInput
-            label={t("browse.tagFilterLabel")}
+          role="search"
+        >
+          <div className="input-with-icon toolbar__grow">
+            <Search aria-hidden="true" size={16} />
+            <input
+              aria-label={t("search.placeholder")}
+              className="input"
+              onChange={(event) => setDraft(event.target.value)}
+              placeholder={t("search.placeholder")}
+              ref={inputRef}
+              type="search"
+              value={draft}
+            />
+          </div>
+          <button className="button button--primary" disabled={!draft.trim()} type="submit">
+            {t("search.submit")}
+          </button>
+        </form>
+
+        <div className="toolbar">
+          <Segmented<SearchSort>
+            label={t("search.sortLabel")}
             onChange={(next) => {
-              setTags(next);
+              setSort(next);
               setPage(0);
             }}
-            placeholder={t("browse.tagFilter")}
-            removeLabel={(tag) => `${t("common.remove")} ${tag}`}
-            split={splitTagInput}
-            values={tags}
+            options={[
+              { value: "relevance", label: t("search.relevance") },
+              { value: "date", label: t("search.date") },
+              { value: "views", label: t("search.views") },
+              { value: "likes", label: t("search.likes") }
+            ]}
+            value={sort}
           />
+          <div className="toolbar__grow">
+            <ChipInput
+              label={t("browse.tagFilterLabel")}
+              onChange={(next) => {
+                setTags(next);
+                setPage(0);
+              }}
+              placeholder={t("browse.tagFilter")}
+              removeLabel={(tag) => `${t("common.remove")} ${tag}`}
+              split={splitTagInput}
+              values={tags}
+            />
+          </div>
         </div>
-      </div>
+      </ViewHeader>
 
       <div ref={contentRef}>
         {!request ? (

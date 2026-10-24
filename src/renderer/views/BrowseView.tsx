@@ -4,7 +4,7 @@ import { normalizeTagList, splitTagInput } from "../../shared/tags";
 import type { ListVideosRequest, RatingFilter, VideoSort } from "../../shared/types";
 import { ChipInput } from "../components/ChipInput";
 import { EmptyList, ListError, ListMeta, Pager } from "../components/ListStatus";
-import { PageHeader, Segmented, Spinner, Tabs, View } from "../components/primitives";
+import { PageHeader, Segmented, Spinner, Tabs, View, ViewHeader } from "../components/primitives";
 import { VideoGrid, VideoGridSkeleton } from "../components/VideoCard";
 import { useFrozenWhileHidden } from "../hooks/useFrozenWhileHidden";
 import { scrollToTop } from "../hooks/useScrollMemory";
@@ -68,27 +68,27 @@ export function BrowseView({ active }: { active: boolean }) {
 
   return (
     <View active={active} label={t("browse.title")} refreshing={list.refreshing}>
-      <PageHeader subtitle={subtitles[tab]} title={t("browse.title")}>
-        <button className="button" disabled={list.loading || followedMissing} onClick={list.reload} type="button">
-          {list.loading || list.refreshing ? <Spinner /> : <RefreshCw aria-hidden="true" size={16} />}
-          {t("common.refresh")}
-        </button>
-      </PageHeader>
+      <ViewHeader>
+        <PageHeader subtitle={subtitles[tab]} title={t("browse.title")}>
+          <button className="button" disabled={list.loading || followedMissing} onClick={list.reload} type="button">
+            {list.loading || list.refreshing ? <Spinner /> : <RefreshCw aria-hidden="true" size={16} />}
+            {t("common.refresh")}
+          </button>
+        </PageHeader>
 
-      <Tabs
-        idPrefix="browse"
-        label={t("browse.title")}
-        onChange={setTab}
-        options={[
-          { value: "latest", label: t("feed.latest"), Icon: Clock3 },
-          { value: "trending", label: t("feed.trending"), Icon: Flame },
-          { value: "popular", label: t("feed.popular"), Icon: TrendingUp },
-          { value: "followed", label: t("feed.followed"), Icon: Heart, count: followedTags.length || undefined }
-        ]}
-        value={tab}
-      />
+        <Tabs
+          idPrefix="browse"
+          label={t("browse.title")}
+          onChange={setTab}
+          options={[
+            { value: "latest", label: t("feed.latest"), Icon: Clock3 },
+            { value: "trending", label: t("feed.trending"), Icon: Flame },
+            { value: "popular", label: t("feed.popular"), Icon: TrendingUp },
+            { value: "followed", label: t("feed.followed"), Icon: Heart, count: followedTags.length || undefined }
+          ]}
+          value={tab}
+        />
 
-      <div aria-labelledby={`browse-tab-${tab}`} id="browse-panel" ref={contentRef} role="tabpanel" style={{ paddingTop: 20 }}>
         <div className="toolbar">
           <Segmented<RatingFilter>
             label={t("rating.label")}
@@ -114,7 +114,9 @@ export function BrowseView({ active }: { active: boolean }) {
             />
           </div>
         </div>
+      </ViewHeader>
 
+      <div aria-labelledby={`browse-tab-${tab}`} id="browse-panel" ref={contentRef} role="tabpanel">
         {followedMissing ? (
           <EmptyList Icon={Tag} body={t("browse.followedEmptyBody")} title={t("browse.followedEmptyTitle")}>
             <button className="button button--primary" onClick={() => navigation.openSettings("content")} type="button">

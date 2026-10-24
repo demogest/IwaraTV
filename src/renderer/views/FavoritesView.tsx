@@ -2,7 +2,7 @@ import { Download, Ellipsis, FolderOpen, Search, Shield, Star } from "lucide-rea
 import { useMemo, useState } from "react";
 import { EmptyList } from "../components/ListStatus";
 import { MenuButton } from "../components/MenuButton";
-import { PageHeader, View } from "../components/primitives";
+import { PageHeader, View, ViewHeader } from "../components/primitives";
 import { VideoGrid } from "../components/VideoCard";
 import { useI18n } from "../i18n";
 import { invoke } from "../lib/api";
@@ -61,27 +61,27 @@ export function FavoritesView({ active }: { active: boolean }) {
 
   return (
     <View active={active} label={t("favorites.title")}>
-      <PageHeader
-        subtitle={items.length ? `${t("favorites.subtitle")} · ${t("favorites.count", { count: items.length })}` : t("favorites.subtitle")}
-        title={t("favorites.title")}
-      >
-        <button className="button" onClick={() => void runFileAction("import")} type="button">
-          <FolderOpen aria-hidden="true" size={16} />
-          {t("favorites.import")}
-        </button>
-        <MenuButton
-          items={[
-            { label: t("favorites.backup"), Icon: Shield, onSelect: () => void runFileAction("backup"), disabled: !items.length },
-            { label: t("favorites.export"), Icon: Download, onSelect: () => void runFileAction("export"), disabled: !items.length }
-          ]}
-          label={t("common.more")}
+      <ViewHeader>
+        <PageHeader
+          subtitle={items.length ? `${t("favorites.subtitle")} · ${t("favorites.count", { count: items.length })}` : t("favorites.subtitle")}
+          title={t("favorites.title")}
         >
-          <Ellipsis aria-hidden="true" size={18} />
-        </MenuButton>
-      </PageHeader>
+          <button className="button" onClick={() => void runFileAction("import")} type="button">
+            <FolderOpen aria-hidden="true" size={16} />
+            {t("favorites.import")}
+          </button>
+          <MenuButton
+            items={[
+              { label: t("favorites.backup"), Icon: Shield, onSelect: () => void runFileAction("backup"), disabled: !items.length },
+              { label: t("favorites.export"), Icon: Download, onSelect: () => void runFileAction("export"), disabled: !items.length }
+            ]}
+            label={t("common.more")}
+          >
+            <Ellipsis aria-hidden="true" size={18} />
+          </MenuButton>
+        </PageHeader>
 
-      {items.length ? (
-        <>
+        {items.length > 0 && (
           <div className="toolbar">
             <div className="input-with-icon toolbar__grow">
               <Search aria-hidden="true" size={16} />
@@ -103,12 +103,15 @@ export function FavoritesView({ active }: { active: boolean }) {
               <option value="views">{t("favorites.sortViews")}</option>
             </select>
           </div>
-          {videos.length ? (
-            <VideoGrid videos={videos} />
-          ) : (
-            <EmptyList Icon={Search} title={t("favorites.noMatches", { query: filter.trim() })} />
-          )}
-        </>
+        )}
+      </ViewHeader>
+
+      {items.length ? (
+        videos.length ? (
+          <VideoGrid videos={videos} />
+        ) : (
+          <EmptyList Icon={Search} title={t("favorites.noMatches", { query: filter.trim() })} />
+        )
       ) : (
         <EmptyList Icon={Star} body={t("favorites.emptyBody")} title={t("favorites.emptyTitle")}>
           <button className="button" onClick={() => void runFileAction("import")} type="button">

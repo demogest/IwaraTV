@@ -3,7 +3,7 @@ import { useMemo, useState } from "react";
 import type { DownloadTask } from "../../shared/types";
 import { EmptyList } from "../components/ListStatus";
 import { MenuButton } from "../components/MenuButton";
-import { PageHeader, Tabs, View } from "../components/primitives";
+import { PageHeader, Tabs, View, ViewHeader } from "../components/primitives";
 import { useI18n, type TranslationKey } from "../i18n";
 import { invoke } from "../lib/api";
 import { describeErrorCode } from "../lib/errors";
@@ -86,34 +86,36 @@ export function DownloadsView({ active }: { active: boolean }) {
 
   return (
     <View active={active} label={t("downloads.title")}>
-      <PageHeader
-        subtitle={folder ? t("downloads.subtitle", { folder }) : t("downloads.subtitleNoFolder")}
-        title={t("downloads.title")}
-      >
-        <button className="button" onClick={() => void act(() => invoke("downloads:open-directory"))} type="button">
-          <FolderOpen aria-hidden="true" size={16} />
-          {t("downloads.openFolder")}
-        </button>
-        <button className="button button--ghost" disabled={!downloads.history.length} onClick={() => void clearList()} type="button">
-          <Trash2 aria-hidden="true" size={16} />
-          {t("downloads.clearList")}
-        </button>
-      </PageHeader>
+      <ViewHeader>
+        <PageHeader
+          subtitle={folder ? t("downloads.subtitle", { folder }) : t("downloads.subtitleNoFolder")}
+          title={t("downloads.title")}
+        >
+          <button className="button" onClick={() => void act(() => invoke("downloads:open-directory"))} type="button">
+            <FolderOpen aria-hidden="true" size={16} />
+            {t("downloads.openFolder")}
+          </button>
+          <button className="button button--ghost" disabled={!downloads.history.length} onClick={() => void clearList()} type="button">
+            <Trash2 aria-hidden="true" size={16} />
+            {t("downloads.clearList")}
+          </button>
+        </PageHeader>
 
-      <Tabs
-        idPrefix="downloads"
-        label={t("downloads.title")}
-        onChange={setFilter}
-        options={[
-          { value: "all", label: t("downloads.filterAll") },
-          { value: "active", label: t("downloads.filterActive"), count: counts.active },
-          { value: "completed", label: t("downloads.filterCompleted"), count: counts.completed },
-          { value: "failed", label: t("downloads.filterFailed"), count: counts.failed }
-        ]}
-        value={filter}
-      />
+        <Tabs
+          idPrefix="downloads"
+          label={t("downloads.title")}
+          onChange={setFilter}
+          options={[
+            { value: "all", label: t("downloads.filterAll") },
+            { value: "active", label: t("downloads.filterActive"), count: counts.active },
+            { value: "completed", label: t("downloads.filterCompleted"), count: counts.completed },
+            { value: "failed", label: t("downloads.filterFailed"), count: counts.failed }
+          ]}
+          value={filter}
+        />
+      </ViewHeader>
 
-      <div aria-labelledby={`downloads-tab-${filter}`} id="downloads-panel" role="tabpanel" style={{ paddingTop: 20 }}>
+      <div aria-labelledby={`downloads-tab-${filter}`} id="downloads-panel" role="tabpanel">
         {tasks.length ? (
           <ul className="row-list">
             {tasks.map((task) => (

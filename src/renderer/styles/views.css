@@ -791,7 +791,7 @@
 
 .settings__nav {
   position: sticky;
-  top: var(--space-2);
+  top: calc(var(--view-header-height, 0px) + var(--space-2));
   display: grid;
   gap: 2px;
 }

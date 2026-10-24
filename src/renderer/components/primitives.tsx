@@ -1,5 +1,5 @@
 import { LoaderCircle, type LucideIcon } from "lucide-react";
-import { useRef, useState, type KeyboardEvent, type ReactNode } from "react";
+import { useEffect, useRef, useState, type KeyboardEvent, type ReactNode } from "react";
 import { useScrollMemory } from "../hooks/useScrollMemory";
 
 // --- Avatar -------------------------------------------------------------------
@@ -234,6 +234,45 @@ export function PageHeader({ title, subtitle, children }: { title: ReactNode; su
       </div>
       {children && <div className="page-header__actions">{children}</div>}
     </header>
+  );
+}
+
+/**
+ * The top of a page (title, tabs, filters). It stays in place while the page
+ * scrolls; the height it covers is published as `--view-header-height` on the
+ * view so focused items and other sticky parts stay clear of it.
+ */
+export function ViewHeader({ children }: { children: ReactNode }) {
+  const ref = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const header = ref.current;
+    const view = header?.closest<HTMLElement>(".view");
+    if (!header || !view) {
+      return;
+    }
+    const update = () => {
+      const style = getComputedStyle(header);
+      // `top` is negative: part of the top padding scrolls away before the header sticks.
+      const covered = style.position === "sticky" ? header.offsetHeight + (parseFloat(style.top) || 0) : 0;
+      view.style.setProperty("--view-header-height", `${Math.max(0, covered)}px`);
+    };
+    update();
+    const observer = new ResizeObserver(update);
+    observer.observe(header);
+    // Short windows unpin the header without changing its size.
+    window.addEventListener("resize", update);
+    return () => {
+      observer.disconnect();
+      window.removeEventListener("resize", update);
+      view.style.removeProperty("--view-header-height");
+    };
+  }, []);
+
+  return (
+    <div className="view-header" ref={ref}>
+      {children}
+    </div>
   );
 }
 

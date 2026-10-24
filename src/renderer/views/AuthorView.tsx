@@ -5,7 +5,7 @@ import type { ListVideosRequest } from "../../shared/types";
 import { iwaraProfilePageUrl } from "../../shared/video-id";
 import { ChipInput } from "../components/ChipInput";
 import { EmptyList, ListError, ListMeta, Pager } from "../components/ListStatus";
-import { Avatar, Spinner, View } from "../components/primitives";
+import { Avatar, Spinner, View, ViewHeader } from "../components/primitives";
 import { VideoGrid, VideoGridSkeleton } from "../components/VideoCard";
 import { useFrozenWhileHidden } from "../hooks/useFrozenWhileHidden";
 import { scrollToTop } from "../hooks/useScrollMemory";
@@ -38,52 +38,54 @@ export function AuthorView({ active, author }: { active: boolean; author: Author
 
   return (
     <View active={active} label={name} refreshing={list.refreshing}>
-      <header className="author-hero">
-        <Avatar name={name} size={84} url={avatarUrl} />
-        <div className="author-hero__copy">
-          <span className="subtle">{t("author.title")}</span>
-          <h1 className="author-hero__name">{name}</h1>
-          {username && <span className="muted">@{username}</span>}
-        </div>
-        <div className="author-hero__actions">
-          <button
-            aria-pressed={following}
-            className={following ? "button" : "button button--primary"}
-            disabled={busy}
-            onClick={() => void app.setAuthorFollowing({ ...author, name, username, avatarUrl }, !following)}
-            title={app.auth.status === "signed-in" ? undefined : t("video.followSignIn")}
-            type="button"
-          >
-            {busy ? <Spinner /> : following ? <UserCheck aria-hidden="true" size={16} /> : <UserPlus aria-hidden="true" size={16} />}
-            {following ? t("video.following") : t("video.follow")}
-          </button>
-          {username && (
-            <button className="button" onClick={() => app.openExternal(iwaraProfilePageUrl(username))} type="button">
-              {t("author.openProfile")}
-              <ArrowUpRight aria-hidden="true" size={15} />
+      <ViewHeader>
+        <header className="author-hero">
+          <Avatar name={name} size={84} url={avatarUrl} />
+          <div className="author-hero__copy">
+            <span className="subtle">{t("author.title")}</span>
+            <h1 className="author-hero__name">{name}</h1>
+            {username && <span className="muted">@{username}</span>}
+          </div>
+          <div className="author-hero__actions">
+            <button
+              aria-pressed={following}
+              className={following ? "button" : "button button--primary"}
+              disabled={busy}
+              onClick={() => void app.setAuthorFollowing({ ...author, name, username, avatarUrl }, !following)}
+              title={app.auth.status === "signed-in" ? undefined : t("video.followSignIn")}
+              type="button"
+            >
+              {busy ? <Spinner /> : following ? <UserCheck aria-hidden="true" size={16} /> : <UserPlus aria-hidden="true" size={16} />}
+              {following ? t("video.following") : t("video.follow")}
             </button>
-          )}
-          <button aria-label={t("common.refresh")} className="button button--icon" disabled={list.loading} onClick={list.reload} title={t("common.refresh")} type="button">
-            {list.loading || list.refreshing ? <Spinner /> : <RefreshCw aria-hidden="true" size={16} />}
-          </button>
-        </div>
-      </header>
+            {username && (
+              <button className="button" onClick={() => app.openExternal(iwaraProfilePageUrl(username))} type="button">
+                {t("author.openProfile")}
+                <ArrowUpRight aria-hidden="true" size={15} />
+              </button>
+            )}
+            <button aria-label={t("common.refresh")} className="button button--icon" disabled={list.loading} onClick={list.reload} title={t("common.refresh")} type="button">
+              {list.loading || list.refreshing ? <Spinner /> : <RefreshCw aria-hidden="true" size={16} />}
+            </button>
+          </div>
+        </header>
 
-      <div className="toolbar">
-        <div className="toolbar__grow">
-          <ChipInput
-            label={t("browse.tagFilterLabel")}
-            onChange={(next) => {
-              setTags(next);
-              setPage(0);
-            }}
-            placeholder={t("browse.tagFilter")}
-            removeLabel={(tag) => `${t("common.remove")} ${tag}`}
-            split={splitTagInput}
-            values={tags}
-          />
+        <div className="toolbar">
+          <div className="toolbar__grow">
+            <ChipInput
+              label={t("browse.tagFilterLabel")}
+              onChange={(next) => {
+                setTags(next);
+                setPage(0);
+              }}
+              placeholder={t("browse.tagFilter")}
+              removeLabel={(tag) => `${t("common.remove")} ${tag}`}
+              split={splitTagInput}
+              values={tags}
+            />
+          </div>
         </div>
-      </div>
+      </ViewHeader>
 
       <div ref={contentRef}>
         {list.error && !videos.length ? (

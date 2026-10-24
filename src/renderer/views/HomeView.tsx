@@ -2,7 +2,7 @@ import { Compass, History, House, PlayCircle, Search, X } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import type { PlaybackHistoryItem } from "../../shared/types";
 import { EmptyList } from "../components/ListStatus";
-import { PageHeader, View } from "../components/primitives";
+import { PageHeader, View, ViewHeader } from "../components/primitives";
 import { VideoGrid } from "../components/VideoCard";
 import { useI18n } from "../i18n";
 import { clearRecentSearches, readRecentSearches, removeRecentSearch } from "../lib/recent-searches";
@@ -51,7 +51,9 @@ export function HomeView({ active }: { active: boolean }) {
 
   return (
     <View active={active} label={t("home.title")}>
-      <PageHeader subtitle={t("home.subtitle")} title={t("home.title")} />
+      <ViewHeader>
+        <PageHeader subtitle={t("home.subtitle")} title={t("home.title")} />
+      </ViewHeader>
 
       {empty ? (
         <EmptyList Icon={House} body={t("home.emptyBody")} title={t("home.emptyTitle")}>

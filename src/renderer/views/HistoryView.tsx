@@ -3,7 +3,7 @@ import { useMemo } from "react";
 import type { PlaybackHistoryItem } from "../../shared/types";
 import { EmptyList } from "../components/ListStatus";
 import { MenuButton } from "../components/MenuButton";
-import { PageHeader, Spinner, View } from "../components/primitives";
+import { PageHeader, Spinner, View, ViewHeader } from "../components/primitives";
 import { useI18n, type TranslationKey } from "../i18n";
 import { formatDate, formatTime, qualityLabel } from "../lib/format";
 import { playerName } from "../lib/player";
@@ -56,12 +56,14 @@ export function HistoryView({ active }: { active: boolean }) {
 
   return (
     <View active={active} label={t("history.title")}>
-      <PageHeader subtitle={t("history.subtitle")} title={t("history.title")}>
-        <button className="button button--ghost" disabled={!history.length} onClick={() => void clear()} type="button">
-          <Trash2 aria-hidden="true" size={16} />
-          {t("history.clear")}
-        </button>
-      </PageHeader>
+      <ViewHeader>
+        <PageHeader subtitle={t("history.subtitle")} title={t("history.title")}>
+          <button className="button button--ghost" disabled={!history.length} onClick={() => void clear()} type="button">
+            <Trash2 aria-hidden="true" size={16} />
+            {t("history.clear")}
+          </button>
+        </PageHeader>
+      </ViewHeader>
 
       {groups.length ? (
         groups.map(({ group, items }) => (

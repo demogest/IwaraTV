@@ -6,6 +6,7 @@ import { MenuButton } from "../components/MenuButton";
 import { PageHeader, Tabs, View, ViewHeader } from "../components/primitives";
 import { useI18n, type TranslationKey } from "../i18n";
 import { invoke } from "../lib/api";
+import { finishedStretches } from "../lib/download-progress";
 import { describeErrorCode } from "../lib/errors";
 import { formatBytes, formatDateTime, formatRemaining, formatSpeed, qualityLabel } from "../lib/format";
 import { useAppState, useDownloads } from "../state/app-state";
@@ -147,6 +148,7 @@ function DownloadRow({
   const isActive = task.status === "queued" || task.status === "downloading";
   const percent = task.totalBytes ? Math.min(100, (task.bytesWritten / task.totalBytes) * 100) : undefined;
   const remaining = task.totalBytes ? formatRemaining(task.totalBytes - task.bytesWritten, task.bytesPerSecond) : undefined;
+  const stretches = task.status === "downloading" && task.missingRanges && task.totalBytes ? finishedStretches(task.missingRanges, task.totalBytes) : undefined;
   const open = () => navigation.openVideo(task.videoId, { title: task.video?.title, thumbnailUrl: task.video?.thumbnailUrl });
   const errorText = task.status === "failed"
     ? describeErrorCode(task.errorCode ?? "DOWNLOAD_FAILED", task.error ?? "", t, task.errorDetails).detail
@@ -187,7 +189,12 @@ function DownloadRow({
               className={percent === undefined ? "progress progress--indeterminate" : "progress"}
               role="progressbar"
             >
-              <div className="progress__bar" style={{ width: `${percent ?? 0}%` }} />
+              {stretches ? (
+                // Each connection fills its own part of the file.
+                stretches.map(([left, width]) => <div className="progress__stretch" key={left} style={{ left: `${left}%`, width: `${width}%` }} />)
+              ) : (
+                <div className="progress__bar" style={{ width: `${percent ?? 0}%` }} />
+              )}
             </div>
             <div className="row__progress-meta">
               <span>
@@ -196,8 +203,11 @@ function DownloadRow({
                 {percent !== undefined ? ` · ${Math.floor(percent)}%` : ""}
               </span>
               <span>
-                {task.status === "downloading" && formatSpeed(task.bytesPerSecond, locale)}
-                {remaining ? ` · ${t("downloads.remaining", { time: remaining })}` : ""}
+                {[
+                  task.status === "downloading" && task.connections ? t("downloads.connections", { count: task.connections }) : undefined,
+                  task.status === "downloading" ? formatSpeed(task.bytesPerSecond, locale) : undefined,
+                  remaining ? t("downloads.remaining", { time: remaining }) : undefined
+                ].filter(Boolean).join(" · ")}
               </span>
             </div>
           </div>

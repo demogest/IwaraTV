@@ -22,7 +22,7 @@ import {
   type LucideIcon
 } from "lucide-react";
 import { useEffect, useId, useState, type ReactNode } from "react";
-import { QUALITY_OPTIONS } from "../../shared/defaults";
+import { MAX_CONCURRENT_DOWNLOADS, MAX_DOWNLOAD_CONNECTIONS, QUALITY_OPTIONS } from "../../shared/defaults";
 import { LOCALE_NAMES, LOCALES } from "../../shared/locales";
 import { normalizeMediaHostList } from "../../shared/media-hosts";
 import { buildExternalPlayerArgs, PLAYER_REFERER_HEADER, templateIncludesUrl } from "../../shared/player-template";
@@ -528,6 +528,11 @@ function PlaybackSection({ active }: { active: boolean }) {
   );
 }
 
+/** Number choices for a segmented control, keeping a saved value that isn't one of the presets. */
+function choices(presets: number[], current: number) {
+  return [...new Set([...presets, current])].sort((a, b) => a - b).map((value) => ({ value, label: String(value) }));
+}
+
 function DownloadsSection() {
   const { t, locale } = useI18n();
   const app = useAppState();
@@ -571,8 +576,16 @@ function DownloadsSection() {
         <Segmented<number>
           label={t("settings.downloads.connections")}
           onChange={(maxConnections) => void app.updateSettings({ download: { maxConnections } })}
-          options={[1, 2, 4, 6, 8].map((value) => ({ value, label: String(value) }))}
+          options={choices([1, 2, 4, 8, MAX_DOWNLOAD_CONNECTIONS], download.maxConnections)}
           value={download.maxConnections}
+        />
+      </Setting>
+      <Setting description={t("settings.downloads.concurrentDesc")} label={t("settings.downloads.concurrent")}>
+        <Segmented<number>
+          label={t("settings.downloads.concurrent")}
+          onChange={(maxConcurrent) => void app.updateSettings({ download: { maxConcurrent } })}
+          options={choices([1, 2, 3, 4, MAX_CONCURRENT_DOWNLOADS], download.maxConcurrent)}
+          value={download.maxConcurrent}
         />
       </Setting>
       <Setting label={t("settings.downloads.threshold")} labelFor={ids.threshold}>

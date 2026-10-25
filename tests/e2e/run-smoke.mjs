@@ -282,6 +282,8 @@ try {
     const ranged = mock.state.requests.filter((request) => request.path.startsWith("/download/") && request.headers.range && request.headers.range !== "bytes=0-0");
     expect(ranged.length >= 2, `expected segmented download, saw ${ranged.length} ranged requests`);
     expect(ranged.every((request) => request.headers.referer === "https://www.iwara.tv/"), "media requests need the Iwara referrer");
+    const leftovers = readdirSync(downloads).filter((name) => name.includes(".part"));
+    expect(leftovers.length === 0, `partial files left behind: ${leftovers}`);
     await shot("04-downloads");
   });
 

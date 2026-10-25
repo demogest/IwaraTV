@@ -2,6 +2,17 @@
 
 All notable changes to IwaraTV. Versions follow [semantic versioning](https://semver.org/); a major version marks breaking changes. Full notes for each release, including upgrade steps, are in [`docs/release-notes/`](docs/release-notes/) and on the [Releases page](https://github.com/demogest/IwaraTV/releases).
 
+## 2.4.0 — 2026-10-25
+
+See the [2.4.0 release notes](docs/release-notes/v2.4.0.md).
+
+### Changed
+
+- Multi-thread downloader. Files download over up to 16 connections (default 8 for new installs, was 4 and at most 8; saved settings keep their value) into a single `.part` file, with no merge step at the end. A connection that finishes early takes over half of the largest range still downloading; dropped connections and connections that stall for 30 seconds reconnect and continue from where they stopped; when the server turns extra connections away, the download continues with fewer. Missing ranges are saved in `.part.json`, so Resume continues after a cancel, crash or restart.
+- New **Simultaneous downloads** setting (1–5, default 2; was fixed at 2).
+- Download rows show the number of connections in use, and the progress bar shows each part of the file filling in.
+- Downloads interrupted in an older version that used several connections start over once; single-connection partial files are continued.
+
 ## 2.3.1 — 2026-10-24
 
 See the [2.3.1 release notes](docs/release-notes/v2.3.1.md).

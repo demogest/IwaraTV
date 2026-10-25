@@ -31,7 +31,7 @@ function setup(options: { token?: string; speedTestFails?: boolean; clipboard?: 
         { name: "Source", src: { view: "//jade.iwara.tv/source" } }
       ]);
     }
-    if (url.hostname === "jade.iwara.tv" && url.pathname === "/source" && init.headers?.Range) {
+    if (url.hostname === "jade.iwara.tv" && url.pathname === "/source" && init.headers?.Range === "bytes=0-9") {
       mediaHeaders.push(init.headers);
       return new Response(new Uint8Array(10), { status: 206, headers: { "content-type": "video/mp4", "content-range": "bytes 0-9/100", "x-internal": "drop me" } });
     }

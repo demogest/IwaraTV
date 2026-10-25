@@ -6,6 +6,7 @@ import { ja } from "../src/renderer/i18n/ja";
 import { zhCN } from "../src/renderer/i18n/zh-CN";
 import { zhTW } from "../src/renderer/i18n/zh-TW";
 import { LOCALES } from "../src/shared/locales";
+import { finishedStretches } from "../src/renderer/lib/download-progress";
 import { describeErrorCode } from "../src/renderer/lib/errors";
 import { formatBytes, formatDuration, formatRemaining, qualityLabel, relativeTime } from "../src/renderer/lib/format";
 import { playLabel, playerName } from "../src/renderer/lib/player";
@@ -144,6 +145,17 @@ describe("format helpers", () => {
     expect(qualityLabel("Source", t)).toBe("Source");
     expect(qualityLabel("preview", t)).toBe("Preview");
     expect(qualityLabel("Source", createTranslator("zh-CN"))).toBe("原画");
+  });
+});
+
+describe("download progress", () => {
+  it("draws the finished parts of a multi-connection download", () => {
+    expect(finishedStretches([[0, 999]], 1000)).toEqual([]);
+    expect(finishedStretches([], 1000)).toEqual([[0, 100]]);
+    // Two connections, each 100 bytes into its half.
+    expect(finishedStretches([[100, 499], [600, 999]], 1000)).toEqual([[0, 10], [50, 10]]);
+    // The first range is done and its connection is helping at the end.
+    expect(finishedStretches([[600, 799], [900, 999]], 1000)).toEqual([[0, 60], [80, 10]]);
   });
 });
 

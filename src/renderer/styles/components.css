@@ -819,6 +819,16 @@ button.chip:hover:not(:disabled) {
   transition: width var(--duration-slow) linear;
 }
 
+/* Multi-connection downloads: one stretch per finished part of the file. */
+.progress__stretch {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  min-width: 1px;
+  background: var(--color-accent);
+  transition: width var(--duration-slow) linear;
+}
+
 .progress--indeterminate .progress__bar {
   width: 35% !important;
   animation: indeterminate 1.2s var(--ease-out) infinite;

@@ -105,8 +105,11 @@ export interface TagPreferences {
 export interface DownloadSettings {
   directory?: string;
   defaultQuality?: string;
+  /** Connections per file when the server accepts ranges. */
   maxConnections: number;
   minSplitBytes: number;
+  /** Downloads that run at the same time; the rest wait in the queue. */
+  maxConcurrent: number;
   /** System notification when a download finishes while IwaraTV is in the background. */
   notifyOnComplete: boolean;
 }
@@ -418,6 +421,9 @@ export interface DownloadTask {
   bytesWritten: number;
   totalBytes?: number;
   bytesPerSecond?: number;
+  /** While downloading: connections in use and the byte ranges still missing. */
+  connections?: number;
+  missingRanges?: Array<[number, number]>;
   fallbackFrom?: string;
   error?: string;
   errorCode?: AppErrorCode;

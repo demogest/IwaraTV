@@ -225,22 +225,38 @@ function applyPatch(patch: SettingsPatch): void {
 const progressTimers = new Map<string, number>();
 function simulateDownload(task: DownloadTask): void {
   const total = 380_000_000;
+  const count = settings.download.maxConnections;
+  const size = Math.ceil(total / count);
+  // Each simulated connection fills its own part of the file at its own pace.
+  const parts = Array.from({ length: count }, (_, index) => ({
+    next: index * size,
+    end: Math.min(total, (index + 1) * size) - 1,
+    pace: 0.5 + Math.random()
+  }));
   const timer = window.setInterval(() => {
     const current = downloads.active.find((item) => item.id === task.id);
     if (!current) {
       window.clearInterval(timer);
       return;
     }
+    const before = current.bytesWritten;
+    for (const part of parts) {
+      part.next = Math.min(part.end + 1, part.next + Math.round(700_000 * part.pace));
+    }
+    const missing = parts.filter((part) => part.next <= part.end).map((part): [number, number] => [part.next, part.end]);
     current.status = "downloading";
     current.video ??= detail(task.videoId);
     current.totalBytes = total;
-    current.bytesPerSecond = 18_000_000 + Math.round(Math.random() * 6_000_000);
-    current.bytesWritten = Math.min(total, current.bytesWritten + current.bytesPerSecond / 4);
-    if (current.bytesWritten >= total) {
+    current.bytesWritten = total - missing.reduce((sum, [first, last]) => sum + last - first + 1, 0);
+    current.bytesPerSecond = (current.bytesWritten - before) * 4;
+    current.connections = missing.length;
+    current.missingRanges = missing;
+    if (!missing.length) {
       window.clearInterval(timer);
+      const { connections: _connections, missingRanges: _missing, bytesPerSecond: _speed, ...finished } = current;
       downloads = {
         active: downloads.active.filter((item) => item.id !== task.id),
-        history: [{ ...current, status: "completed", bytesPerSecond: undefined, completedAt: new Date().toISOString() }, ...downloads.history]
+        history: [{ ...finished, status: "completed", completedAt: new Date().toISOString() }, ...downloads.history]
       };
     }
     emit("downloads:changed", downloads);

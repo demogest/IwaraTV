@@ -1,34 +1,13 @@
 import { stat } from "node:fs/promises";
 import path from "node:path";
 import type { VideoFormat } from "../../shared/types";
+export { MAX_DOWNLOAD_CONNECTIONS } from "../../shared/defaults";
 import { AppError } from "./app-error";
 
+/** Smallest range worth its own connection. */
 export const DOWNLOAD_SEGMENT_FLOOR_BYTES = 1024 * 1024;
-export const MAX_DOWNLOAD_CONNECTIONS = 8;
-
-export interface DownloadSegment {
-  index: number;
-  start: number;
-  end: number;
-}
-
-/** Splits `totalBytes` into contiguous inclusive byte ranges. */
-export function downloadSegments(totalBytes: number, maxConnections: number): DownloadSegment[] {
-  const count = Math.max(
-    1,
-    Math.min(Math.max(1, maxConnections), MAX_DOWNLOAD_CONNECTIONS, Math.max(1, Math.floor(totalBytes / DOWNLOAD_SEGMENT_FLOOR_BYTES)))
-  );
-  const segmentSize = Math.ceil(totalBytes / count);
-  const segments: DownloadSegment[] = [];
-  for (let index = 0; index < count; index += 1) {
-    const start = index * segmentSize;
-    if (start >= totalBytes) {
-      break;
-    }
-    segments.push({ index, start, end: Math.min((index + 1) * segmentSize - 1, totalBytes - 1) });
-  }
-  return segments;
-}
+/** Versions before 2.4 kept each range in `.part0`…`.part7`. */
+const LEGACY_SEGMENT_FILES = 8;
 
 export function totalBytesFromContentRange(value: string | null | undefined): number | undefined {
   const total = value?.split("/").at(-1)?.trim();
@@ -42,8 +21,13 @@ export function partialDownloadPath(filePath: string): string {
   return `${filePath}.part`;
 }
 
-export function segmentPartPath(filePath: string, index: number): string {
-  return `${filePath}.part${index}`;
+/** Which ranges of `.part` are still missing; present only while a multi-connection download is unfinished. */
+export function downloadStatePath(filePath: string): string {
+  return `${filePath}.part.json`;
+}
+
+export function legacySegmentPaths(filePath: string): string[] {
+  return Array.from({ length: LEGACY_SEGMENT_FILES }, (_, index) => `${filePath}.part${index}`);
 }
 
 const WINDOWS_RESERVED_NAMES = /^(con|prn|aux|nul|com[1-9]|lpt[1-9])(\..*)?$/i;

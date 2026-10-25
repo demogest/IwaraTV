@@ -1,6 +1,7 @@
 import path from "node:path";
 import { describe, expect, it } from "vitest";
-import { downloadExtension, downloadSegments, sanitizeFileStem, totalBytesFromContentRange, uniqueDownloadPath } from "../src/main/lib/download-files";
+import { downloadExtension, sanitizeFileStem, totalBytesFromContentRange, uniqueDownloadPath } from "../src/main/lib/download-files";
+import { SegmentPlan } from "../src/main/lib/segment-plan";
 import {
   chooseVideoFormat,
   durationSeconds,
@@ -169,16 +170,50 @@ describe("Iwara response mapping", () => {
 });
 
 describe("download planning", () => {
-  it("splits download segments without gaps", () => {
+  it("splits the missing bytes into even ranges, one per connection", () => {
     const total = 10 * 1024 * 1024;
-    const segments = downloadSegments(total, 4);
-    expect(segments).toHaveLength(4);
-    expect(segments[0]!.start).toBe(0);
-    expect(segments.at(-1)!.end).toBe(total - 1);
-    for (let index = 1; index < segments.length; index += 1) {
-      expect(segments[index - 1]!.end + 1).toBe(segments[index]!.start);
-    }
-    expect(downloadSegments(1500, 8)).toEqual([{ index: 0, start: 0, end: 1499 }]);
+    const plan = new SegmentPlan(total, [[0, total - 1]], 4, 1024 * 1024);
+    const claimed = [plan.claim()!, plan.claim()!, plan.claim()!, plan.claim()!];
+    expect(claimed.map((segment) => segment.start)).toEqual([0, total / 4, total / 2, (total * 3) / 4]);
+    expect(claimed.at(-1)!.end).toBe(total - 1);
+    expect(plan.busyCount).toBe(4);
+    expect(plan.doneBytes).toBe(0);
+    // Small files stay in one range.
+    expect(plan.missing()).toEqual([[0, total - 1]]);
+    expect(new SegmentPlan(1500, [[0, 1499]], 8, 1024).missing()).toEqual([[0, 1499]]);
+    const small = new SegmentPlan(1500, [[0, 1499]], 8, 1024);
+    expect(small.claim()).toMatchObject({ start: 0, end: 1499 });
+    expect(small.claim()).toBeUndefined();
+  });
+
+  it("lets a free connection take over half of the largest range in progress", () => {
+    const plan = new SegmentPlan(8_000, [[0, 7_999]], 2, 1_000);
+    const first = plan.claim()!;
+    const second = plan.claim()!;
+    plan.advance(first, 4_000);
+    plan.release(first);
+    plan.advance(second, 1_000);
+    // first is done; its connection takes the back half of second's remaining 3000 bytes.
+    const stolen = plan.claim()!;
+    expect(stolen).toMatchObject({ start: 6_500, end: 7_999, busy: true });
+    expect(second.end).toBe(6_499);
+    expect(plan.missing()).toEqual([[5_000, 7_999]]);
+    // A write already in flight past the new end only counts up to it.
+    expect(plan.advance(second, 2_000)).toBe(1_500);
+    expect(plan.doneBytes).toBe(6_500);
+    plan.advance(stolen, 1_500);
+    expect(plan.complete).toBe(true);
+    // Too little left to split: no more work.
+    expect(plan.claim()).toBeUndefined();
+  });
+
+  it("resumes from saved missing ranges and hands idle ranges out first", () => {
+    const plan = new SegmentPlan(10_000, [[1_000, 1_999], [5_000, 9_999]], 2, 100);
+    expect(plan.doneBytes).toBe(4_000);
+    const ranges = [plan.claim()!, plan.claim()!, plan.claim()!, plan.claim()!];
+    // 6000 missing bytes over 2 connections: pieces of about 3000, then the 4th claim splits one.
+    expect(ranges.map(({ start, end }) => [start, end])).toEqual([[1_000, 1_999], [5_000, 6_249], [7_500, 9_999], [6_250, 7_499]]);
+    expect(plan.missing()).toEqual([[1_000, 1_999], [5_000, 9_999]]);
   });
 
   it("parses the total size from Content-Range", () => {

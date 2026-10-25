@@ -1,5 +1,5 @@
 import path from "node:path";
-import { createDefaultSettings, HISTORY_LIMIT } from "../../shared/defaults";
+import { createDefaultSettings, HISTORY_LIMIT, MAX_CONCURRENT_DOWNLOADS, MAX_DOWNLOAD_CONNECTIONS } from "../../shared/defaults";
 import { LOCALES } from "../../shared/locales";
 import { normalizeMediaHostList } from "../../shared/media-hosts";
 import { normalizeTagList } from "../../shared/tags";
@@ -225,8 +225,9 @@ export function normalizeSettings(settings: AppSettings, defaults: AppSettings =
     download: dropUndefined({
       directory: optionalText(download.directory) ?? defaults.download.directory,
       defaultQuality: optionalText(download.defaultQuality),
-      maxConnections: clampInteger(download.maxConnections, 1, 8, defaults.download.maxConnections),
+      maxConnections: clampInteger(download.maxConnections, 1, MAX_DOWNLOAD_CONNECTIONS, defaults.download.maxConnections),
       minSplitBytes: clampInteger(download.minSplitBytes, 1024 * 1024, 256 * 1024 * 1024, defaults.download.minSplitBytes),
+      maxConcurrent: clampInteger(download.maxConcurrent, 1, MAX_CONCURRENT_DOWNLOADS, defaults.download.maxConcurrent),
       notifyOnComplete: typeof download.notifyOnComplete === "boolean" ? download.notifyOnComplete : defaults.download.notifyOnComplete
     }),
     tagPreferences: {

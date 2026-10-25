@@ -6,6 +6,10 @@ export const QUALITY_OPTIONS = ["Source", "2160", "1440", "1080", "720", "540", 
 
 export const HISTORY_LIMIT = 100;
 
+/** Upper limits of the download settings. */
+export const MAX_DOWNLOAD_CONNECTIONS = 16;
+export const MAX_CONCURRENT_DOWNLOADS = 5;
+
 /** Defaults without machine-specific values (the main process fills in the download folder). */
 export function createDefaultSettings(): AppSettings {
   return {
@@ -29,8 +33,9 @@ export function createDefaultSettings(): AppSettings {
     },
     download: {
       defaultQuality: "Source",
-      maxConnections: 4,
+      maxConnections: 8,
       minSplitBytes: 16 * 1024 * 1024,
+      maxConcurrent: 2,
       notifyOnComplete: true
     },
     tagPreferences: {

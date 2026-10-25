@@ -152,7 +152,7 @@ export class Backend {
           signal
         });
       }
-    });
+    }, () => this.settings.get().download.maxConcurrent);
 
     const updates = options.updates ?? offlineUpdates(options.userDataPath, options.platform.appInfo().version);
     this.updates = new UpdateService({
@@ -166,7 +166,11 @@ export class Backend {
       emit: (state) => options.emit("updates:changed", state)
     });
 
-    this.settings.onChange((settings) => options.emit("settings:changed", settings));
+    this.settings.onChange((settings) => {
+      options.emit("settings:changed", settings);
+      // A higher limit starts waiting downloads right away.
+      this.downloads.pump();
+    });
     this.favorites.onChange((state) => options.emit("favorites:changed", state));
     this.downloads.onChange((state) => {
       options.emit("downloads:changed", state);

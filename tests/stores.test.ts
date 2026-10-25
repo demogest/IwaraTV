@@ -64,7 +64,7 @@ describe("SettingsStore", () => {
     expect(next.ui).toMatchObject({ theme: "light", language: "system" });
     expect(next.player.preferredMode).toBe("builtin");
     expect(next.player).not.toHaveProperty("bogus");
-    expect(next.download.maxConnections).toBe(8);
+    expect(next.download.maxConnections).toBe(16);
     expect(seen).toEqual(["light"]);
   });
 

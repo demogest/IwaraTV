@@ -1,19 +1,25 @@
-import { createReadStream, createWriteStream } from "node:fs";
-import { open, rename, rm, stat, truncate } from "node:fs/promises";
-import { pipeline } from "node:stream/promises";
-import { AppError } from "./app-error";
+import { open, readFile, rename, rm, stat, truncate, writeFile } from "node:fs/promises";
+import { AppError, isAppError } from "./app-error";
 import {
   DOWNLOAD_SEGMENT_FLOOR_BYTES,
-  downloadSegments,
+  downloadStatePath,
+  legacySegmentPaths,
   MAX_DOWNLOAD_CONNECTIONS,
   partialDownloadPath,
-  segmentPartPath,
-  totalBytesFromContentRange,
-  type DownloadSegment
+  totalBytesFromContentRange
 } from "./download-files";
-import { discardBody, mergeHeaders, type HttpFetch } from "./http";
+import { delay, discardBody, mergeHeaders, type HttpFetch } from "./http";
+import { SegmentPlan, type Segment } from "./segment-plan";
 
-export type ProgressCallback = (bytesWritten: number, totalBytes: number | undefined) => void;
+/** Live view of a multi-connection download. */
+export interface TransferDetail {
+  /** Connections currently assigned a range. */
+  connections: number;
+  /** Byte ranges `[first, last]` still missing, in file order. */
+  missing: Array<[number, number]>;
+}
+
+export type ProgressCallback = (bytesWritten: number, totalBytes: number | undefined, detail?: TransferDetail) => void;
 
 export interface TransferOptions {
   fetch: HttpFetch;
@@ -24,17 +30,42 @@ export interface TransferOptions {
   minSplitBytes: number;
   onProgress: ProgressCallback;
   signal?: AbortSignal;
+  /** A connection that receives nothing for this long is dropped and retried. */
+  stallTimeoutMs?: number;
+  /** Wait before the first retry of a range; doubles with each further attempt. */
+  retryDelayMs?: number;
 }
+
+const STALL_TIMEOUT_MS = 30_000;
+const RETRY_DELAY_MS = 1_000;
+const MAX_RETRY_DELAY_MS = 15_000;
+/** Failed attempts in a row, with no new data, before a range gives up. */
+const MAX_ATTEMPTS = 6;
+const STATE_SAVE_INTERVAL_MS = 1_000;
+const PROGRESS_INTERVAL_MS = 100;
+const STATE_VERSION = 1;
+const STALLED = Symbol("stalled");
+// File system failures that another attempt won't fix.
+const FATAL_FS_CODES = new Set(["ENOSPC", "EDQUOT", "EFBIG", "EACCES", "EPERM", "EROFS", "EBADF", "EISDIR", "ENOENT", "EMFILE", "EIO"]);
 
 interface DownloadProbe {
   totalBytes?: number;
   acceptsRanges: boolean;
 }
 
+interface SavedState {
+  version: number;
+  totalBytes: number;
+  missing: Array<[number, number]>;
+}
+
 /**
- * Downloads `url` to `filePath`, resuming from `.part` files when present and
- * splitting large files into parallel ranged requests when the server allows.
- * Returns the number of bytes in the finished file.
+ * Downloads `url` to `filePath`. When the server accepts ranges, several
+ * connections fill one `.part` file in place; a connection that finishes early
+ * takes over half of the largest range still in progress, dropped or stalled
+ * connections retry from where they stopped, and `.part.json` records the
+ * missing ranges so a later attempt resumes. Without ranges the file streams
+ * over one connection. Returns the number of bytes in the finished file.
  */
 export async function transferToFile(options: TransferOptions): Promise<number> {
   const probe = await probeDownload(options).catch((error: unknown) => {
@@ -43,15 +74,12 @@ export async function transferToFile(options: TransferOptions): Promise<number> 
     }
     return undefined;
   });
-  const connections = Math.min(Math.max(Math.round(options.maxConnections), 1), MAX_DOWNLOAD_CONNECTIONS);
-  if (
-    probe?.totalBytes
-    && probe.acceptsRanges
-    && connections > 1
-    && probe.totalBytes >= Math.max(options.minSplitBytes, DOWNLOAD_SEGMENT_FLOOR_BYTES)
-  ) {
-    return downloadSegmented(options, probe.totalBytes, connections);
+  if (probe?.totalBytes && probe.acceptsRanges) {
+    const split = probe.totalBytes >= Math.max(options.minSplitBytes, DOWNLOAD_SEGMENT_FLOOR_BYTES);
+    const connections = split ? Math.min(Math.max(Math.round(options.maxConnections), 1), MAX_DOWNLOAD_CONNECTIONS) : 1;
+    return downloadRanges(options, probe.totalBytes, connections);
   }
+  await collapseToPrefix(options.filePath);
   return downloadSingle(options, probe?.totalBytes);
 }
 
@@ -113,73 +141,269 @@ async function downloadSingle(options: TransferOptions, totalBytes: number | und
   return bytesWritten;
 }
 
-async function downloadSegmented(options: TransferOptions, totalBytes: number, connections: number): Promise<number> {
+async function downloadRanges(options: TransferOptions, totalBytes: number, connections: number): Promise<number> {
   const { filePath, onProgress } = options;
-  const segments = downloadSegments(totalBytes, connections);
-  let progressBytes = 0;
-  for (const segment of segments) {
-    progressBytes += Math.min(await fileSize(segmentPartPath(filePath, segment.index)), segmentLength(segment));
-  }
-  onProgress(progressBytes, totalBytes);
+  const partPath = partialDownloadPath(filePath);
+  const statePath = downloadStatePath(filePath);
+  const stallTimeoutMs = options.stallTimeoutMs ?? STALL_TIMEOUT_MS;
+  const retryDelayMs = options.retryDelayMs ?? RETRY_DELAY_MS;
 
-  // Stop sibling segments as soon as one fails; finished bytes stay on disk for resume.
+  await removeLegacySegments(filePath);
+  const plan = new SegmentPlan(totalBytes, await resumableRanges(partPath, statePath, totalBytes), connections, DOWNLOAD_SEGMENT_FLOOR_BYTES);
+  let saving = Promise.resolve();
+  const saveState = () => {
+    const state: SavedState = { version: STATE_VERSION, totalBytes, missing: plan.missing() };
+    saving = saving.catch(() => undefined).then(() => writeState(statePath, state));
+    return saving;
+  };
+  // The state file comes first: a `.part` without one is read as a plain prefix.
+  await saveState();
+  const handle = await open(partPath, (await fileStat(partPath)) ? "r+" : "w+");
+
+  let lastReport = 0;
+  const report = (force = false) => {
+    const now = Date.now();
+    if (force || now - lastReport >= PROGRESS_INTERVAL_MS) {
+      lastReport = now;
+      onProgress(plan.doneBytes, totalBytes, { connections: plan.busyCount, missing: plan.missing() });
+    }
+  };
+
+  // Stops every connection as soon as one hits an error that retrying won't fix.
   const controller = new AbortController();
   const signal = options.signal ? AbortSignal.any([options.signal, controller.signal]) : controller.signal;
-  const results = await Promise.allSettled(
-    segments.map((segment) =>
-      downloadSegment(options, segment, signal, (delta) => {
-        progressBytes += delta;
-        onProgress(Math.min(progressBytes, totalBytes), totalBytes);
-      }).catch((error: unknown) => {
-        controller.abort(error);
-        throw error;
-      })
-    )
-  );
-  const failure = results.find((result): result is PromiseRejectedResult => result.status === "rejected");
-  if (failure) {
-    throw options.signal?.aborted ? options.signal.reason : failure.reason;
+
+  /** Fetches the rest of `segment`, stopping early if another connection took over its tail. */
+  const receive = async (segment: Segment): Promise<void> => {
+    const request = new AbortController();
+    let timer: NodeJS.Timeout | undefined;
+    const watch = () => {
+      clearTimeout(timer);
+      timer = setTimeout(() => request.abort(STALLED), stallTimeoutMs);
+    };
+    try {
+      watch();
+      const response = await options.fetch(options.url, {
+        headers: mergeHeaders(options.headers, { Range: `bytes=${segment.next}-${segment.end}` }),
+        signal: AbortSignal.any([signal, request.signal])
+      });
+      checkRangeResponse(response, segment.next, totalBytes);
+      const reader = response.body?.getReader();
+      try {
+        while (reader && segment.next <= segment.end) {
+          watch();
+          const { done, value } = await reader.read();
+          clearTimeout(timer);
+          if (done) {
+            break;
+          }
+          const piece = value.subarray(0, segment.end - segment.next + 1);
+          await handle.write(piece, 0, piece.byteLength, segment.next);
+          plan.advance(segment, piece.byteLength);
+          report();
+        }
+      } finally {
+        await reader?.cancel().catch(() => undefined);
+      }
+      if (segment.next <= segment.end) {
+        throw new AppError("DOWNLOAD_FAILED", "The connection closed before its range was complete.", { reason: "incomplete" });
+      }
+    } catch (error) {
+      if (request.signal.reason === STALLED && !signal.aborted) {
+        throw new AppError("DOWNLOAD_FAILED", "The server stopped sending data.", { reason: "stalled" });
+      }
+      throw error;
+    } finally {
+      clearTimeout(timer);
+    }
+  };
+
+  /** Returns false when the server pushed back and the other connections can carry on without this one. */
+  const fetchRange = async (segment: Segment): Promise<boolean> => {
+    let attempts = 0;
+    while (segment.next <= segment.end) {
+      const before = segment.next;
+      try {
+        await receive(segment);
+      } catch (error) {
+        if (signal.aborted || !isRetryable(error)) {
+          throw error;
+        }
+        attempts = segment.next > before ? 1 : attempts + 1;
+        if (isThrottled(error) && plan.busyCount > 1) {
+          return false;
+        }
+        if (attempts >= MAX_ATTEMPTS) {
+          throw finalError(error);
+        }
+        await delay(Math.min(retryDelayMs * 2 ** (attempts - 1), MAX_RETRY_DELAY_MS), signal);
+      }
+    }
+    return true;
+  };
+
+  const connection = async () => {
+    for (let segment = plan.claim(); segment; segment = plan.claim()) {
+      const keepGoing = await fetchRange(segment).finally(() => plan.release(segment));
+      if (!keepGoing) {
+        return;
+      }
+    }
+  };
+
+  report(true);
+  const saver = setInterval(() => void saveState().catch(() => undefined), STATE_SAVE_INTERVAL_MS);
+  let failure: unknown;
+  try {
+    if ((await handle.stat()).size !== totalBytes) {
+      await handle.truncate(totalBytes);
+    }
+    const results = await Promise.allSettled(
+      Array.from({ length: connections }, () =>
+        connection().catch((error: unknown) => {
+          controller.abort(error);
+          throw error;
+        })
+      )
+    );
+    // The others were stopped because of the first fatal error; report that one.
+    failure = controller.signal.aborted
+      ? controller.signal.reason
+      : results.find((result): result is PromiseRejectedResult => result.status === "rejected")?.reason;
+  } catch (error) {
+    failure = error;
+  } finally {
+    clearInterval(saver);
+    await handle.close();
   }
 
-  await mergeSegments(filePath, segments);
-  onProgress(totalBytes, totalBytes);
+  if (failure !== undefined || !plan.complete) {
+    await saveState().catch(() => undefined);
+    if (options.signal?.aborted) {
+      throw options.signal.reason;
+    }
+    throw failure ?? new AppError("DOWNLOAD_FAILED", "Some ranges were never downloaded.", { reason: "incomplete" });
+  }
+  await saving.catch(() => undefined);
+  await rename(partPath, filePath);
+  await rm(statePath, { force: true });
+  report(true);
   return totalBytes;
 }
 
-async function downloadSegment(
-  options: TransferOptions,
-  segment: DownloadSegment,
-  signal: AbortSignal,
-  onDelta: (bytes: number) => void
-): Promise<void> {
-  const partPath = segmentPartPath(options.filePath, segment.index);
-  const expectedLength = segmentLength(segment);
-  let existingLength = await fileSize(partPath);
-  if (existingLength > expectedLength) {
-    await truncate(partPath, expectedLength);
-    existingLength = expectedLength;
+function checkRangeResponse(response: Response, start: number, totalBytes: number): void {
+  if (response.status !== 206) {
+    void discardBody(response);
+    // A full 200 body or "range not satisfiable" means the file isn't the one we started.
+    throw response.status === 200 || response.status === 416
+      ? new AppError("DOWNLOAD_FAILED", `The server no longer serves the expected range (HTTP ${response.status}).`, { status: response.status, reason: "changed" })
+      : httpError(response.status);
   }
-  if (existingLength === expectedLength) {
+  const range = /^bytes\s+(\d+)-\d+\/(\d+|\*)$/i.exec(response.headers.get("content-range")?.trim() ?? "");
+  if (range && (Number(range[1]) !== start || (range[2] !== "*" && Number(range[2]) !== totalBytes))) {
+    void discardBody(response);
+    throw new AppError("DOWNLOAD_FAILED", `Unexpected range from the server: ${range[0]}.`, { reason: "changed" });
+  }
+}
+
+function isRetryable(error: unknown): boolean {
+  if (isAppError(error)) {
+    const status = typeof error.details?.status === "number" ? error.details.status : undefined;
+    return error.details?.reason === "stalled"
+      || error.details?.reason === "incomplete"
+      || (error.details?.reason === "http" && status !== undefined && (status === 408 || status === 429 || status >= 500));
+  }
+  const code = (error as { code?: unknown } | undefined)?.code;
+  return !(typeof code === "string" && FATAL_FS_CODES.has(code));
+}
+
+function isThrottled(error: unknown): boolean {
+  return isAppError(error) && (error.details?.status === 429 || error.details?.status === 503);
+}
+
+/** The error to report once a range has used up its retries. */
+function finalError(error: unknown): unknown {
+  if (isAppError(error)) {
+    return error;
+  }
+  const message = error instanceof Error ? error.message : String(error);
+  return new AppError("DOWNLOAD_FAILED", `The connection kept failing: ${message}`, { reason: "network" });
+}
+
+/**
+ * Missing ranges to resume from: the saved state when it matches this file, a
+ * plain `.part` prefix left by a single-connection download, or everything.
+ */
+async function resumableRanges(partPath: string, statePath: string, totalBytes: number): Promise<Array<[number, number]>> {
+  const everything: Array<[number, number]> = [[0, totalBytes - 1]];
+  const part = await fileStat(partPath);
+  const saved = await readState(statePath);
+  if (saved) {
+    // Everything outside the missing ranges must already be inside the file.
+    const last = saved.missing.at(-1);
+    const doneUntil = last && last[1] === totalBytes - 1 ? last[0] : totalBytes;
+    if (part && saved.totalBytes === totalBytes && (!last || last[1] < totalBytes) && doneUntil <= part.size) {
+      return saved.missing;
+    }
+    await rm(partPath, { force: true });
+    return everything;
+  }
+  if (part && part.size <= totalBytes) {
+    return part.size === totalBytes ? [] : [[part.size, totalBytes - 1]];
+  }
+  await rm(partPath, { force: true });
+  return everything;
+}
+
+/** Before a single-connection download: keeps only the contiguous start of a multi-connection `.part`. */
+async function collapseToPrefix(filePath: string): Promise<void> {
+  await removeLegacySegments(filePath);
+  const statePath = downloadStatePath(filePath);
+  const saved = await readState(statePath);
+  if (!saved) {
     return;
   }
-
-  const response = await options.fetch(options.url, {
-    headers: mergeHeaders(options.headers, { Range: `bytes=${segment.start + existingLength}-${segment.end}` }),
-    signal
-  });
-  if (response.status !== 206) {
-    await discardBody(response);
-    throw new AppError("DOWNLOAD_FAILED", `Segment request failed: HTTP ${response.status}`, { status: response.status, reason: "http" });
+  const partPath = partialDownloadPath(filePath);
+  const part = await fileStat(partPath);
+  if (part) {
+    await truncate(partPath, Math.min(saved.missing[0]?.[0] ?? saved.totalBytes, part.size));
   }
+  await rm(statePath, { force: true });
+}
 
-  let lastReported = existingLength;
-  const written = await writeBody(response, partPath, existingLength > 0, existingLength, (current) => {
-    onDelta(current - lastReported);
-    lastReported = current;
-  }, signal);
-  if (written !== expectedLength) {
-    throw new AppError("DOWNLOAD_FAILED", `Segment ${segment.index + 1} is incomplete: ${written} / ${expectedLength} bytes.`, { reason: "incomplete" });
+async function readState(statePath: string): Promise<SavedState | undefined> {
+  let value: unknown;
+  try {
+    value = JSON.parse(await readFile(statePath, "utf8"));
+  } catch {
+    return undefined;
   }
+  const state = value as Partial<SavedState> | null;
+  if (
+    state?.version !== STATE_VERSION
+    || !Number.isSafeInteger(state.totalBytes)
+    || !Array.isArray(state.missing)
+    || !state.missing.every((range, index, all) =>
+      Array.isArray(range)
+      && range.length === 2
+      && Number.isSafeInteger(range[0])
+      && Number.isSafeInteger(range[1])
+      && range[0] >= (index === 0 ? 0 : all[index - 1]![1] + 1)
+      && range[0] <= range[1])
+  ) {
+    return undefined;
+  }
+  return state as SavedState;
+}
+
+async function writeState(statePath: string, state: SavedState): Promise<void> {
+  const tempPath = `${statePath}.tmp`;
+  await writeFile(tempPath, JSON.stringify(state));
+  await rename(tempPath, statePath);
+}
+
+async function removeLegacySegments(filePath: string): Promise<void> {
+  await Promise.all(legacySegmentPaths(filePath).map((segmentPath) => rm(segmentPath, { force: true })));
 }
 
 async function writeBody(
@@ -208,39 +432,26 @@ async function writeBody(
   return bytesWritten;
 }
 
-/** Joins the segments into `.part` first, so an interrupted merge never looks like a finished file. */
-async function mergeSegments(filePath: string, segments: DownloadSegment[]): Promise<void> {
-  const mergedPath = partialDownloadPath(filePath);
-  const output = createWriteStream(mergedPath);
-  try {
-    for (const segment of segments) {
-      await pipeline(createReadStream(segmentPartPath(filePath, segment.index)), output, { end: false });
-    }
-  } finally {
-    await new Promise<void>((resolve, reject) => output.end((error?: Error | null) => (error ? reject(error) : resolve())));
-  }
-  await rename(mergedPath, filePath);
-  for (const segment of segments) {
-    await rm(segmentPartPath(filePath, segment.index), { force: true });
-  }
-}
-
 /** Removes a finished download and any leftover partial files. */
 export async function removeDownloadArtifacts(filePath: string): Promise<void> {
   await rm(filePath, { force: true });
   await removePartialArtifacts(filePath);
 }
 
-/** Removes only `.part` files, never a finished file at the same path. */
+/** Removes only partial files, never a finished file at the same path. */
 export async function removePartialArtifacts(filePath: string): Promise<void> {
   await rm(partialDownloadPath(filePath), { force: true });
-  for (let index = 0; index < MAX_DOWNLOAD_CONNECTIONS; index += 1) {
-    await rm(segmentPartPath(filePath, index), { force: true });
-  }
+  await rm(downloadStatePath(filePath), { force: true });
+  await rm(`${downloadStatePath(filePath)}.tmp`, { force: true });
+  await removeLegacySegments(filePath);
 }
 
-function segmentLength(segment: DownloadSegment): number {
-  return segment.end - segment.start + 1;
+async function fileStat(filePath: string) {
+  try {
+    return await stat(filePath);
+  } catch {
+    return undefined;
+  }
 }
 
 async function fileSize(filePath: string): Promise<number> {

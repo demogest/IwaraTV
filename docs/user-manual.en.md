@@ -105,11 +105,15 @@ Favorites are saved on this computer, not on your Iwara account. Click the star 
 
 ## Downloads
 
-Choose the folder, default quality, parallel connections and split threshold in **Settings → Downloads**. The default folder is `IwaraTV` inside your Downloads folder.
+Choose the folder, default quality, connections per download, simultaneous downloads and split threshold in **Settings → Downloads**. The default folder is `IwaraTV` inside your Downloads folder.
 
 - The video page downloads the quality you selected; quick actions on cards use the default quality.
-- Large files are fetched in parallel ranges when the server allows it.
-- **Cancel** keeps the partial file; **Resume** continues where it stopped, also after restarting the app.
+- Multi-connection downloads: when the server allows it, a file is split into parts that download at the same time over up to 16 connections (8 by default). The progress bar shows each part filling in, next to the number of connections in use.
+  - A connection that finishes early takes over half of the largest part still downloading, so one slow connection doesn't hold up the end.
+  - Dropped or stalled connections (no data for 30 seconds) reconnect on their own and continue where they stopped. If the server turns extra connections away, the download carries on with fewer.
+  - Files smaller than the split threshold (16 MB by default) use one connection.
+- Up to 2 downloads run at once by default (1–5 in **Simultaneous downloads**); the rest wait in the queue.
+- **Cancel** keeps the partial file (`.part`, with a small `.part.json` listing the parts still missing); **Resume** continues where it stopped, also after restarting the app.
 - Finished items offer **Play file** and **Show in folder**; the **⋯** menu removes the entry, and for finished downloads asks whether to delete the file too.
 - Tabs filter active, completed and interrupted (failed or canceled) downloads; **Clear list** removes finished entries (files are kept).
 - Progress also shows on the taskbar or Dock icon. When a download finishes or fails while IwaraTV is in the background, a system notification tells you; click it to open Downloads. Turn this off with **Notify when downloads finish**.
@@ -135,7 +139,7 @@ Errors appear as messages with a suggested fix, such as **Sign in**, **Open sett
 | "Sign-in required" / "Session expired" | Sign in again. |
 | Only low qualities appear | Sign in, then use **Troubleshooting → Compare with website**. |
 | HTTP 403 when playing or downloading | Turn off **Use the fastest host** in **Settings → Network**. |
-| Downloads fail or stall | **Resume** the download, lower parallel connections, or choose another quality. |
+| Downloads fail or stall | **Resume** the download, lower **Connections per download**, or choose another quality. |
 | Favorites import skips items | Use a JSON file exported from IwaraTV. |
 | "Update rejected" | The file didn't match what the release published, so nothing was installed. Try again later, or download the release from GitHub. |
 

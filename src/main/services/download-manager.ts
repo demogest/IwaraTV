@@ -8,7 +8,7 @@ import type {
   VideoSummary
 } from "../../shared/types";
 import { AppError, serializeError } from "../lib/app-error";
-import { removeDownloadArtifacts, removePartialArtifacts, type ProgressCallback } from "../lib/file-transfer";
+import { removeDownloadArtifacts, removePartialArtifacts, type ProgressCallback, type TransferDetail } from "../lib/file-transfer";
 import { isRecord, readJsonFile, writeJsonFileAtomic } from "../lib/json-file";
 import type { DownloadPlan } from "./iwara-client";
 
@@ -39,10 +39,11 @@ export class DownloadManager {
   private nextId = 1;
   private shuttingDown = false;
 
+  /** `maxConcurrent` is read whenever a slot frees up, so a settings change applies to the queue at once. */
   constructor(
     userDataPath: string,
     private readonly engine: DownloadEngine,
-    private readonly maxConcurrent = 2
+    private readonly maxConcurrent: () => number = () => 2
   ) {
     this.filePath = path.join(userDataPath, "downloads.json");
     this.history = loadHistory(this.filePath);
@@ -169,15 +170,16 @@ export class DownloadManager {
     }
     const now = new Date().toISOString();
     for (const task of this.active) {
-      this.history.unshift({ ...task, status: "canceled", bytesPerSecond: undefined, updatedAt: now, completedAt: now });
+      this.history.unshift({ ...withoutLiveFields(task), status: "canceled", updatedAt: now, completedAt: now });
     }
     this.active = [];
     this.history = this.history.slice(0, MAX_HISTORY_ITEMS);
     this.persist();
   }
 
-  private pump(): void {
-    while (!this.shuttingDown && this.running < this.maxConcurrent) {
+  /** Starts queued downloads until the concurrency limit is reached. */
+  pump(): void {
+    while (!this.shuttingDown && this.running < Math.max(1, this.maxConcurrent())) {
       const next = [...this.active].reverse().find((task) => task.status === "queued" && !this.controllers.has(task.id));
       if (!next) {
         return;
@@ -219,7 +221,7 @@ export class DownloadManager {
       });
       this.emitNow();
 
-      const bytesWritten = await this.engine.transfer(plan, (written, total) => this.progress(id, written, total), controller.signal);
+      const bytesWritten = await this.engine.transfer(plan, (written, total, detail) => this.progress(id, written, total, detail), controller.signal);
       const finished = this.takeActive(id);
       if (finished) {
         this.finish({ ...finished, bytesWritten, totalBytes: bytesWritten }, "completed");
@@ -248,7 +250,7 @@ export class DownloadManager {
     return new Set(this.active.filter((task) => task.id !== exceptId && task.path).map((task) => task.path!));
   }
 
-  private progress(id: string, bytesWritten: number, totalBytes: number | undefined): void {
+  private progress(id: string, bytesWritten: number, totalBytes: number | undefined, detail?: TransferDetail): void {
     const task = this.active.find((item) => item.id === id);
     if (!task) {
       return;
@@ -264,6 +266,8 @@ export class DownloadManager {
     }
     task.bytesWritten = bytesWritten;
     task.totalBytes = totalBytes ?? task.totalBytes;
+    task.connections = detail?.connections;
+    task.missingRanges = detail?.missing;
     task.updatedAt = new Date(now).toISOString();
     this.scheduleEmit();
   }
@@ -283,7 +287,7 @@ export class DownloadManager {
   private finish(task: DownloadTask, status: DownloadTaskStatus): void {
     const now = new Date().toISOString();
     this.history = [
-      { ...task, status, bytesPerSecond: undefined, updatedAt: now, completedAt: now },
+      { ...withoutLiveFields(task), status, updatedAt: now, completedAt: now },
       ...this.history.filter((item) => item.id !== task.id)
     ].slice(0, MAX_HISTORY_ITEMS);
     this.persist();
@@ -317,6 +321,12 @@ export class DownloadManager {
   }
 }
 
+/** Drops what only matters while a download runs. */
+function withoutLiveFields(task: DownloadTask): DownloadTask {
+  const { bytesPerSecond: _speed, connections: _connections, missingRanges: _missing, ...rest } = task;
+  return rest;
+}
+
 function summaryOf(video: VideoSummary & { formats?: unknown; embedUrl?: unknown }): VideoSummary {
   const { formats: _formats, embedUrl: _embedUrl, ...summary } = video;
   return summary;
@@ -329,7 +339,7 @@ function loadHistory(filePath: string): DownloadTask[] {
     .filter((task): task is DownloadTask => isRecord(task) && typeof task.id === "string" && typeof task.videoId === "string")
     .map((task) =>
       task.status === "queued" || task.status === "downloading"
-        ? { ...task, status: "canceled" as const, bytesPerSecond: undefined }
+        ? { ...withoutLiveFields(task), status: "canceled" as const }
         : task
     )
     .slice(0, MAX_HISTORY_ITEMS);

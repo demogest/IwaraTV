@@ -34,7 +34,7 @@ This project is independently made and is not affiliated with, sponsored by, or 
 - A Home page with everything recent: videos you haven't finished, what you played lately and your recent searches.
 - Subscriptions from the authors you follow, filterable by author.
 - Local favorites with undo, backup, export and import; playback history grouped by day.
-- A download manager with parallel range requests, resume after cancel or restart, retry, progress/speed/ETA, taskbar progress and completion notifications.
+- A multi-connection downloader: up to 16 connections per file with work stealing between them, automatic reconnects for dropped or stalled connections, resume after cancel or restart, a queue with a configurable number of simultaneous downloads, per-part progress, speed/ETA, taskbar progress and completion notifications.
 - Sign in on Iwara's own page in a separate window; the app never sees your password.
 - English, Simplified Chinese, Traditional Chinese and Japanese, light and dark themes, large or compact cards, keyboard shortcuts (press `?`), collapsible sidebar.
 - Troubleshooting tools: compare formats with the website, speed-test CDN hosts, refresh the X-Version salt.

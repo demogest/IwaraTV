@@ -5,8 +5,7 @@ import {
   downloadStatePath,
   legacySegmentPaths,
   MAX_DOWNLOAD_CONNECTIONS,
-  partialDownloadPath,
-  totalBytesFromContentRange
+  partialDownloadPath
 } from "./download-files";
 import { delay, discardBody, mergeHeaders, type HttpFetch } from "./http";
 import { SegmentPlan, type Segment } from "./segment-plan";
@@ -79,17 +78,19 @@ export async function transferToFile(options: TransferOptions): Promise<number> 
     const connections = split ? Math.min(Math.max(Math.round(options.maxConnections), 1), MAX_DOWNLOAD_CONNECTIONS) : 1;
     return downloadRanges(options, probe.totalBytes, connections);
   }
-  await collapseToPrefix(options.filePath);
-  return downloadSingle(options, probe?.totalBytes);
+  const totalBytes = await collapseToPrefix(options.filePath, probe?.totalBytes);
+  return downloadSingle(options, totalBytes);
 }
 
 async function probeDownload({ fetch, url, headers, signal }: TransferOptions): Promise<DownloadProbe> {
   const response = await fetch(url, { headers: mergeHeaders(headers, { Range: "bytes=0-0" }), signal });
   await discardBody(response);
   if (response.status === 206) {
+    const range = responseRange(response);
     return {
-      totalBytes: totalBytesFromContentRange(response.headers.get("content-range")) ?? numberHeader(response, "content-length"),
-      acceptsRanges: true
+      // Content-Length is only the probe's body length, never the file size.
+      totalBytes: range?.start === 0 && range.end === 0 ? range.total : undefined,
+      acceptsRanges: range?.start === 0 && range.end === 0
     };
   }
   if (!response.ok) {
@@ -97,46 +98,71 @@ async function probeDownload({ fetch, url, headers, signal }: TransferOptions): 
   }
   return {
     totalBytes: numberHeader(response, "content-length"),
-    acceptsRanges: response.headers.get("accept-ranges")?.toLowerCase() === "bytes"
+    acceptsRanges: false
   };
 }
 
 async function downloadSingle(options: TransferOptions, totalBytes: number | undefined): Promise<number> {
   const { fetch, url, filePath, headers, onProgress, signal } = options;
   const partPath = partialDownloadPath(filePath);
-  const existingBytes = await fileSize(partPath);
+  let existingBytes = await fileSize(partPath);
   if (existingBytes > 0 && totalBytes !== undefined && existingBytes >= totalBytes) {
-    await rename(partPath, filePath);
-    onProgress(existingBytes, totalBytes);
-    return existingBytes;
+    // Size alone cannot verify a plain prefix, especially after the source shrinks.
+    await rm(partPath, { force: true });
+    existingBytes = 0;
   }
 
-  const response = await fetch(url, {
+  let response = await fetch(url, {
     headers: existingBytes > 0 ? mergeHeaders(headers, { Range: `bytes=${existingBytes}-` }) : headers,
     signal
   });
   if (response.status === 416 && existingBytes > 0) {
-    // The partial file already holds everything the server has.
+    // Even bytes */N with N === existingBytes doesn't verify the old content.
+    // Retry once without Range; never turn an unsatisfied range into success.
     await discardBody(response);
-    await rename(partPath, filePath);
-    onProgress(existingBytes, existingBytes);
-    return existingBytes;
+    await rm(partPath, { force: true });
+    existingBytes = 0;
+    totalBytes = undefined;
+    response = await fetch(url, { headers, signal });
   }
-  if (!response.ok) {
+  if (response.status !== 200 && response.status !== 206) {
     await discardBody(response);
     throw httpError(response.status);
   }
 
   const appending = existingBytes > 0 && response.status === 206;
+  let expectedTotal = numberHeader(response, "content-length") ?? totalBytes;
+  if (response.status === 206) {
+    const range = responseRange(response);
+    const contentLength = numberHeader(response, "content-length");
+    if (!range || range.start !== (appending ? existingBytes : 0) || range.end !== range.total - 1
+      || (totalBytes !== undefined && range.total !== totalBytes)
+      || (contentLength !== undefined && contentLength !== range.end - range.start + 1)) {
+      await discardBody(response);
+      await rm(partPath, { force: true });
+      throw new AppError("DOWNLOAD_FAILED", "The server returned an unexpected resume range.", { reason: "changed" });
+    }
+    expectedTotal = range.total;
+  }
   let bytesWritten = appending ? existingBytes : 0;
-  const expectedTotal = totalBytes ?? (appending ? undefined : numberHeader(response, "content-length"));
   onProgress(bytesWritten, expectedTotal);
-  bytesWritten = await writeBody(response, partPath, appending, bytesWritten, (written) => onProgress(written, expectedTotal), signal);
+  try {
+    bytesWritten = await writeBody(response, partPath, appending, bytesWritten, (written) => onProgress(written, expectedTotal), signal, expectedTotal);
+  } catch (error) {
+    if (isAppError(error) && error.details?.reason === "changed") {
+      await rm(partPath, { force: true });
+    }
+    throw error;
+  }
 
   if (bytesWritten === 0) {
     await rm(partPath, { force: true });
     throw new AppError("DOWNLOAD_FAILED", "The download finished without writing any data.", { reason: "empty" });
   }
+  if (expectedTotal !== undefined && bytesWritten !== expectedTotal) {
+    throw new AppError("DOWNLOAD_FAILED", "The connection closed before the file was complete.", { reason: "incomplete" });
+  }
+  signal?.throwIfAborted();
   await rename(partPath, filePath);
   return bytesWritten;
 }
@@ -183,11 +209,14 @@ async function downloadRanges(options: TransferOptions, totalBytes: number, conn
     };
     try {
       watch();
+      // Work stealing can shorten segment.end while the response is in flight.
+      const start = segment.next;
+      const end = segment.end;
       const response = await options.fetch(options.url, {
-        headers: mergeHeaders(options.headers, { Range: `bytes=${segment.next}-${segment.end}` }),
+        headers: mergeHeaders(options.headers, { Range: `bytes=${start}-${end}` }),
         signal: AbortSignal.any([signal, request.signal])
       });
-      checkRangeResponse(response, segment.next, totalBytes);
+      checkRangeResponse(response, start, end, totalBytes);
       const reader = response.body?.getReader();
       try {
         while (reader && segment.next <= segment.end) {
@@ -282,6 +311,14 @@ async function downloadRanges(options: TransferOptions, totalBytes: number, conn
     if (options.signal?.aborted) {
       throw options.signal.reason;
     }
+    if (isAppError(failure) && failure.details?.reason === "changed") {
+      // All workers and state writes have stopped. None of these bytes are safe
+      // to reuse once the server contradicts the expected representation.
+      await removePartialArtifacts(filePath);
+      if (failure.details.status === 200) {
+        return downloadSingle(options, undefined);
+      }
+    }
     throw failure ?? new AppError("DOWNLOAD_FAILED", "Some ranges were never downloaded.", { reason: "incomplete" });
   }
   await saving.catch(() => undefined);
@@ -291,7 +328,18 @@ async function downloadRanges(options: TransferOptions, totalBytes: number, conn
   return totalBytes;
 }
 
-function checkRangeResponse(response: Response, start: number, totalBytes: number): void {
+function responseRange(response: Response): { start: number; end: number; total: number } | undefined {
+  const match = /^bytes\s+(\d+)-(\d+)\/(\d+)$/i.exec(response.headers.get("content-range")?.trim() ?? "");
+  if (!match) return undefined;
+  const start = Number(match[1]);
+  const end = Number(match[2]);
+  const total = Number(match[3]);
+  return [start, end, total].every(Number.isSafeInteger) && start <= end && end < total
+    ? { start, end, total }
+    : undefined;
+}
+
+function checkRangeResponse(response: Response, start: number, end: number, totalBytes: number): void {
   if (response.status !== 206) {
     void discardBody(response);
     // A full 200 body or "range not satisfiable" means the file isn't the one we started.
@@ -299,10 +347,12 @@ function checkRangeResponse(response: Response, start: number, totalBytes: numbe
       ? new AppError("DOWNLOAD_FAILED", `The server no longer serves the expected range (HTTP ${response.status}).`, { status: response.status, reason: "changed" })
       : httpError(response.status);
   }
-  const range = /^bytes\s+(\d+)-\d+\/(\d+|\*)$/i.exec(response.headers.get("content-range")?.trim() ?? "");
-  if (range && (Number(range[1]) !== start || (range[2] !== "*" && Number(range[2]) !== totalBytes))) {
+  const range = responseRange(response);
+  const contentLength = numberHeader(response, "content-length");
+  if (!range || range.start !== start || range.end !== end || range.total !== totalBytes
+    || (contentLength !== undefined && contentLength !== end - start + 1)) {
     void discardBody(response);
-    throw new AppError("DOWNLOAD_FAILED", `Unexpected range from the server: ${range[0]}.`, { reason: "changed" });
+    throw new AppError("DOWNLOAD_FAILED", "The server returned an unexpected download range.", { reason: "changed" });
   }
 }
 
@@ -338,6 +388,11 @@ async function resumableRanges(partPath: string, statePath: string, totalBytes: 
   const everything: Array<[number, number]> = [[0, totalBytes - 1]];
   const part = await fileStat(partPath);
   const saved = await readState(statePath);
+  if (!saved && await fileStat(statePath)) {
+    // A damaged sidecar must not turn a preallocated sparse file into a prefix.
+    await rm(partPath, { force: true });
+    return everything;
+  }
   if (saved) {
     // Everything outside the missing ranges must already be inside the file.
     const last = saved.missing.at(-1);
@@ -348,20 +403,27 @@ async function resumableRanges(partPath: string, statePath: string, totalBytes: 
     await rm(partPath, { force: true });
     return everything;
   }
-  if (part && part.size <= totalBytes) {
-    return part.size === totalBytes ? [] : [[part.size, totalBytes - 1]];
+  if (part && part.size < totalBytes) {
+    return [[part.size, totalBytes - 1]];
   }
   await rm(partPath, { force: true });
   return everything;
 }
 
 /** Before a single-connection download: keeps only the contiguous start of a multi-connection `.part`. */
-async function collapseToPrefix(filePath: string): Promise<void> {
+async function collapseToPrefix(filePath: string, totalBytes?: number): Promise<number | undefined> {
   await removeLegacySegments(filePath);
   const statePath = downloadStatePath(filePath);
   const saved = await readState(statePath);
   if (!saved) {
-    return;
+    if (await fileStat(statePath)) {
+      await removePartialArtifacts(filePath);
+    }
+    return totalBytes;
+  }
+  if (totalBytes !== undefined && saved.totalBytes !== totalBytes) {
+    await removePartialArtifacts(filePath);
+    return totalBytes;
   }
   const partPath = partialDownloadPath(filePath);
   const part = await fileStat(partPath);
@@ -369,6 +431,7 @@ async function collapseToPrefix(filePath: string): Promise<void> {
     await truncate(partPath, Math.min(saved.missing[0]?.[0] ?? saved.totalBytes, part.size));
   }
   await rm(statePath, { force: true });
+  return totalBytes ?? saved.totalBytes;
 }
 
 async function readState(statePath: string): Promise<SavedState | undefined> {
@@ -382,6 +445,7 @@ async function readState(statePath: string): Promise<SavedState | undefined> {
   if (
     state?.version !== STATE_VERSION
     || !Number.isSafeInteger(state.totalBytes)
+    || state.totalBytes! <= 0
     || !Array.isArray(state.missing)
     || !state.missing.every((range, index, all) =>
       Array.isArray(range)
@@ -389,7 +453,8 @@ async function readState(statePath: string): Promise<SavedState | undefined> {
       && Number.isSafeInteger(range[0])
       && Number.isSafeInteger(range[1])
       && range[0] >= (index === 0 ? 0 : all[index - 1]![1] + 1)
-      && range[0] <= range[1])
+      && range[0] <= range[1]
+      && range[1] < state.totalBytes!)
   ) {
     return undefined;
   }
@@ -412,7 +477,8 @@ async function writeBody(
   append: boolean,
   initialBytes: number,
   onBytes: (bytesWritten: number) => void,
-  signal?: AbortSignal
+  signal?: AbortSignal,
+  expectedTotal?: number
 ): Promise<number> {
   const handle = await open(filePath, append ? "a" : "w");
   let bytesWritten = initialBytes;
@@ -422,6 +488,9 @@ async function writeBody(
     }
     for await (const chunk of response.body as unknown as AsyncIterable<Uint8Array>) {
       signal?.throwIfAborted();
+      if (expectedTotal !== undefined && bytesWritten + chunk.byteLength > expectedTotal) {
+        throw new AppError("DOWNLOAD_FAILED", "The server sent more data than expected.", { reason: "changed" });
+      }
       await handle.write(chunk);
       bytesWritten += chunk.byteLength;
       onBytes(bytesWritten);
